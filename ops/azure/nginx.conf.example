@@ -1,0 +1,90 @@
+# Nginx Configuration Example for Kazaa Signaling Helper
+# Install to /etc/nginx/sites-available/kazaa and symlink to /etc/nginx/sites-enabled/
+# Replace <FQDN> with your actual Azure VM FQDN, e.g. kazaa-demo.eastus.cloudapp.azure.com
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Rate limiting zones to protect against abusive handshake floods
+limit_req_zone $binary_remote_addr zone=signal_req:10m rate=10r/s;
+limit_conn_zone $binary_remote_addr zone=signal_conn:10m;
+
+# HTTP (Port 80): ACME webroot challenge and redirect to HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name <FQDN>;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# HTTPS (Port 443): Authenticated WSS signaling & health check
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name <FQDN>;
+
+    # Let's Encrypt certificates (obtained via certbot)
+    ssl_certificate /etc/letsencrypt/live/<FQDN>/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/<FQDN>/privkey.pem;
+
+    # Modern TLS configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # Security headers
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+
+    # Logging: sanitized format that NEVER logs Authorization headers or query tokens
+    access_log /var/log/nginx/kazaa_access.log combined;
+    error_log /var/log/nginx/kazaa_error.log warn;
+
+    # WebSocket signaling endpoint
+    location /signal {
+        limit_req zone=signal_req burst=20 nodelay;
+        limit_conn signal_conn 10;
+
+        proxy_pass http://127.0.0.1:8787/signal;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket timeouts must exceed peer heartbeat intervals (2s ping / 8s eviction)
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+
+        # Disable buffering for low-latency signaling
+        proxy_buffering off;
+    }
+
+    # Health check endpoint
+    location = /healthz {
+        proxy_pass http://127.0.0.1:8787/healthz;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        access_log off;
+    }
+
+    # Return 404 for all other paths
+    location / {
+        return 404;
+    }
+}

@@ -1,0 +1,30 @@
+# Render Blueprint for Kazaa P2P Signaling Server (Free Tier)
+# Pairs with Metered.ca Free STUN/TURN (no credit card required) so you can
+# save your 12-month Azure for Students trial for later.
+
+services:
+  - type: web
+    name: kazaa-signaling
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run signal:start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 24.12.0
+      - key: KAZAA_ROOM_ID
+        value: classroom-network-1
+      # Generate locally with:
+      #   node -e "console.log(crypto.randomBytes(32).toString('base64url'))"
+      - key: KAZAA_ROOM_TOKEN
+        sync: false
+      # Free STUN + TURN via Metered.ca (https://www.metered.ca/stun-turn — free tier, no credit card)
+      - key: KAZAA_STUN_URL
+        value: stun:stun.relay.metered.ca:80
+      - key: KAZAA_TURN_URL
+        value: turns:global.relay.metered.ca:443?transport=tcp
+      - key: KAZAA_TURN_USERNAME
+        sync: false
+      - key: KAZAA_TURN_CREDENTIAL
+        sync: false

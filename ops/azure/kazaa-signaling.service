@@ -1,0 +1,37 @@
+[Unit]
+Description=Kazaa P2P Authenticated Signaling Service
+After=network.target
+
+[Service]
+Type=simple
+User=kazaa
+Group=kazaa
+WorkingDirectory=/home/kazaa/app
+
+# Point to the user-level Node 24 installation
+ExecStart=/home/kazaa/.local/bin/node services/signaling/index.ts
+
+# Root-owned, mode 0600 environment file with room and TURN secrets
+EnvironmentFile=/etc/kazaa/signaling.env
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+CapabilityBoundingSet=
+
+# Resource boundaries
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

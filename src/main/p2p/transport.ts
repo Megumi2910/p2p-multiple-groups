@@ -7,24 +7,48 @@ import type {
 } from '../../shared/p2p.ts'
 import {
   isOverlayControlMessage,
+  isOverlayControlMessageV2,
+  isPeerHelloMessage,
+  parseFileChannelLabelV2,
+  makeFileChannelLabelV2,
+  CONTROL_CHANNEL_LABEL_V2,
+  FILE_CHANNEL_LABEL_PREFIX_V2,
   type OverlayControlMessage,
+  type OverlayControlMessageV2,
+  type PeerHelloMessage,
   type OverlayHelloMessage,
   type SignalingIceConfig,
   type SignalingRosterPeer,
+  type SignalingRosterPeerV2,
   MAX_CONTROL_MESSAGE_SIZE
 } from '../../shared/p2p-wire.ts'
 
+export type LegacyOnFileChannelCallback = (fromPeerId: string, transferId: string, channel: RTCDataChannel) => void
+export type V2OnFileChannelCallback = (
+  groupId: string,
+  fromPeerId: string,
+  fromSessionId: string,
+  transferId: string,
+  channel: RTCDataChannel
+) => void
+export type OnFileChannelCallback = LegacyOnFileChannelCallback | V2OnFileChannelCallback
+
 export interface TransportEvents {
-  onControlMessage: (fromPeerId: string, message: OverlayControlMessage) => void
-  onFileChannel: (fromPeerId: string, transferId: string, channel: RTCDataChannel) => void
+  onControlMessage: (fromPeerId: string, message: OverlayControlMessageV2 | OverlayControlMessage) => void
+  onFileChannel: OnFileChannelCallback
   onLinkStateChange: (peerId: string, state: P2pLinkState, path: P2pCandidatePath) => void
   onSendSignal: (signal: {
+    groupId?: string
     targetPeerId: string
     targetSessionId: string
     connectionId: string
     kind: 'request-offer' | 'offer' | 'answer' | 'candidate'
     payload: unknown
   }) => void
+}
+
+export interface TransportManagerOptions {
+  connectionFactory?: (config: ConstructorParameters<typeof RTCPeerConnection>[0]) => RTCPeerConnection
 }
 
 interface PeerConnectionRecord {
@@ -39,23 +63,88 @@ interface PeerConnectionRecord {
   state: P2pLinkState
   path: P2pCandidatePath
   activeFileChannels: Map<string, RTCDataChannel>
+  negotiationGroupId?: string
+}
+
+interface GroupContext {
+  groupId: string
+  epoch: string
+  revision: number
+  peers: Map<string, SignalingRosterPeerV2>
+  fresh: boolean
 }
 
 export class TransportManager {
   private readonly events: TransportEvents
+  private readonly options: TransportManagerOptions
   private readonly connections = new Map<string, PeerConnectionRecord>()
   private localPeerId = ''
   private localSessionId = ''
-  private epoch = ''
-  private revision = 0
+  private legacyEpoch = ''
+  private legacyRevision = 0
   private iceConfig: SignalingIceConfig = { expiresAt: 0, servers: [] }
   private relayOnly = false
-  private activeRoster = new Map<string, SignalingRosterPeer>()
+  private activeLegacyRoster = new Map<string, SignalingRosterPeer>()
+  private readonly groupContexts = new Map<string, GroupContext>()
   private isDisposed = false
 
-  constructor(events: TransportEvents) {
+  constructor(events: TransportEvents, options: TransportManagerOptions = {}) {
     this.events = events
+    this.options = options
   }
+
+  // ==========================================
+  // Multi-Group Context Management
+  // ==========================================
+
+  setPeerContext(
+    peerId: string,
+    sessionId: string,
+    iceConfig: SignalingIceConfig,
+    relayOnly: boolean
+  ): void {
+    this.localPeerId = peerId
+    this.localSessionId = sessionId
+    this.iceConfig = iceConfig
+    this.relayOnly = relayOnly
+  }
+
+  updateGroupContext(
+    groupId: string,
+    epoch: string,
+    revision: number,
+    peers: readonly SignalingRosterPeerV2[],
+    fresh: boolean
+  ): void {
+    if (this.isDisposed) return
+
+    const peerMap = new Map<string, SignalingRosterPeerV2>()
+    for (const p of peers) {
+      if (p.peerId !== this.localPeerId) {
+        peerMap.set(p.peerId, p)
+      }
+    }
+
+    this.groupContexts.set(groupId, {
+      groupId,
+      epoch,
+      revision,
+      peers: peerMap,
+      fresh
+    })
+
+    this.reconcileConnections()
+  }
+
+  removeGroupContext(groupId: string): void {
+    if (this.isDisposed) return
+    this.groupContexts.delete(groupId)
+    this.reconcileConnections()
+  }
+
+  // ==========================================
+  // Legacy Single-Group Adapter Methods
+  // ==========================================
 
   setSignalingContext(
     epoch: string,
@@ -65,56 +154,170 @@ export class TransportManager {
     iceConfig: SignalingIceConfig,
     relayOnly: boolean
   ): void {
-    this.epoch = epoch
-    this.revision = revision
-    this.localPeerId = localPeerId
-    this.localSessionId = localSessionId
-    this.iceConfig = iceConfig
-    this.relayOnly = relayOnly
+    this.legacyEpoch = epoch
+    this.legacyRevision = revision
+    this.setPeerContext(localPeerId, localSessionId, iceConfig, relayOnly)
   }
 
   updateRoster(activePeers: readonly SignalingRosterPeer[]): void {
     if (this.isDisposed) return
-    this.activeRoster.clear()
+    this.activeLegacyRoster.clear()
     const activeIds = new Set<string>()
 
     for (const p of activePeers) {
       if (p.peerId !== this.localPeerId) {
-        this.activeRoster.set(p.peerId, p)
+        this.activeLegacyRoster.set(p.peerId, p)
         activeIds.add(p.peerId)
       }
     }
 
     // Prune connections for departed peers
     for (const [peerId, record] of this.connections.entries()) {
-      if (!activeIds.has(peerId)) {
-        this.cleanupRecord(record, 'failed')
+      if (!activeIds.has(peerId) && this.getSharedGroups(peerId).length === 0) {
+        void this.cleanupRecord(record, 'failed')
         this.connections.delete(peerId)
       }
     }
 
-    // Attempt connections to all active peers
-    for (const [peerId, peer] of this.activeRoster.entries()) {
+    // Attempt connections to all active legacy peers
+    for (const [peerId, peer] of this.activeLegacyRoster.entries()) {
       const existing = this.connections.get(peerId)
       if (!existing || existing.sessionId !== peer.sessionId || existing.state === 'failed') {
         if (existing) {
-          this.cleanupRecord(existing, 'failed')
+          void this.cleanupRecord(existing, 'failed')
           this.connections.delete(peerId)
         }
-        this.initiateOrRequestConnection(peer)
+        this.initiateOrRequestConnectionLegacy(peer)
       }
     }
   }
 
-  private initiateOrRequestConnection(remotePeer: SignalingRosterPeer): void {
+  getAllLinks(): P2pPeerLink[] {
+    const list: P2pPeerLink[] = []
+    for (const [peerId, record] of this.connections.entries()) {
+      list.push({
+        peerId,
+        state: record.state,
+        path: record.path
+      })
+    }
+    return list
+  }
+
+  getGroupLinks(groupId: string): P2pPeerLink[] {
+    const group = this.groupContexts.get(groupId)
+    if (!group) return []
+
+    const list: P2pPeerLink[] = []
+    for (const peerId of group.peers.keys()) {
+      const record = this.connections.get(peerId)
+      if (record) {
+        list.push({
+          peerId,
+          state: record.state,
+          path: record.path
+        })
+      }
+    }
+    return list
+  }
+
+  getLinkState(peerId: string): { state: P2pLinkState; path: P2pCandidatePath } | null {
+    const record = this.connections.get(peerId)
+    if (!record) return null
+    return { state: record.state, path: record.path }
+  }
+
+  async closeLink(peerId: string): Promise<void> {
+    const record = this.connections.get(peerId)
+    if (record) {
+      await this.cleanupRecord(record, 'failed')
+      this.connections.delete(peerId)
+    }
+  }
+
+  // ==========================================
+  // Connection Pool Reconciliation
+  // ==========================================
+
+  private getSharedGroups(peerId: string): string[] {
+    const shared: string[] = []
+    for (const [groupId, ctx] of this.groupContexts.entries()) {
+      if (ctx.peers.has(peerId)) {
+        shared.push(groupId)
+      }
+    }
+    return shared.sort()
+  }
+
+  private reconcileConnections(): void {
+    if (this.isDisposed || !this.localPeerId) return
+
+    // Compute union of active peers across all groups
+    const activeUnion = new Map<string, { peerId: string; sessionId: string; groups: string[] }>()
+
+    for (const [groupId, ctx] of this.groupContexts.entries()) {
+      for (const peer of ctx.peers.values()) {
+        let entry = activeUnion.get(peer.peerId)
+        if (!entry) {
+          entry = { peerId: peer.peerId, sessionId: peer.sessionId, groups: [] }
+          activeUnion.set(peer.peerId, entry)
+        }
+        entry.groups.push(groupId)
+      }
+    }
+
+    // Prune connections for peers no longer in any active group (and not in legacy roster)
+    for (const [peerId, record] of this.connections.entries()) {
+      if (!activeUnion.has(peerId) && !this.activeLegacyRoster.has(peerId)) {
+        void this.cleanupRecord(record, 'failed')
+        this.connections.delete(peerId)
+      }
+    }
+
+    // Connect to each peer in the union
+    for (const [peerId, peerEntry] of activeUnion.entries()) {
+      const existing = this.connections.get(peerId)
+      if (!existing || existing.sessionId !== peerEntry.sessionId || existing.state === 'failed') {
+        if (existing) {
+          void this.cleanupRecord(existing, 'failed')
+          this.connections.delete(peerId)
+        }
+        this.initiateOrRequestConnection(peerEntry)
+      }
+    }
+  }
+
+  private initiateOrRequestConnection(remotePeer: { peerId: string; sessionId: string; groups: string[] }): void {
+    if (this.isDisposed || !this.localPeerId) return
+
+    const shared = remotePeer.groups.slice().sort()
+    const chosenGroupId = shared[0] || ''
+    const connectionId = randomUUID()
+
+    if (this.localPeerId < remotePeer.peerId) {
+      // Lower lexical ID initiates offer
+      this.createPeerConnection(remotePeer.peerId, remotePeer.sessionId, connectionId, true, chosenGroupId)
+    } else {
+      // Upper lexical ID requests initiation
+      this.events.onSendSignal({
+        groupId: chosenGroupId,
+        targetPeerId: remotePeer.peerId,
+        targetSessionId: remotePeer.sessionId,
+        connectionId,
+        kind: 'request-offer',
+        payload: null
+      })
+    }
+  }
+
+  private initiateOrRequestConnectionLegacy(remotePeer: SignalingRosterPeer): void {
     if (this.isDisposed || !this.localPeerId) return
 
     const connectionId = randomUUID()
     if (this.localPeerId < remotePeer.peerId) {
-      // Lower lexical ID initiates the offer
       this.createPeerConnection(remotePeer.peerId, remotePeer.sessionId, connectionId, true)
     } else {
-      // Upper lexical ID requests initiation through signaling
       this.events.onSendSignal({
         targetPeerId: remotePeer.peerId,
         targetSessionId: remotePeer.sessionId,
@@ -129,11 +332,12 @@ export class TransportManager {
     remotePeerId: string,
     remoteSessionId: string,
     connectionId: string,
-    isInitiator: boolean
+    isInitiator: boolean,
+    negotiationGroupId?: string
   ): PeerConnectionRecord {
     const existing = this.connections.get(remotePeerId)
     if (existing) {
-      this.cleanupRecord(existing, 'failed')
+      void this.cleanupRecord(existing, 'failed')
       this.connections.delete(remotePeerId)
     }
 
@@ -165,7 +369,9 @@ export class TransportManager {
       pcConfig.turnTransport = 'tls'
     }
 
-    const pc = new RTCPeerConnection(pcConfig as unknown as object)
+    const pc = this.options.connectionFactory
+      ? this.options.connectionFactory(pcConfig as ConstructorParameters<typeof RTCPeerConnection>[0])
+      : new RTCPeerConnection(pcConfig as unknown as object)
 
     const record: PeerConnectionRecord = {
       peerId: remotePeerId,
@@ -178,13 +384,14 @@ export class TransportManager {
       candidateCount: 0,
       state: 'connecting',
       path: 'unknown',
-      activeFileChannels: new Map()
+      activeFileChannels: new Map(),
+      negotiationGroupId
     }
 
-    // Connection attempt deadline: 20s
+    // 20-second connection attempt deadline
     record.attemptTimer = setTimeout(() => {
       if (record.state === 'connecting') {
-        this.cleanupRecord(record, 'failed')
+        void this.cleanupRecord(record, 'failed')
       }
     }, 20000)
 
@@ -199,7 +406,11 @@ export class TransportManager {
       if (record.candidateCount >= 64) return
       record.candidateCount++
 
+      const shared = this.getSharedGroups(remotePeerId)
+      const sigGroupId = record.negotiationGroupId || shared[0]
+
       this.events.onSendSignal({
+        groupId: sigGroupId,
         targetPeerId: remotePeerId,
         targetSessionId: remoteSessionId,
         connectionId,
@@ -211,18 +422,32 @@ export class TransportManager {
     // Handle incoming data channels
     pc.ondatachannel = (event) => {
       const channel = event.channel
-      if (channel.label === 'kazaa-control-v1') {
+      if (channel.label === CONTROL_CHANNEL_LABEL_V2 || channel.label === 'kazaa-control-v1') {
         record.controlChannel = channel
         this.setupControlChannel(record, channel)
+      } else if (channel.label.startsWith(FILE_CHANNEL_LABEL_PREFIX_V2)) {
+        const parsed = parseFileChannelLabelV2(channel.label)
+        if (parsed) {
+          record.activeFileChannels.set(parsed.transferId, channel)
+          channel.onclose = () => {
+            record.activeFileChannels.delete(parsed.transferId)
+          }
+          this.emitFileChannel(parsed.groupId, remotePeerId, remoteSessionId, parsed.transferId, channel)
+        } else {
+          try {
+            channel.close()
+          } catch {
+            // ignore
+          }
+        }
       } else if (channel.label.startsWith('kazaa-file-v1:')) {
         const transferId = channel.label.slice('kazaa-file-v1:'.length)
         record.activeFileChannels.set(transferId, channel)
         channel.onclose = () => {
           record.activeFileChannels.delete(transferId)
         }
-        this.events.onFileChannel(remotePeerId, transferId, channel)
+        this.emitFileChannel('', remotePeerId, remoteSessionId, transferId, channel)
       } else {
-        // Unknown channel label
         try {
           channel.close()
         } catch {
@@ -234,7 +459,7 @@ export class TransportManager {
     pc.connectionStateChange.subscribe((state) => {
       if (state === 'failed' || state === 'closed') {
         if (record.state !== 'failed') {
-          this.cleanupRecord(record, 'failed')
+          void this.cleanupRecord(record, 'failed')
         }
       }
     })
@@ -243,7 +468,7 @@ export class TransportManager {
     this.events.onLinkStateChange(remotePeerId, 'connecting', 'unknown')
 
     if (isInitiator) {
-      const dc = pc.createDataChannel('kazaa-control-v1', {
+      const dc = pc.createDataChannel(CONTROL_CHANNEL_LABEL_V2, {
         ordered: true
       })
       record.controlChannel = dc
@@ -253,7 +478,11 @@ export class TransportManager {
         .then(async (offer) => {
           if (record.attemptId !== connectionId) return
           await pc.setLocalDescription(offer)
+          const shared = this.getSharedGroups(remotePeerId)
+          const sigGroupId = record.negotiationGroupId || shared[0]
+
           this.events.onSendSignal({
+            groupId: sigGroupId,
             targetPeerId: remotePeerId,
             targetSessionId: remoteSessionId,
             connectionId,
@@ -262,7 +491,7 @@ export class TransportManager {
           })
         })
         .catch(() => {
-          this.cleanupRecord(record, 'failed')
+          void this.cleanupRecord(record, 'failed')
         })
     }
 
@@ -270,22 +499,43 @@ export class TransportManager {
   }
 
   private setupControlChannel(record: PeerConnectionRecord, channel: RTCDataChannel): void {
-    channel.onopen = () => {
-      if (this.isDisposed || !this.localPeerId) return
-      // Send Hello handshake
-      const hello: OverlayHelloMessage = {
+    let helloSent = false
+    const sendHello = () => {
+      if (helloSent || this.isDisposed || !this.localPeerId) return
+      helloSent = true
+
+      // Send V2 physical hello message
+      const helloV2: PeerHelloMessage = {
+        v: 2,
+        type: 'hello',
+        peerId: this.localPeerId,
+        sessionId: this.localSessionId,
+        connectionId: record.attemptId
+      }
+
+      // Also send V1 hello if legacy epoch is present for backwards compatibility
+      const helloV1: OverlayHelloMessage = {
         v: 1,
         type: 'hello',
-        epoch: this.epoch,
-        revision: this.revision,
+        epoch: this.legacyEpoch,
+        revision: this.legacyRevision,
         peerId: this.localPeerId,
         sessionId: this.localSessionId
       }
+
       try {
-        channel.send(Buffer.from(JSON.stringify(hello), 'utf-8'))
+        channel.send(Buffer.from(JSON.stringify(helloV2), 'utf-8'))
+        if (this.legacyEpoch) {
+          channel.send(Buffer.from(JSON.stringify(helloV1), 'utf-8'))
+        }
       } catch {
-        this.cleanupRecord(record, 'failed')
+        void this.cleanupRecord(record, 'failed')
       }
+    }
+
+    channel.onopen = sendHello
+    if (channel.readyState === 'open') {
+      sendHello()
     }
 
     channel.onmessage = (event) => {
@@ -302,8 +552,7 @@ export class TransportManager {
       }
 
       if (rawStr.length > MAX_CONTROL_MESSAGE_SIZE) {
-        // Oversized control frame: close link
-        this.cleanupRecord(record, 'failed')
+        void this.cleanupRecord(record, 'failed')
         return
       }
 
@@ -311,22 +560,15 @@ export class TransportManager {
       try {
         parsed = JSON.parse(rawStr)
       } catch {
-        this.cleanupRecord(record, 'failed')
+        void this.cleanupRecord(record, 'failed')
         return
       }
-
       if (!record.controlReady) {
-        // Handshake phase
-        if (
-          parsed &&
-          typeof parsed === 'object' &&
-          (parsed as Record<string, unknown>).type === 'hello'
-        ) {
-          const hello = parsed as OverlayHelloMessage
+        // Physical Hello handshake phase
+        if (isPeerHelloMessage(parsed)) {
           if (
-            hello.peerId === record.peerId &&
-            hello.sessionId === record.sessionId &&
-            hello.epoch === this.epoch
+            parsed.peerId === record.peerId &&
+            parsed.sessionId === record.sessionId
           ) {
             record.controlReady = true
             record.state = 'open'
@@ -334,29 +576,91 @@ export class TransportManager {
               clearTimeout(record.attemptTimer)
               record.attemptTimer = null
             }
+            this.events.onLinkStateChange(record.peerId, 'open', record.path)
             this.detectPath(record).then((path) => {
-              record.path = path
-              this.events.onLinkStateChange(record.peerId, 'open', path)
+              if (record.state === 'open') {
+                record.path = path
+                this.events.onLinkStateChange(record.peerId, 'open', path)
+              }
+            })
+            return
+          }
+        } else if (
+          parsed &&
+          typeof parsed === 'object' &&
+          (parsed as Record<string, unknown>).v === 1 &&
+          (parsed as Record<string, unknown>).type === 'hello'
+        ) {
+          // Legacy V1 hello accepted
+          const h1 = parsed as OverlayHelloMessage
+          if (h1.peerId === record.peerId && h1.sessionId === record.sessionId) {
+            record.controlReady = true
+            record.state = 'open'
+            if (record.attemptTimer) {
+              clearTimeout(record.attemptTimer)
+              record.attemptTimer = null
+            }
+            this.events.onLinkStateChange(record.peerId, 'open', record.path)
+            this.detectPath(record).then((path) => {
+              if (record.state === 'open') {
+                record.path = path
+                this.events.onLinkStateChange(record.peerId, 'open', path)
+              }
             })
             return
           }
         }
-        // Bad handshake
-        this.cleanupRecord(record, 'failed')
+
+        // If an operational message arrived before physical hello completed, ignore without tearing down link
+        if (isOverlayControlMessageV2(parsed) || isOverlayControlMessage(parsed)) {
+          return
+        }
+
+        // Malformed non-protocol frame: close link
+        void this.cleanupRecord(record, 'failed')
         return
       }
 
       // Operational phase
-      if (isOverlayControlMessage(parsed)) {
-        if (parsed.epoch !== this.epoch) {
+      if (isOverlayControlMessageV2(parsed)) {
+        if (parsed.type === 'hello') return
+
+        const groupCtx = this.groupContexts.get(parsed.groupId)
+        if (!groupCtx) {
+          // Unknown or unjoined group, ignore without dropping physical link
+          return
+        }
+        if (parsed.epoch !== groupCtx.epoch) {
           // Stale epoch, ignore
           return
         }
+        const sender = groupCtx.peers.get(record.peerId)
+        if (!sender || sender.membershipId !== parsed.senderMembershipId) {
+          // Sender membership incarnated, drop
+          return
+        }
+        if (parsed.revision > groupCtx.revision) {
+          // Newer than authoritative roster revision, ignore
+          return
+        }
+
         this.events.onControlMessage(record.peerId, parsed)
-      } else {
-        // Malformed message
-        this.cleanupRecord(record, 'failed')
+        return
       }
+
+      // Legacy V1 control message support
+      if (isOverlayControlMessage(parsed)) {
+        const overlayMsg = parsed as OverlayControlMessage
+        if (overlayMsg.epoch !== this.legacyEpoch) {
+          console.log('EPOCH_CHECK_DROPPED:', { parsedEpoch: overlayMsg.epoch, legacyEpoch: this.legacyEpoch, type: overlayMsg.type })
+          return
+        }
+        this.events.onControlMessage(record.peerId, parsed)
+        return
+      }
+
+      // Malformed operational message
+      void this.cleanupRecord(record, 'failed')
     }
 
     channel.onclose = () => {
@@ -399,26 +703,52 @@ export class TransportManager {
   }
 
   async handleSignal(
-    fromPeerId: string,
-    fromSessionId: string,
-    connectionId: string,
-    kind: string,
-    payload: unknown
+    arg1: string,
+    arg2: string,
+    arg3: string,
+    arg4: string,
+    arg5: unknown,
+    arg6?: unknown
   ): Promise<void> {
     if (this.isDisposed) return
 
-    const rosterPeer = this.activeRoster.get(fromPeerId)
-    if (!rosterPeer || rosterPeer.sessionId !== fromSessionId) {
-      // Unauthenticated / non-roster sender
+    let groupId: string | undefined
+    let fromPeerId: string
+    let fromSessionId: string
+    let connectionId: string
+    let kind: string
+    let payload: unknown
+
+    if (arg6 !== undefined) {
+      groupId = arg1
+      fromPeerId = arg2
+      fromSessionId = arg3
+      connectionId = arg4
+      kind = arg5 as string
+      payload = arg6
+    } else {
+      fromPeerId = arg1
+      fromSessionId = arg2
+      connectionId = arg3
+      kind = arg4
+      payload = arg5
+    }
+
+    // Authenticate sender in at least one shared group or legacy roster
+    const sharedGroups = this.getSharedGroups(fromPeerId)
+    const isLegacySender = this.activeLegacyRoster.get(fromPeerId)?.sessionId === fromSessionId
+    if (sharedGroups.length === 0 && !isLegacySender) {
       return
     }
 
-    let record = this.connections.get(fromPeerId)
+    const record = this.connections.get(fromPeerId)
 
     if (kind === 'request-offer') {
+      if (record && record.sessionId === fromSessionId && (record.state === 'open' || record.state === 'connecting')) {
+        return
+      }
       if (this.localPeerId < fromPeerId) {
-        // We are the initiator
-        this.createPeerConnection(fromPeerId, fromSessionId, connectionId, true)
+        this.createPeerConnection(fromPeerId, fromSessionId, connectionId, true, groupId)
       }
       return
     }
@@ -427,12 +757,18 @@ export class TransportManager {
       const offerPayload = payload as { type: 'offer'; sdp: string }
       if (!offerPayload?.sdp) return
 
-      record = this.createPeerConnection(fromPeerId, fromSessionId, connectionId, false)
+      if (record && record.sessionId === fromSessionId && record.state === 'open') {
+        return
+      }
+
+      const newRecord = this.createPeerConnection(fromPeerId, fromSessionId, connectionId, false, groupId)
       try {
-        await record.pc.setRemoteDescription(offerPayload)
-        const answer = await record.pc.createAnswer()
-        await record.pc.setLocalDescription(answer)
+        await newRecord.pc.setRemoteDescription(offerPayload)
+        const answer = await newRecord.pc.createAnswer()
+        await newRecord.pc.setLocalDescription(answer)
+        const chosenGroupId = groupId || sharedGroups[0]
         this.events.onSendSignal({
+          groupId: chosenGroupId,
           targetPeerId: fromPeerId,
           targetSessionId: fromSessionId,
           connectionId,
@@ -440,7 +776,7 @@ export class TransportManager {
           payload: { type: answer.type, sdp: answer.sdp }
         })
       } catch {
-        this.cleanupRecord(record, 'failed')
+        void this.cleanupRecord(newRecord, 'failed')
       }
       return
     }
@@ -451,7 +787,7 @@ export class TransportManager {
       try {
         await record.pc.setRemoteDescription(answerPayload)
       } catch {
-        this.cleanupRecord(record, 'failed')
+        void this.cleanupRecord(record, 'failed')
       }
       return
     }
@@ -466,7 +802,18 @@ export class TransportManager {
     }
   }
 
-  sendControl(targetPeerId: string, message: OverlayControlMessage): boolean {
+  sendControl(arg1: string, arg2: string | OverlayControlMessage, arg3?: OverlayControlMessageV2): boolean {
+    let targetPeerId: string
+    let message: OverlayControlMessage | OverlayControlMessageV2
+
+    if (arg3 !== undefined) {
+      targetPeerId = arg2 as string
+      message = arg3
+    } else {
+      targetPeerId = arg1
+      message = arg2 as OverlayControlMessage
+    }
+
     const record = this.connections.get(targetPeerId)
     if (!record || !record.controlReady || !record.controlChannel) {
       return false
@@ -480,7 +827,21 @@ export class TransportManager {
     }
   }
 
-  async openFileChannel(targetPeerId: string, transferId: string): Promise<RTCDataChannel> {
+  async openFileChannel(arg1: string, arg2: string, arg3?: string): Promise<RTCDataChannel> {
+    let groupId: string
+    let targetPeerId: string
+    let transferId: string
+
+    if (arg3 !== undefined) {
+      groupId = arg1
+      targetPeerId = arg2
+      transferId = arg3
+    } else {
+      groupId = ''
+      targetPeerId = arg1
+      transferId = arg2
+    }
+
     let record = this.connections.get(targetPeerId)
     if (!record || record.state === 'failed') {
       throw new Error(`Cannot open file channel: peer ${targetPeerId} link is not available`)
@@ -513,7 +874,11 @@ export class TransportManager {
       throw new Error(`Cannot open file channel: peer ${targetPeerId} link is not open`)
     }
 
-    const channel = record.pc.createDataChannel(`kazaa-file-v1:${transferId}`, {
+    const channelLabel = groupId
+      ? makeFileChannelLabelV2(groupId, transferId)
+      : `kazaa-file-v1:${transferId}`
+
+    const channel = record.pc.createDataChannel(channelLabel, {
       ordered: true
     })
 
@@ -524,7 +889,7 @@ export class TransportManager {
 
     const { promise, resolve, reject } = Promise.withResolvers<RTCDataChannel>()
     const timeout = setTimeout(() => {
-      reject(new Error('File channel open timeout'))
+      reject(new Error(`Timeout opening file channel to peer ${targetPeerId}`))
     }, 10000)
 
     channel.onopen = () => {
@@ -533,33 +898,35 @@ export class TransportManager {
     }
     channel.onerror = (err) => {
       clearTimeout(timeout)
-      reject(err)
+      reject(err instanceof Error ? err : new Error(String(err)))
     }
+
+    if (channel.readyState === 'open') {
+      clearTimeout(timeout)
+      resolve(channel)
+    }
+
     return promise
   }
 
-  getLinkState(peerId: string): { state: P2pLinkState; path: P2pCandidatePath } | undefined {
-    const record = this.connections.get(peerId)
-    if (!record) return undefined
-    return { state: record.state, path: record.path }
-  }
-
-  getAllLinks(): P2pPeerLink[] {
-    const list: P2pPeerLink[] = []
-    for (const [peerId, record] of this.connections.entries()) {
-      list.push({
-        peerId,
-        state: record.state,
-        path: record.path
-      })
+  private emitFileChannel(
+    groupId: string,
+    fromPeerId: string,
+    fromSessionId: string,
+    transferId: string,
+    channel: RTCDataChannel
+  ): void {
+    const fn = this.events.onFileChannel as unknown as (...args: unknown[]) => void
+    if (fn.length <= 3) {
+      fn(fromPeerId, transferId, channel)
+    } else {
+      fn(groupId, fromPeerId, fromSessionId, transferId, channel)
     }
-    return list
   }
 
   private async cleanupRecord(record: PeerConnectionRecord, finalState: P2pLinkState): Promise<void> {
     if (record.attemptTimer) {
       clearTimeout(record.attemptTimer)
-      record.attemptTimer = null
     }
     record.state = finalState
     record.controlReady = false
@@ -591,14 +958,6 @@ export class TransportManager {
     this.events.onLinkStateChange(record.peerId, finalState, record.path)
   }
 
-  async closeLink(peerId: string): Promise<void> {
-    const record = this.connections.get(peerId)
-    if (record) {
-      await this.cleanupRecord(record, 'failed')
-      this.connections.delete(peerId)
-    }
-  }
-
   async dispose(): Promise<void> {
     if (this.isDisposed) return
     this.isDisposed = true
@@ -608,7 +967,8 @@ export class TransportManager {
       cleanups.push(this.cleanupRecord(record, 'failed'))
     }
     this.connections.clear()
-    this.activeRoster.clear()
+    this.activeLegacyRoster.clear()
+    this.groupContexts.clear()
     await Promise.all(cleanups)
   }
 }

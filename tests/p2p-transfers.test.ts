@@ -7,6 +7,7 @@ import { randomUUID, createHash } from 'node:crypto'
 import { sanitizeDestinationFileName } from '../src/main/p2p/transfers.ts'
 import { createSignalingServer } from '../services/signaling/server.ts'
 import { createPeerEngine, type PeerEngine } from '../src/main/p2p/engine.ts'
+import type { P2pState } from '../src/shared/p2p.ts'
 
 describe('File Transfer Safety & Protocols', () => {
   it('sanitizes Windows reserved names, illegal chars, and trailing dots/spaces', () => {
@@ -70,43 +71,70 @@ describe('End-to-End Verified Peer Transfers', () => {
       uploader = await createEngine('Uploader', false)
       downloader = await createEngine('Downloader', false)
 
-      function waitForPeers(engine: PeerEngine, count: number): Promise<void> {
-        const { promise, resolve } = Promise.withResolvers<void>()
+      function waitForState(
+        engine: PeerEngine,
+        predicate: (state: P2pState) => boolean,
+        timeoutMs = 25000,
+        rejectPredicate?: (state: P2pState) => string | null,
+        label?: string
+      ): Promise<P2pState> {
+        const { promise, resolve, reject } = Promise.withResolvers<P2pState>()
         let done = false
-        const unsub = engine.subscribe((s) => {
-          if (!done && s.network.members.length === count) {
+        // Real-time safety deadline: bounding asynchronous peer engine events across WebRTC network
+        const timer = setTimeout(() => {
+          if (!done) {
             done = true
             unsub()
-            resolve()
+            reject(new Error(`Timeout (${timeoutMs}ms) waiting for: ${label || 'peer state condition'}`))
           }
-        })
-        if (engine.getState().network.members.length === count) {
-          done = true
-          unsub()
-          resolve()
-        }
-        return promise
-      }
-      function waitForLink(engine: PeerEngine, targetPeerId: string): Promise<void> {
-        const { promise, resolve } = Promise.withResolvers<void>()
-        let done = false
-        const unsub = engine.subscribe((s) => {
-          const l = s.network.links.find((x) => x.peerId === targetPeerId)
-          if (!done && l && l.state === 'open') {
+        }, timeoutMs)
+
+        const check = (s: P2pState) => {
+          if (done) return
+          if (rejectPredicate) {
+            const err = rejectPredicate(s)
+            if (err) {
+              done = true
+              clearTimeout(timer)
+              unsub()
+              reject(new Error(err))
+              return
+            }
+          }
+          if (predicate(s)) {
             done = true
+            clearTimeout(timer)
             unsub()
-            resolve()
+            resolve(s)
           }
-        })
-        const cur = engine.getState().network.links.find((x) => x.peerId === targetPeerId)
-        if (cur && cur.state === 'open') {
-          done = true
-          unsub()
-          resolve()
         }
+
+        const unsub = engine.subscribe(check)
+        check(engine.getState())
         return promise
       }
+
+      function waitForPeers(engine: PeerEngine, count: number): Promise<P2pState> {
+        return waitForState(engine, (s) => s.network.members.length === count, 25000, undefined, 'peers-count-' + count)
+      }
+
+      function waitForLink(engine: PeerEngine, targetPeerId: string): Promise<P2pState> {
+        return waitForState(
+          engine,
+          (s) => s.network.links.some((l) => l.peerId === targetPeerId && l.state === 'open'),
+          25000,
+          undefined,
+          'link-open-' + targetPeerId.slice(0, 8)
+        )
+      }
+
       await Promise.all([waitForPeers(sn, 3), waitForPeers(uploader, 3), waitForPeers(downloader, 3)])
+      await Promise.all([
+        waitForLink(uploader, sn.getState().network.peerId),
+        waitForLink(downloader, sn.getState().network.peerId),
+        waitForLink(sn, uploader.getState().network.peerId),
+        waitForLink(sn, downloader.getState().network.peerId)
+      ])
       const upDir = await mkdtemp(join(tmpdir(), 'up-files-'))
       tempDirs.push(upDir)
 
@@ -119,49 +147,55 @@ describe('End-to-End Verified Peer Transfers', () => {
 
       const zeroPath = join(upDir, 'empty.txt')
       await writeFile(zeroPath, Buffer.alloc(0))
-
-      const { promise: uploadAck, resolve: resolveUploadAck } = Promise.withResolvers<void>()
-      uploader.subscribe((state) => {
-        if (
-          state.library.acknowledgedGeneration === state.library.advertisedGeneration &&
-          state.library.files.length === 2 &&
-          state.library.files.every((f) => f.status === 'shared')
-        ) {
-          resolveUploadAck()
-        }
-      })
+      const uploadAck = waitForState(
+        uploader,
+        (s) =>
+          s.library.acknowledgedGeneration !== null &&
+          s.library.acknowledgedGeneration === s.library.advertisedGeneration &&
+          s.library.files.length === 2 &&
+          s.library.files.every((f) => f.status === 'shared'),
+        25000,
+        (s) => {
+          const errFile = s.library.files.find((f) => f.status === 'error' || f.status === 'unavailable')
+          return errFile ? `File error: ${errFile.name} (${errFile.message})` : null
+        },
+        'upload-ack'
+      )
       await uploader.addFiles([binaryPath, zeroPath])
       await uploadAck
+
       // 2. Downloader searches for files
-      const { promise: searchDone, resolve: resolveSearchDone } = Promise.withResolvers<void>()
-      const unsubSearch = downloader.subscribe((state) => {
-        if (state.search.status === 'complete' && state.search.results.some((r) => r.file.name === 'payload.bin')) {
-          unsubSearch()
-          resolveSearchDone()
-        }
-      })
+      const searchDone = waitForState(
+        downloader,
+        (s) => s.search.status === 'complete' && s.search.results.some((r) => r.file.name === 'payload.bin'),
+        25000,
+        undefined,
+        'search-done'
+      )
       await downloader.search('payload')
       await searchDone
       const results = downloader.getState().search.results
       const binaryResult = results.find((r) => r.file.name === 'payload.bin')!
       assert.ok(binaryResult)
 
-      // 3. Download binary file
+      // 3. Download binary file (120-second transfer deadline)
       const dlDir = await mkdtemp(join(tmpdir(), 'dl-files-'))
       tempDirs.push(dlDir)
       const dlDest = join(dlDir, 'downloaded.bin')
 
-      const { promise: binaryDlDone, resolve: resolveBinaryDlDone, reject: rejectBinaryDl } = Promise.withResolvers<void>()
-      const unsubDl = downloader.subscribe((state) => {
-        const transfer = state.transfers.find((t) => t.fileName === 'downloaded.bin' || t.fileName === 'payload.bin')
-        if (transfer && transfer.state === 'completed') {
-          unsubDl()
-          resolveBinaryDlDone()
-        } else if (transfer && transfer.state === 'failed') {
-          unsubDl()
-          rejectBinaryDl(new Error(`Transfer failed: ${transfer.message}`))
-        }
-      })
+      const binaryDlDone = waitForState(
+        downloader,
+        (s) => {
+          const transfer = s.transfers.find((t) => t.fileName === 'downloaded.bin' || t.fileName === 'payload.bin')
+          return transfer?.state === 'completed'
+        },
+        120000,
+        (s) => {
+          const transfer = s.transfers.find((t) => t.fileName === 'downloaded.bin' || t.fileName === 'payload.bin')
+          return transfer?.state === 'failed' ? `Transfer failed: ${transfer.message}` : null
+        },
+        'binary-dl-done'
+      )
       await downloader.download(binaryResult.resultId, dlDest)
       await binaryDlDone
 
@@ -182,13 +216,13 @@ describe('End-to-End Verified Peer Transfers', () => {
         (err: Error) => err.message === 'DESTINATION_EXISTS'
       )
 
-      const { promise: zeroSearchDone, resolve: resolveZeroSearchDone } = Promise.withResolvers<void>()
-      const unsubZeroSearch = downloader.subscribe((state) => {
-        if (state.search.status === 'complete' && state.search.results.some((r) => r.file.name === 'empty.txt')) {
-          unsubZeroSearch()
-          resolveZeroSearchDone()
-        }
-      })
+      const zeroSearchDone = waitForState(
+        downloader,
+        (s) => s.search.status === 'complete' && s.search.results.some((r) => r.file.name === 'empty.txt'),
+        25000,
+        undefined,
+        'zero-search-done'
+      )
       await downloader.search('empty')
       await zeroSearchDone
 
@@ -197,17 +231,19 @@ describe('End-to-End Verified Peer Transfers', () => {
       assert.equal(zeroResult.file.size, 0)
 
       const zeroDest = join(dlDir, 'downloaded_empty.txt')
-      const { promise: zeroDlDone, resolve: resolveZeroDlDone, reject: rejectZeroDl } = Promise.withResolvers<void>()
-      const unsubZeroDl = downloader.subscribe((state) => {
-        const t = state.transfers.find((x) => x.fileName === 'downloaded_empty.txt' || x.fileName === 'empty.txt')
-        if (t && t.state === 'completed') {
-          unsubZeroDl()
-          resolveZeroDlDone()
-        } else if (t && t.state === 'failed') {
-          unsubZeroDl()
-          rejectZeroDl(new Error(`Zero transfer failed: ${t.message}`))
-        }
-      })
+      const zeroDlDone = waitForState(
+        downloader,
+        (s) => {
+          const t = s.transfers.find((x) => x.fileName === 'downloaded_empty.txt' || x.fileName === 'empty.txt')
+          return t?.state === 'completed'
+        },
+        120000,
+        (s) => {
+          const t = s.transfers.find((x) => x.fileName === 'downloaded_empty.txt' || x.fileName === 'empty.txt')
+          return t?.state === 'failed' ? `Zero transfer failed: ${t.message}` : null
+        },
+        'zero-dl-done'
+      )
       await downloader.download(zeroResult.resultId, zeroDest)
       await zeroDlDone
       const zeroBytes = await readFile(zeroDest)
@@ -219,5 +255,4 @@ describe('End-to-End Verified Peer Transfers', () => {
       await server.close()
     }
   })
-
 })

@@ -6,6 +6,49 @@ import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { createSignalingServer } from '../services/signaling/server.ts'
 import { createPeerEngine, type PeerEngine } from '../src/main/p2p/engine.ts'
+import type { P2pState } from '../src/shared/p2p.ts'
+
+function waitForState(
+  engine: PeerEngine,
+  predicate: (state: P2pState) => boolean,
+  timeoutMs = 25000,
+  rejectPredicate?: (state: P2pState) => string | null
+): Promise<P2pState> {
+  const { promise, resolve, reject } = Promise.withResolvers<P2pState>()
+  let done = false
+  // Real-time safety deadline: bounding asynchronous peer engine events across WebRTC network
+  const timer = setTimeout(() => {
+    if (!done) {
+      done = true
+      unsub()
+      reject(new Error(`Timeout (${timeoutMs}ms) waiting for peer state condition`))
+    }
+  }, timeoutMs)
+
+  const check = (s: P2pState) => {
+    if (done) return
+    if (rejectPredicate) {
+      const err = rejectPredicate(s)
+      if (err) {
+        done = true
+        clearTimeout(timer)
+        unsub()
+        reject(new Error(err))
+        return
+      }
+    }
+    if (predicate(s)) {
+      done = true
+      clearTimeout(timer)
+      unsub()
+      resolve(s)
+    }
+  }
+
+  const unsub = engine.subscribe(check)
+  check(engine.getState())
+  return promise
+}
 
 describe('Peer Transfer Survival Across Supernode Failure', () => {
   let tempDirs: string[] = []
@@ -59,22 +102,8 @@ describe('Peer Transfer Survival Across Supernode Failure', () => {
       uploader = await createEngine('Uploader', false)
       downloader = await createEngine('Downloader', false)
 
-      function waitForPeers(engine: PeerEngine, count: number): Promise<void> {
-        const { promise, resolve } = Promise.withResolvers<void>()
-        let done = false
-        const unsub = engine.subscribe((s) => {
-          if (!done && s.network.members.length === count) {
-            done = true
-            unsub()
-            resolve()
-          }
-        })
-        if (engine.getState().network.members.length === count) {
-          done = true
-          unsub()
-          resolve()
-        }
-        return promise
+      function waitForPeers(engine: PeerEngine, count: number): Promise<P2pState> {
+        return waitForState(engine, (s) => s.network.members.length === count, 25000)
       }
 
       await Promise.all([
@@ -84,30 +113,35 @@ describe('Peer Transfer Survival Across Supernode Failure', () => {
         waitForPeers(downloader, 4)
       ])
 
-      // Prepare large file (1 MiB) on uploader
+      // Prepare large file (256 KiB) on uploader
       const upDir = await mkdtemp(join(tmpdir(), 'up-surv-'))
       tempDirs.push(upDir)
       const payload = Buffer.alloc(256 * 1024, 77)
       const filePath = join(upDir, 'bigfile.dat')
       await writeFile(filePath, payload)
 
-      const { promise: ack, resolve: resolveAck } = Promise.withResolvers<void>()
-      uploader.subscribe((state) => {
-        if (state.library.acknowledgedGeneration === state.library.advertisedGeneration && state.library.files.length === 1) {
-          resolveAck()
+      const ack = waitForState(
+        uploader,
+        (state) =>
+          state.library.acknowledgedGeneration !== null &&
+          state.library.acknowledgedGeneration === state.library.advertisedGeneration &&
+          state.library.files.length === 1 &&
+          state.library.files[0].status === 'shared',
+        25000,
+        (s) => {
+          const errFile = s.library.files.find((f) => f.status === 'error' || f.status === 'unavailable')
+          return errFile ? `File error: ${errFile.name} (${errFile.message})` : null
         }
-      })
+      )
       await uploader.addFiles([filePath])
       await ack
 
       // Downloader searches
-      const { promise: searchDone, resolve: resolveSearchDone } = Promise.withResolvers<void>()
-      const unsubSearch2 = downloader.subscribe((state) => {
-        if (state.search.status === 'complete' && state.search.results.some((r) => r.file.name === 'bigfile.dat')) {
-          unsubSearch2()
-          resolveSearchDone()
-        }
-      })
+      const searchDone = waitForState(
+        downloader,
+        (state) => state.search.status === 'complete' && state.search.results.some((r) => r.file.name === 'bigfile.dat'),
+        25000
+      )
       await downloader.search('bigfile')
       await searchDone
 
@@ -119,24 +153,28 @@ describe('Peer Transfer Survival Across Supernode Failure', () => {
       const destPath = join(dlDir, 'downloaded_bigfile.dat')
 
       // Start transfer and observe that bytes have started transferring
-      const { promise: transferStarted, resolve: resolveStarted } = Promise.withResolvers<void>()
-      const { promise: transferDone, resolve: resolveTransferDone, reject: rejectTransfer } = Promise.withResolvers<void>()
+      const transferStarted = waitForState(
+        downloader,
+        (state) => {
+          const t = state.transfers.find((x) => x.fileName === 'downloaded_bigfile.dat' || x.fileName === 'bigfile.dat')
+          return Boolean(t && t.transferredBytes > 0)
+        },
+        25000
+      )
 
-      let startedDone = false
-      const unsubSurv = downloader.subscribe((state) => {
-        const t = state.transfers.find((x) => x.fileName === 'downloaded_bigfile.dat' || x.fileName === 'bigfile.dat')
-        if (t && t.transferredBytes > 0 && !startedDone) {
-          startedDone = true
-          resolveStarted()
+      const transferDone = waitForState(
+        downloader,
+        (state) => {
+          const t = state.transfers.find((x) => x.fileName === 'downloaded_bigfile.dat' || x.fileName === 'bigfile.dat')
+          return t?.state === 'completed'
+        },
+        120000,
+        (state) => {
+          const t = state.transfers.find((x) => x.fileName === 'downloaded_bigfile.dat' || x.fileName === 'bigfile.dat')
+          return t?.state === 'failed' ? `Transfer failed: ${t.message}` : null
         }
-        if (t && t.state === 'completed') {
-          unsubSurv()
-          resolveTransferDone()
-        } else if (t && t.state === 'failed') {
-          unsubSurv()
-          rejectTransfer(new Error(`Transfer failed: ${t.message}`))
-        }
-      })
+      )
+
       await downloader.download(fileResult.resultId, destPath)
       await transferStarted
 

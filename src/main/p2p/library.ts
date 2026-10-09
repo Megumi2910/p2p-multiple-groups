@@ -62,6 +62,7 @@ export class LibraryManager {
   private currentGeneration = 1
   private acknowledgedGeneration: number | null = null
   private readonly listeners = new Set<() => void>()
+  private readonly metadataListeners = new Set<() => void>()
 
   private hashQueue: Array<() => Promise<void>> = []
   private activeHashers = 0
@@ -75,8 +76,25 @@ export class LibraryManager {
     }
   }
 
+  subscribeMetadata(listener: () => void): () => void {
+    this.metadataListeners.add(listener)
+    return () => {
+      this.metadataListeners.delete(listener)
+    }
+  }
+
   private notify(): void {
     for (const listener of this.listeners) {
+      try {
+        listener()
+      } catch {
+        // ignore listener errors
+      }
+    }
+  }
+
+  private notifyMetadata(): void {
+    for (const listener of this.metadataListeners) {
       try {
         listener()
       } catch {
@@ -224,7 +242,7 @@ export class LibraryManager {
         status: 'hashing',
         message: 'Queued for hashing...',
         statFingerprint: null,
-        generation: ++this.currentGeneration
+        generation: this.currentGeneration
       }
 
       this.files.set(fileId, entry)
@@ -242,10 +260,14 @@ export class LibraryManager {
     const entry = this.files.get(fileId)
     if (!entry) return false
 
+    const wasShared = entry.status === 'shared'
     this.files.delete(fileId)
     this.pathToId.delete(entry.path)
     this.currentGeneration++
     this.acknowledgedGeneration = null
+    if (wasShared) {
+      this.notifyMetadata()
+    }
     this.notify()
     return true
   }
@@ -253,6 +275,7 @@ export class LibraryManager {
   async rescan(): Promise<void> {
     this.currentGeneration++
     this.acknowledgedGeneration = null
+    this.notifyMetadata()
 
     for (const entry of this.files.values()) {
       entry.status = 'hashing'
@@ -297,37 +320,39 @@ export class LibraryManager {
 
   private async scanEntry(entry: LocalFileEntry): Promise<void> {
     const taskGeneration = entry.generation
+    const wasShared = entry.status === 'shared'
+
+    const failScan = (status: 'unavailable' | 'error', message: string): void => {
+      entry.status = status
+      entry.message = message
+      entry.size = null
+      entry.sha256 = null
+      entry.statFingerprint = null
+      if (wasShared) {
+        this.currentGeneration++
+        this.acknowledgedGeneration = null
+        this.notifyMetadata()
+      }
+    }
 
     let statBefore: Stats
     try {
       statBefore = await stat(entry.path)
     } catch {
       if (entry.generation !== taskGeneration) return
-      entry.status = 'unavailable'
-      entry.message = 'File not found or unreadable on disk'
-      entry.size = null
-      entry.sha256 = null
-      entry.statFingerprint = null
+      failScan('unavailable', 'File not found or unreadable on disk')
       return
     }
 
     if (!statBefore.isFile()) {
       if (entry.generation !== taskGeneration) return
-      entry.status = 'error'
-      entry.message = 'Not a regular file'
-      entry.size = null
-      entry.sha256 = null
-      entry.statFingerprint = null
+      failScan('error', 'Not a regular file')
       return
     }
 
     if (statBefore.size > MAX_FILE_SIZE) {
       if (entry.generation !== taskGeneration) return
-      entry.status = 'error'
-      entry.message = `File exceeds maximum allowed size of 1 GiB (${statBefore.size} bytes)`
-      entry.size = null
-      entry.sha256 = null
-      entry.statFingerprint = null
+      failScan('error', `File exceeds maximum allowed size of 1 GiB (${statBefore.size} bytes)`)
       return
     }
 
@@ -337,11 +362,7 @@ export class LibraryManager {
       digest = await this.computeFileHash(entry.path)
     } catch (readErr) {
       if (entry.generation !== taskGeneration) return
-      entry.status = 'error'
-      entry.message = `Read error during hashing: ${readErr instanceof Error ? readErr.message : String(readErr)}`
-      entry.size = null
-      entry.sha256 = null
-      entry.statFingerprint = null
+      failScan('error', `Read error during hashing: ${readErr instanceof Error ? readErr.message : String(readErr)}`)
       return
     }
 
@@ -351,11 +372,7 @@ export class LibraryManager {
       statAfter = await stat(entry.path)
     } catch {
       if (entry.generation !== taskGeneration) return
-      entry.status = 'unavailable'
-      entry.message = 'File vanished during hashing'
-      entry.size = null
-      entry.sha256 = null
-      entry.statFingerprint = null
+      failScan('unavailable', 'File vanished during hashing')
       return
     }
 
@@ -364,11 +381,7 @@ export class LibraryManager {
       statBefore.mtimeMs !== statAfter.mtimeMs
     ) {
       if (entry.generation !== taskGeneration) return
-      entry.status = 'error'
-      entry.message = 'File was modified during hashing'
-      entry.size = null
-      entry.sha256 = null
-      entry.statFingerprint = null
+      failScan('error', 'File was modified during hashing')
       return
     }
 
@@ -387,6 +400,9 @@ export class LibraryManager {
       ino: statAfter.ino,
       dev: statAfter.dev
     }
+    this.currentGeneration++
+    this.acknowledgedGeneration = null
+    this.notifyMetadata()
   }
 
   private computeFileHash(filePath: string): Promise<string> {

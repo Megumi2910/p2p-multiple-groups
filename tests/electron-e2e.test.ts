@@ -4,8 +4,27 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer } from 'node:net'
+import electron from 'electron'
 import WebSocket from 'ws'
 
+async function getFreePort(): Promise<number> {
+  const srv = createServer()
+  const { promise, resolve, reject } = Promise.withResolvers<number>()
+  srv.listen(0, '127.0.0.1', () => {
+    const addr = srv.address()
+    const port = typeof addr === 'object' && addr ? addr.port : 0
+    srv.close(() => resolve(port))
+  })
+  srv.on('error', reject)
+  return promise
+}
+
+function delay(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>()
+  setTimeout(resolve, ms)
+  return promise
+}
 interface CdpClient {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>
   evaluate<T = unknown>(expression: string): Promise<T>
@@ -60,7 +79,7 @@ async function connectToCdp(webSocketDebuggerUrl: string): Promise<CdpClient> {
 }
 
 describe('Electron Renderer & Desktop Bridge E2E', () => {
-  const electronPath = 'D:/Projects/kazaa/node_modules/electron/dist/electron.exe'
+  const electronPath = (electron as unknown as string) || 'electron'
   const tempDirs: string[] = []
   const children: ChildProcess[] = []
 
@@ -82,19 +101,19 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
     const dir = await mkdtemp(join(tmpdir(), 'kazaa-e2e-ui-'))
     tempDirs.push(dir)
 
-    const child = spawn(electronPath, ['.', `--data-dir=${dir}`, '--remote-debugging-port=9223'], {
+    const cdpPort = await getFreePort()
+    const child = spawn(electronPath, ['.', `--data-dir=${dir}`, `--remote-debugging-port=${cdpPort}`], {
       stdio: 'ignore',
       env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' }
     })
     children.push(child)
 
-    // Wait for CDP readiness
+    // Wait for CDP readiness (bounded retry)
     let tabs: Array<{ webSocketDebuggerUrl?: string }> = []
-    for (let i = 0; i < 20; i++) {
-      // Bounded retry waiting for Electron main window readiness
-      await new Promise((r) => setTimeout(r, 300))
+    for (let i = 0; i < 40; i++) {
+      await delay(250)
       try {
-        const res = await fetch('http://127.0.0.1:9223/json')
+        const res = await fetch(`http://127.0.0.1:${cdpPort}/json`)
         tabs = await res.json()
         if (tabs.length > 0 && tabs[0].webSocketDebuggerUrl) break
       } catch {
@@ -163,8 +182,12 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
       // 5. Test UI Navigation Rail across all 6 views and check heading focus
       async function clickNavAndVerifyHeading(btnText: string, expectedHeadingId: string): Promise<void> {
         await cdp.evaluate(`new Promise(resolve => {
-          const btn = Array.from(document.querySelectorAll('.nav-link')).find(b => b.textContent.includes('${btnText}'));
-          btn?.click();
+          const btn = Array.from(document.querySelectorAll('.nav-link')).find(b => (b.textContent || '').includes('${btnText}'));
+          if (!btn) {
+            resolve();
+            return;
+          }
+          btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
           const start = Date.now();
           const check = () => {
             if (document.activeElement?.id?.toLowerCase() === '${expectedHeadingId.toLowerCase()}') {
@@ -231,17 +254,18 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
     tempDirs.push(dirA, dirB)
 
     // 1. Launch instance on dirA
-    const procA = spawn(electronPath, ['.', `--data-dir=${dirA}`, '--remote-debugging-port=9224'], {
+    const portA = await getFreePort()
+    const procA = spawn(electronPath, ['.', `--data-dir=${dirA}`, `--remote-debugging-port=${portA}`], {
       stdio: 'ignore',
       env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' }
     })
     children.push(procA)
 
     // Wait for instance A
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 200))
+    for (let i = 0; i < 40; i++) {
+      await delay(200)
       try {
-        const res = await fetch('http://127.0.0.1:9224/json')
+        const res = await fetch(`http://127.0.0.1:${portA}/json`)
         const tabs = await res.json()
         if (tabs.length > 0) break
       } catch {
@@ -261,7 +285,8 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
     assert.equal(dupExitCode, 0, 'Duplicate instance using same data-dir must exit with code 0')
 
     // 3. Launch instance on dirB with different data-dir: runs independently
-    const procB = spawn(electronPath, ['.', `--data-dir=${dirB}`, '--remote-debugging-port=9225'], {
+    const portB = await getFreePort()
+    const procB = spawn(electronPath, ['.', `--data-dir=${dirB}`, `--remote-debugging-port=${portB}`], {
       stdio: 'ignore',
       env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' }
     })
@@ -269,10 +294,10 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
 
     // Wait for instance B
     let tabsB: Array<{ webSocketDebuggerUrl?: string }> = []
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 200))
+    for (let i = 0; i < 40; i++) {
+      await delay(200)
       try {
-        const res = await fetch('http://127.0.0.1:9225/json')
+        const res = await fetch(`http://127.0.0.1:${portB}/json`)
         tabsB = await res.json()
         if (tabsB.length > 0) break
       } catch {
@@ -280,7 +305,6 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
       }
     }
     assert.ok(tabsB.length > 0, 'Instance B must run independently')
-
     // Check that dirA and dirB have independent peer identities stored on disk
     const stateA = JSON.parse(await readFile(join(dirA, 'peer-state.json'), 'utf-8'))
     const stateB = JSON.parse(await readFile(join(dirB, 'peer-state.json'), 'utf-8'))

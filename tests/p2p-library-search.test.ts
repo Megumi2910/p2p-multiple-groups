@@ -18,8 +18,52 @@ import {
 } from '../src/main/p2p/search-index.ts'
 import { createSignalingServer } from '../services/signaling/server.ts'
 import { createPeerEngine, type PeerEngine } from '../src/main/p2p/engine.ts'
-import type { P2pFileMetadata } from '../src/shared/p2p.ts'
+import type { P2pFileMetadata, P2pState } from '../src/shared/p2p.ts'
 import type { OverlayCatalogBatchMessage, OverlayCatalogBeginMessage, OverlayCatalogEndMessage } from '../src/shared/p2p-wire.ts'
+
+function waitForState(
+  engine: PeerEngine,
+  predicate: (state: P2pState) => boolean,
+  timeoutMs = 25000,
+  rejectPredicate?: (state: P2pState) => string | null,
+  label?: string
+): Promise<P2pState> {
+  const { promise, resolve, reject } = Promise.withResolvers<P2pState>()
+  let done = false
+  // Real-time safety deadline: bounding asynchronous peer engine events across WebRTC network
+  const timer = setTimeout(() => {
+    if (!done) {
+      done = true
+      unsub()
+      reject(new Error(`Timeout (${timeoutMs}ms) waiting for: ${label || 'peer state condition'}`))
+    }
+  }, timeoutMs)
+
+  const check = (s: P2pState) => {
+    if (done) return
+    if (rejectPredicate) {
+      const err = rejectPredicate(s)
+      if (err) {
+        done = true
+        clearTimeout(timer)
+        unsub()
+        reject(new Error(err))
+        return
+      }
+    }
+    if (predicate(s)) {
+      done = true
+      clearTimeout(timer)
+      unsub()
+      resolve(s)
+    }
+  }
+
+  const unsub = engine.subscribe(check)
+  check(engine.getState())
+  return promise
+}
+
 describe('LibraryManager & File Indexing', () => {
   let tempDir: string
 
@@ -48,15 +92,26 @@ describe('LibraryManager & File Indexing', () => {
     await writeFile(file2, Buffer.alloc(1024, 42))
 
     const lib = new LibraryManager()
-    const { promise: scannedPromise, resolve: resolveScanned } = Promise.withResolvers<void>()
+    const { promise: scannedPromise, resolve: resolveScanned, reject: rejectScanned } = Promise.withResolvers<void>()
+    let scanDone = false
+    // Real-time safety deadline: bounding asynchronous library scan operations
+    const scanTimer = setTimeout(() => {
+      if (!scanDone) {
+        scanDone = true
+        unsub()
+        rejectScanned(new Error('Timeout waiting for library scanning to complete'))
+      }
+    }, 25000)
 
-    lib.subscribe(() => {
+    const unsub = lib.subscribe(() => {
       const state = lib.getState()
-      if (state.status === 'idle' && state.files.length === 2 && state.files.every((f) => f.status === 'shared')) {
+      if (!scanDone && state.status === 'idle' && state.files.length === 2 && state.files.every((f) => f.status === 'shared')) {
+        scanDone = true
+        clearTimeout(scanTimer)
+        unsub()
         resolveScanned()
       }
     })
-
     const added = await lib.addFiles([file1, file2])
     assert.equal(added.length, 2)
     await scannedPromise
@@ -246,41 +301,44 @@ describe('End-to-End Search & Catalogue Propagation', () => {
       peerEngine = await createTestEngine('OrdinaryPeer', false)
 
       // Wait for peer to see supernode and have its role set to ordinary
-      const { promise: ordinaryReady, resolve: resolveOrdinaryReady } = Promise.withResolvers<void>()
-      peerEngine.subscribe((state) => {
-        if (state.network.status === 'connected' && state.network.role === 'ordinary' && state.network.primaryPeerId) {
-          resolveOrdinaryReady()
-        }
-      })
-      await ordinaryReady
-
+      await waitForState(
+        peerEngine,
+        (state) => state.network.status === 'connected' && state.network.role === 'ordinary' && Boolean(state.network.primaryPeerId),
+        25000,
+        undefined,
+        'peer-ordinary-connected'
+      )
       // Ordinary peer adds a file
       const shareDir = await mkdtemp(join(tmpdir(), 'kazaa-share-'))
       tempDirs.push(shareDir)
       const sharedFilePath = join(shareDir, 'great-anthem.mp3')
       await writeFile(sharedFilePath, 'Anthem MP3 Content', 'utf-8')
 
-      const { promise: ackPromise, resolve: resolveAck } = Promise.withResolvers<void>()
-      peerEngine.subscribe((state) => {
-        if (
+      const ackPromise = waitForState(
+        peerEngine,
+        (state) =>
           state.library.acknowledgedGeneration !== null &&
           state.library.acknowledgedGeneration === state.library.advertisedGeneration &&
-          state.library.files.some((f) => f.name === 'great-anthem.mp3' && f.status === 'shared')
-        ) {
-          resolveAck()
-        }
-      })
+          state.library.files.some((f) => f.name === 'great-anthem.mp3' && f.status === 'shared'),
+        25000,
+        (s) => {
+          const errFile = s.library.files.find((f) => f.status === 'error' || f.status === 'unavailable')
+          return errFile ? `File error: ${errFile.name} (${errFile.message})` : null
+        },
+        'peer-library-ack'
+      )
 
       await peerEngine.addFiles([sharedFilePath])
       await ackPromise
 
       // Supernode searches for 'anthem'
-      const { promise: searchDone, resolve: resolveSearchDone } = Promise.withResolvers<void>()
-      snEngine.subscribe((state) => {
-        if (state.search.status === 'complete' && state.search.results.length > 0) {
-          resolveSearchDone()
-        }
-      })
+      const searchDone = waitForState(
+        snEngine,
+        (state) => state.search.status === 'complete' && state.search.results.length > 0,
+        25000,
+        undefined,
+        'sn-search-done'
+      )
 
       await snEngine.search('anthem')
       await searchDone
@@ -292,28 +350,26 @@ describe('End-to-End Search & Catalogue Propagation', () => {
 
       // Ordinary peer removes file: search no longer returns it
       const fileId = peerEngine.getState().library.files[0].fileId
-      await peerEngine.removeFile(fileId)
-
-      // Wait for removal acknowledgment
-      const { promise: removeAckPromise, resolve: resolveRemoveAck } = Promise.withResolvers<void>()
-      peerEngine.subscribe((state) => {
-        if (
+      const removeAckPromise = waitForState(
+        peerEngine,
+        (state) =>
           state.library.acknowledgedGeneration === state.library.advertisedGeneration &&
-          state.library.files.length === 0
-        ) {
-          resolveRemoveAck()
-        }
-      })
+          state.library.files.length === 0,
+        25000,
+        undefined,
+        'peer-remove-ack'
+      )
+      await peerEngine.removeFile(fileId)
       await removeAckPromise
 
       // Search again on supernode
-      const { promise: search2Done, resolve: resolveSearch2Done } = Promise.withResolvers<void>()
-      snEngine.subscribe((state) => {
-        if (state.search.query === 'anthem' && state.search.status === 'complete' && state.search.results.length === 0) {
-          resolveSearch2Done()
-        }
-      })
-
+      const search2Done = waitForState(
+        snEngine,
+        (state) => state.search.query === 'anthem' && state.search.status === 'complete' && state.search.results.length === 0,
+        25000,
+        undefined,
+        'sn-search2-done'
+      )
       await snEngine.search('anthem')
       await search2Done
       assert.equal(snEngine.getState().search.results.length, 0)
@@ -369,31 +425,12 @@ describe('End-to-End Search & Catalogue Propagation', () => {
       p1 = await createTestEngine('P1', false)
       p2 = await createTestEngine('P2', false)
 
-      // Wait for all 4 to see 4 members
-      function waitForMemberCount(engine: PeerEngine, count: number, requirePrimary = false): Promise<void> {
-        const { promise, resolve } = Promise.withResolvers<void>()
-        let done = false
-        const unsub = engine.subscribe((s) => {
-          if (!done && s.network.members.length === count && (!requirePrimary || s.network.primaryPeerId)) {
-            done = true
-            unsub()
-            resolve()
-          }
-        })
-        const cur = engine.getState()
-        if (!done && cur.network.members.length === count && (!requirePrimary || cur.network.primaryPeerId)) {
-          done = true
-          unsub()
-          resolve()
-        }
-        return promise
-      }
-
+      // Wait for all 4 to see 4 members and links to primary supernodes to be open
       await Promise.all([
-        waitForMemberCount(sn1, 4),
-        waitForMemberCount(sn2, 4),
-        waitForMemberCount(p1, 4, true),
-        waitForMemberCount(p2, 4, true)
+        waitForState(sn1, (s) => s.network.members.length === 4, 25000, undefined, 'sn1-members-4'),
+        waitForState(sn2, (s) => s.network.members.length === 4, 25000, undefined, 'sn2-members-4'),
+        waitForState(p1, (s) => s.network.members.length === 4 && Boolean(s.network.primaryPeerId) && s.network.links.some(l => l.peerId === s.network.primaryPeerId && l.state === 'open'), 25000, undefined, 'p1-members-4-open'),
+        waitForState(p2, (s) => s.network.members.length === 4 && Boolean(s.network.primaryPeerId) && s.network.links.some(l => l.peerId === s.network.primaryPeerId && l.state === 'open'), 25000, undefined, 'p2-members-4-open')
       ])
 
       // P1 shares alpha-rock.mp3
@@ -401,13 +438,13 @@ describe('End-to-End Search & Catalogue Propagation', () => {
       tempDirs.push(dir1)
       const file1 = join(dir1, 'alpha-rock.mp3')
       await writeFile(file1, 'Rock content', 'utf-8')
-
-      const { promise: p1Ack, resolve: resolveP1Ack } = Promise.withResolvers<void>()
-      p1.subscribe((state) => {
-        if (state.library.acknowledgedGeneration === state.library.advertisedGeneration && state.library.files.length === 1) {
-          resolveP1Ack()
-        }
-      })
+      const p1Ack = waitForState(
+        p1,
+        (state) => state.library.acknowledgedGeneration === state.library.advertisedGeneration && state.library.files.length === 1 && state.library.files[0].status === 'shared',
+        25000,
+        undefined,
+        'p1-ack'
+      )
       await p1.addFiles([file1])
       await p1Ack
 
@@ -417,25 +454,26 @@ describe('End-to-End Search & Catalogue Propagation', () => {
       const file2 = join(dir2, 'beta-jazz.mp3')
       await writeFile(file2, 'Jazz content', 'utf-8')
 
-      const { promise: p2Ack, resolve: resolveP2Ack } = Promise.withResolvers<void>()
-      p2.subscribe((state) => {
-        if (state.library.acknowledgedGeneration === state.library.advertisedGeneration && state.library.files.length === 1) {
-          resolveP2Ack()
-        }
-      })
+      const p2Ack = waitForState(
+        p2,
+        (state) => state.library.acknowledgedGeneration === state.library.advertisedGeneration && state.library.files.length === 1 && state.library.files[0].status === 'shared',
+        25000,
+        undefined,
+        'p2-ack'
+      )
       await p2.addFiles([file2])
       await p2Ack
 
       // P2 searches for 'rock' -> cross-supernode discovery of P1's file!
-      const { promise: p2SearchDone, resolve: resolveP2SearchDone } = Promise.withResolvers<void>()
-      p2.subscribe((state) => {
-        if (state.search.status === 'complete' && state.search.results.some((r) => r.file.name === 'alpha-rock.mp3')) {
-          resolveP2SearchDone()
-        }
-      })
+      const p2SearchDone = waitForState(
+        p2,
+        (state) => state.search.status === 'complete' && state.search.results.some((r) => r.file.name === 'alpha-rock.mp3'),
+        25000,
+        undefined,
+        'p2-search-rock'
+      )
       await p2.search('rock')
       await p2SearchDone
-
       const rockResults = p2.getState().search.results
       assert.ok(rockResults.length >= 1)
       assert.equal(rockResults[0].file.name, 'alpha-rock.mp3')

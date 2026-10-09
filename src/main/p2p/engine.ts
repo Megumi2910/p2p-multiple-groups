@@ -152,6 +152,21 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
     publishState()
   })
 
+  let announcePending = false
+  function scheduleAnnounceCatalogue(): void {
+    if (isDisposed || isExplicitlyDisconnected) return
+    if (announcePending) return
+    announcePending = true
+    queueMicrotask(() => {
+      announcePending = false
+      if (isDisposed || isExplicitlyDisconnected) return
+      announceCatalogue()
+    })
+  }
+
+  library.subscribeMetadata(() => {
+    scheduleAnnounceCatalogue()
+  })
   function announceCatalogue(): void {
     if (isDisposed || isExplicitlyDisconnected) return
     const p = store.get()
@@ -210,14 +225,6 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
 
       if (transport.getLinkState(targetId)?.state === 'open') {
         sendBatches()
-      } else {
-        const checkTimer = setInterval(() => {
-          if (transport.getLinkState(targetId)?.state === 'open') {
-            clearInterval(checkTimer)
-            sendBatches()
-          }
-        }, 50)
-        setTimeout(() => clearInterval(checkTimer), 5000)
       }
     }
   }
@@ -234,13 +241,29 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
             const senderSession = currentMembers.find((m) => m.peerId === fromPeerId)?.sessionId || ''
             const instantAck = supernodeIndex.handleCatalogBegin(fromPeerId, senderSession, msg)
             if (instantAck) {
-              transport.sendControl(fromPeerId, {
-                v: 1,
-                type: 'catalog-ack',
+              const ackMsg = {
+                v: 1 as const,
+                type: 'catalog-ack' as const,
                 epoch: currentEpoch || '',
                 revision: currentMembershipRevision,
                 generation: msg.generation
-              })
+              }
+              const sent = transport.sendControl(fromPeerId, ackMsg)
+              if (!sent) {
+                let retryTimer: NodeJS.Timeout | null = null
+                let clearTimer: NodeJS.Timeout | null = null
+                const cleanup = () => {
+                  if (retryTimer) { clearInterval(retryTimer); retryTimer = null }
+                  if (clearTimer) { clearTimeout(clearTimer); clearTimer = null }
+                }
+                retryTimer = setInterval(() => {
+                  if (isDisposed || isExplicitlyDisconnected) { cleanup(); return }
+                  if (transport.getLinkState(fromPeerId)?.state === 'open') {
+                    if (transport.sendControl(fromPeerId, ackMsg)) cleanup()
+                  }
+                }, 40)
+                clearTimer = setTimeout(cleanup, 3000)
+              }
             }
           }
           break
@@ -256,20 +279,39 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
             const senderSession = currentMembers.find((m) => m.peerId === fromPeerId)?.sessionId || ''
             const swapped = supernodeIndex.handleCatalogEnd(fromPeerId, senderSession, msg)
             if (swapped) {
-              transport.sendControl(fromPeerId, {
-                v: 1,
-                type: 'catalog-ack',
+              const ackMsg = {
+                v: 1 as const,
+                type: 'catalog-ack' as const,
                 epoch: currentEpoch || '',
                 revision: currentMembershipRevision,
                 generation: msg.generation
-              })
+              }
+              const sent = transport.sendControl(fromPeerId, ackMsg)
+              if (!sent) {
+                let retryTimer: NodeJS.Timeout | null = null
+                let clearTimer: NodeJS.Timeout | null = null
+                const cleanup = () => {
+                  if (retryTimer) { clearInterval(retryTimer); retryTimer = null }
+                  if (clearTimer) { clearTimeout(clearTimer); clearTimer = null }
+                }
+                retryTimer = setInterval(() => {
+                  if (isDisposed || isExplicitlyDisconnected) { cleanup(); return }
+                  if (transport.getLinkState(fromPeerId)?.state === 'open') {
+                    if (transport.sendControl(fromPeerId, ackMsg)) cleanup()
+                  }
+                }, 40)
+                clearTimer = setTimeout(cleanup, 3000)
+              }
             }
           }
           break
         }
         case 'catalog-ack': {
-          if (msg.generation === library.getGeneration()) {
-            library.setAcknowledgedGeneration(msg.generation)
+          if (msg.generation <= library.getGeneration()) {
+            const currentAck = library.getAcknowledgedGeneration() ?? 0
+            if (msg.generation >= currentAck) {
+              library.setAcknowledgedGeneration(msg.generation)
+            }
             recoveryRing.add(
               'index-ready',
               [fromPeerId],
@@ -382,6 +424,10 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
               })
               if (msg.done) {
                 currentSearchStatus = 'complete'
+                if (searchTimeoutTimer) {
+                  clearTimeout(searchTimeoutTimer)
+                  searchTimeoutTimer = undefined
+                }
               }
               publishState()
             }
@@ -412,17 +458,18 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
         linkPongs.set(fromPeerId, Date.now())
         return
       }
-
-      hooks.controlMessage?.(fromPeerId, msg)
+      if ('v' in msg && msg.v === 1) {
+        hooks.controlMessage?.(fromPeerId, msg as OverlayControlMessage)
+      }
     },
-    onFileChannel: (fromPeerId, transferId, channel) => {
+    onFileChannel: (fromPeerId: string, transferId: string, channel: RTCDataChannel) => {
       hooks.fileChannel?.(fromPeerId, transferId, channel)
     },
     onLinkStateChange: (peerId, state, path) => {
       if (state === 'open') {
         linkPongs.set(peerId, Date.now())
         if (peerId === currentPrimaryId) {
-          announceCatalogue()
+          scheduleAnnounceCatalogue()
         }
       }
       publishState()
@@ -733,7 +780,7 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
 
     // Update transport roster
     transport.updateRoster(peers)
-    announceCatalogue()
+    scheduleAnnounceCatalogue()
     publishState()
   }
   // Periodic heartbeat & freshness monitor: every 2 seconds
@@ -868,18 +915,18 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
       for (const item of added) {
         await store.addSharedFile(item)
       }
-      announceCatalogue()
+      scheduleAnnounceCatalogue()
     },
 
     rescanLibrary: async () => {
       await library.rescan()
-      announceCatalogue()
+      scheduleAnnounceCatalogue()
     },
 
     removeFile: async (fileId: string) => {
       library.removeFile(fileId)
       await store.removeSharedFile(fileId)
-      announceCatalogue()
+      scheduleAnnounceCatalogue()
     },
 
     search: async (queryText: string) => {
@@ -924,6 +971,10 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
           })
         } else {
           currentSearchStatus = 'complete'
+          if (searchTimeoutTimer) {
+            clearTimeout(searchTimeoutTimer)
+            searchTimeoutTimer = undefined
+          }
         }
         publishState()
       } else if (currentRole === 'ordinary' && currentPrimaryId) {
@@ -944,13 +995,25 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
         if (transport.getLinkState(targetId)?.state === 'open') {
           sendSearch()
         } else {
-          const checkTimer = setInterval(() => {
-            if (transport.getLinkState(targetId)?.state === 'open') {
+          let checkTimer: NodeJS.Timeout | null = null
+          let fallbackTimer: NodeJS.Timeout | null = null
+          const clearBoth = () => {
+            if (checkTimer) {
               clearInterval(checkTimer)
+              checkTimer = null
+            }
+            if (fallbackTimer) {
+              clearTimeout(fallbackTimer)
+              fallbackTimer = null
+            }
+          }
+          checkTimer = setInterval(() => {
+            if (transport.getLinkState(targetId)?.state === 'open') {
+              clearBoth()
               sendSearch()
             }
           }, 50)
-          setTimeout(() => clearInterval(checkTimer), 5000)
+          fallbackTimer = setTimeout(clearBoth, 5000)
         }
       } else {
         currentSearchStatus = 'error'

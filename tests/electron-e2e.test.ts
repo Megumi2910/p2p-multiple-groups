@@ -141,30 +141,41 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
       assert.equal(isRequireUndefined, true)
       assert.equal(isBufferUndefined, true)
 
-      // 3. Verify complete window.kazaa desktop bridge contracts
+      // 3. Verify complete window.p2p and window.kazaa desktop bridge contracts
+      const pageTitle = await cdp.evaluate<string>('document.title')
+      assert.equal(pageTitle, 'p2p-multiple-groups')
+
       const bridgeCheck = await cdp.evaluate(`({
         hasKazaa: Boolean(window.kazaa),
-        isMac: typeof window.kazaa?.isMac === 'boolean',
-        hasGetTheme: typeof window.kazaa?.getTheme === 'function',
-        hasSetTheme: typeof window.kazaa?.setTheme === 'function',
-        hasOnCommand: typeof window.kazaa?.onCommand === 'function',
-        hasP2p: Boolean(window.kazaa?.p2p),
-        hasP2pGetState: typeof window.kazaa?.p2p?.getState === 'function',
+        hasP2pGlobal: Boolean(window.p2p),
+        isMac: typeof window.p2p?.isMac === 'boolean',
+        hasGetTheme: typeof window.p2p?.getTheme === 'function',
+        hasSetTheme: typeof window.p2p?.setTheme === 'function',
+        hasOnCommand: typeof window.p2p?.onCommand === 'function',
+        hasP2p: Boolean(window.p2p?.p2p),
+        hasP2pGetState: typeof window.p2p?.p2p?.getState === 'function',
+        hasP2pJoinGroup: typeof window.p2p?.p2p?.joinGroup === 'function',
+        hasP2pLeaveGroup: typeof window.p2p?.p2p?.leaveGroup === 'function',
+        hasP2pSetFileGroups: typeof window.p2p?.p2p?.setFileGroups === 'function',
         hasP2pConnect: typeof window.kazaa?.p2p?.connect === 'function',
         hasP2pDisconnect: typeof window.kazaa?.p2p?.disconnect === 'function',
-        hasP2pAddFiles: typeof window.kazaa?.p2p?.addFiles === 'function',
-        hasP2pSearch: typeof window.kazaa?.p2p?.search === 'function',
-        hasP2pDownload: typeof window.kazaa?.p2p?.download === 'function'
+        hasP2pAddFiles: typeof window.p2p?.p2p?.addFiles === 'function',
+        hasP2pSearch: typeof window.p2p?.p2p?.search === 'function',
+        hasP2pDownload: typeof window.p2p?.p2p?.download === 'function'
       })`)
 
       assert.deepEqual(bridgeCheck, {
         hasKazaa: true,
+        hasP2pGlobal: true,
         isMac: true,
         hasGetTheme: true,
         hasSetTheme: true,
         hasOnCommand: true,
         hasP2p: true,
         hasP2pGetState: true,
+        hasP2pJoinGroup: true,
+        hasP2pLeaveGroup: true,
+        hasP2pSetFileGroups: true,
         hasP2pConnect: true,
         hasP2pDisconnect: true,
         hasP2pAddFiles: true,
@@ -173,9 +184,9 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
       })
 
       // 4. Verify initial P2P state snapshot via bridge
-      const p2pState = await cdp.evaluate<{ network: { status: string }; library: { status: string; files: unknown[] } }>('window.kazaa.p2p.getState()')
+      const p2pState = await cdp.evaluate<{ groups: unknown[]; library: { status: string; files: unknown[] } }>('window.p2p.p2p.getState()')
       assert.ok(p2pState)
-      assert.equal(p2pState.network.status, 'disconnected')
+      assert.deepEqual(p2pState.groups, [])
       assert.equal(p2pState.library.status, 'idle')
       assert.deepEqual(p2pState.library.files, [])
 

@@ -73,6 +73,7 @@ export interface PeerEngine {
   joinGroup(options: JoinGroupOptions): Promise<ActionResult>
   resumeGroup(groupKey: GroupKey): Promise<ActionResult>
   leaveGroup(groupKey: GroupKey): Promise<ActionResult>
+  setGroupAutoJoin(groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult>
   forgetGroup(groupKey: GroupKey): Promise<ActionResult>
   disconnectAll(): Promise<ActionResult>
   setSupernodeEligible(groupKey: GroupKey, eligible: boolean): Promise<ActionResult>
@@ -1247,6 +1248,15 @@ export async function createPeerEngine(
       return { ok: true }
     },
 
+    setGroupAutoJoin: async (groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult> => {
+      const runtime = groups.get(groupKey)
+      if (runtime) {
+        runtime.autoJoin = autoJoin
+      }
+      await store.setGroupAutoJoin(groupKey, autoJoin)
+      publishState()
+      return { ok: true }
+    },
     forgetGroup: async (groupKey: GroupKey): Promise<ActionResult> => {
       const runtime = groups.get(groupKey)
       if (runtime) {

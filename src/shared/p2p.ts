@@ -70,6 +70,7 @@ export interface JoinGroupOptions {
   supernodeEligible: boolean
   relayOnly: boolean
   rememberInvitation: boolean
+  autoJoin?: boolean
 }
 
 export type P2pRole = 'ordinary' | 'supernode'
@@ -329,9 +330,9 @@ export interface P2pMultipleGroupsP2pApi {
   joinGroup(options: JoinGroupOptions): Promise<ActionResult>
   resumeGroup(groupKey: GroupKey): Promise<ActionResult>
   leaveGroup(groupKey: GroupKey): Promise<ActionResult>
+  setGroupAutoJoin(groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult>
   forgetGroup(groupKey: GroupKey): Promise<ActionResult>
   disconnectAll(): Promise<ActionResult>
-  setSupernodeEligible(groupKey: GroupKey, eligible: boolean): Promise<ActionResult>
   addFiles(groupKey: GroupKey | null): Promise<ActionResult>
   rescanLibrary(): Promise<ActionResult>
   removeFile(fileId: string): Promise<ActionResult>
@@ -580,6 +581,9 @@ export function validateJoinGroupOptions(
   if (typeof record.rememberInvitation !== 'boolean') {
     return { valid: false, error: 'rememberInvitation must be a boolean' }
   }
+  if (record.autoJoin !== undefined && typeof record.autoJoin !== 'boolean') {
+    return { valid: false, error: 'autoJoin must be a boolean' }
+  }
 
   return {
     valid: true,
@@ -588,7 +592,8 @@ export function validateJoinGroupOptions(
       displayName: nameCheck.value,
       supernodeEligible: record.supernodeEligible,
       relayOnly: record.relayOnly,
-      rememberInvitation: record.rememberInvitation
+      rememberInvitation: record.rememberInvitation,
+      autoJoin: typeof record.autoJoin === 'boolean' ? record.autoJoin : true
     }
   }
 }

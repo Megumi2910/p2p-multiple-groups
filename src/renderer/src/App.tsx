@@ -11,6 +11,10 @@ import { usePeerState } from './features/network/usePeerState.ts'
 
 type View = 'home' | 'search' | 'library' | 'transfers' | 'network' | 'appearance'
 
+function getBridge() {
+  return window.p2p || window.kazaa
+}
+
 export default function App(): React.ReactElement {
   const [currentView, setCurrentView] = useState<View>('home')
   const [currentTheme, setCurrentTheme] = useState<ThemePreference>('system')
@@ -25,7 +29,8 @@ export default function App(): React.ReactElement {
   const lastActiveElementRef = useRef<HTMLElement | null>(null)
   const isSavingThemeRef = useRef(false)
 
-  const isMac = Boolean(window.kazaa?.isMac)
+  const bridge = getBridge()
+  const isMac = Boolean(bridge?.isMac)
   const modifierLabel = isMac ? 'Cmd' : 'Ctrl'
 
   // P2P engine state & actions via custom hook
@@ -34,15 +39,15 @@ export default function App(): React.ReactElement {
   // Initialize theme from main process
   useEffect(() => {
     let isSubscribed = true
+    const b = getBridge()
 
-    if (!window.kazaa || typeof window.kazaa.getTheme !== 'function') {
-      setInitError('Kazaa initialization failed. Please relaunch the application.')
+    if (!b || typeof b.getTheme !== 'function') {
+      setInitError('p2p-multiple-groups initialization failed. Please relaunch the application.')
       setIsThemeLoading(false)
       return
     }
 
-    window.kazaa
-      .getTheme()
+    b.getTheme()
       .then((theme) => {
         if (isSubscribed) {
           setCurrentTheme(theme)
@@ -52,7 +57,7 @@ export default function App(): React.ReactElement {
       .catch((err) => {
         console.error('[App] Failed to read initial theme:', err)
         if (isSubscribed) {
-          setInitError('Kazaa initialization failed. Please relaunch the application.')
+          setInitError('p2p-multiple-groups initialization failed. Please relaunch the application.')
           setIsThemeLoading(false)
         }
       })
@@ -80,11 +85,12 @@ export default function App(): React.ReactElement {
 
   // Subscribe to native menu commands
   useEffect(() => {
-    if (!window.kazaa || typeof window.kazaa.onCommand !== 'function') {
+    const b = getBridge()
+    if (!b || typeof b.onCommand !== 'function') {
       return
     }
 
-    const unsubscribe = window.kazaa.onCommand((command: ShellCommand) => {
+    const unsubscribe = b.onCommand((command: ShellCommand) => {
       if (command === 'open-command-palette') {
         openPalette()
       } else if (command === 'open-appearance') {
@@ -101,7 +107,8 @@ export default function App(): React.ReactElement {
   }, [openPalette, navigateTo])
 
   const persistTheme = async (theme: ThemePreference): Promise<void> => {
-    if (!window.kazaa) {
+    const b = getBridge()
+    if (!b) {
       throw new Error('Bridge unavailable')
     }
     isSavingThemeRef.current = true
@@ -109,7 +116,7 @@ export default function App(): React.ReactElement {
     setThemeErrorMessage(null)
 
     try {
-      const savedTheme = await window.kazaa.setTheme(theme)
+      const savedTheme = await b.setTheme(theme)
       setCurrentTheme(savedTheme)
       setIsThemeSaving(false)
       isSavingThemeRef.current = false
@@ -172,6 +179,7 @@ export default function App(): React.ReactElement {
   }
 
   const isNetworkConnected =
+    peer.state.groups.some((g) => g.network.status === 'connected') ||
     peer.state.network.status === 'connected' ||
     peer.state.network.status === 'degraded' ||
     peer.state.network.status === 'recovering'
@@ -184,7 +192,7 @@ export default function App(): React.ReactElement {
     <div className="app-container">
       {/* Navigation rail */}
       <nav className="nav-rail" aria-label="Main Navigation">
-        <span className="brand-label">Kazaa</span>
+        <span className="brand-label">p2p</span>
         <button
           type="button"
           className="nav-link"
@@ -226,7 +234,7 @@ export default function App(): React.ReactElement {
         >
           <span>Network</span>
           <span className={`badge ${isNetworkConnected ? 'badge-connected' : 'badge-connecting'}`} style={{ marginLeft: 'auto' }}>
-            {peer.state.network.status === 'connected' ? 'On' : 'Off'}
+            {peer.state.groups.length > 0 ? `${peer.state.groups.length} Groups` : 'Offline'}
           </span>
         </button>
         <button
@@ -244,7 +252,7 @@ export default function App(): React.ReactElement {
         {currentView === 'home' && (
           <div className="view-content">
             <h1 id="home-heading" ref={workspaceHeadingRef} tabIndex={-1} className="view-title">
-              Kazaa
+              p2p-multiple-groups
             </h1>
 
             <div className="action-rows">
@@ -271,8 +279,8 @@ export default function App(): React.ReactElement {
                 className="action-row-btn"
                 onClick={() => navigateTo('network')}
               >
-                <span className="action-row-label">Connect network</span>
-                <span className="shortcut-badge">{isNetworkConnected ? 'Connected' : 'Offline'}</span>
+                <span className="action-row-label">Manage groups</span>
+                <span className="shortcut-badge">{isNetworkConnected ? `${peer.state.groups.length} Active` : 'Offline'}</span>
               </button>
 
               <button
@@ -301,6 +309,9 @@ export default function App(): React.ReactElement {
         {currentView === 'search' && (
           <Search
             headingRef={workspaceHeadingRef}
+            groups={peer.state.groups}
+            selectedGroupKey={peer.selectedGroupKey}
+            onSelectGroup={peer.setSelectedGroupKey}
             search={peer.state.search}
             isNetworkConnected={isNetworkConnected}
             onSearch={peer.search}
@@ -312,9 +323,12 @@ export default function App(): React.ReactElement {
           <Library
             headingRef={workspaceHeadingRef}
             library={peer.state.library}
+            groups={peer.state.groups}
+            selectedGroupKey={peer.selectedGroupKey}
             onAddFiles={peer.addFiles}
             onRescan={peer.rescanLibrary}
             onRemoveFile={peer.removeFile}
+            onSetFileGroups={peer.setFileGroups}
           />
         )}
 
@@ -322,6 +336,7 @@ export default function App(): React.ReactElement {
           <Transfers
             headingRef={workspaceHeadingRef}
             transfers={peer.state.transfers}
+            groups={peer.state.groups}
             onCancelTransfer={peer.cancelTransfer}
             onSearchAgain={(filename) => {
               navigateTo('search')
@@ -333,6 +348,16 @@ export default function App(): React.ReactElement {
         {currentView === 'network' && (
           <Network
             headingRef={workspaceHeadingRef}
+            groups={peer.state.groups}
+            selectedGroupKey={peer.selectedGroupKey}
+            onSelectGroup={peer.setSelectedGroupKey}
+            identity={peer.state.identity}
+            onJoinGroup={peer.joinGroup}
+            onLeaveGroup={peer.leaveGroup}
+            onSetGroupAutoJoin={peer.setGroupAutoJoin}
+            onSetGroupEligibility={peer.setSupernodeEligible}
+            onForgetGroup={peer.forgetGroup}
+            onDisconnectAll={peer.disconnectAll}
             network={peer.state.network}
             recoveryEvents={peer.state.recoveryEvents}
             onConnect={peer.connect}

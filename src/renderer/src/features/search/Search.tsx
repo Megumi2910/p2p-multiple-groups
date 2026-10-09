@@ -1,16 +1,23 @@
 import React, { useState } from 'react'
 import type {
   ActionResult,
+  GroupKey,
+  MultiGroupSearchResult,
+  P2pGroupState,
   P2pSearchResult,
   P2pSearchState
 } from '../../../../shared/p2p.ts'
 
 interface SearchProps {
   headingRef: React.RefObject<HTMLHeadingElement | null>
-  search: P2pSearchState
-  isNetworkConnected: boolean
-  onSearch: (query: string) => Promise<ActionResult>
-  onDownload: (resultId: string) => Promise<ActionResult>
+  groups?: P2pGroupState[]
+  selectedGroupKey?: string | null
+  onSelectGroup?: (groupKey: string) => void
+  onSearch: (arg1: string, arg2?: string) => Promise<ActionResult>
+  onDownload: (arg1: string, arg2?: string) => Promise<ActionResult>
+  // Backward compatibility
+  search?: P2pSearchState
+  isNetworkConnected?: boolean
 }
 
 function formatBytes(bytes: number): string {
@@ -25,22 +32,37 @@ interface GroupedResult {
   sha256: string
   size: number
   primaryName: string
-  sources: P2pSearchResult[]
+  sources: (P2pSearchResult | MultiGroupSearchResult)[]
   selectedSourceIndex: number
 }
 
 export const Search: React.FC<SearchProps> = ({
   headingRef,
-  search,
-  isNetworkConnected,
+  groups = [],
+  selectedGroupKey = null,
+  onSelectGroup,
   onSearch,
-  onDownload
+  onDownload,
+  search: legacySearch,
+  isNetworkConnected: legacyIsConnected
 }) => {
-  const [queryInput, setQueryInput] = useState(search.query || '')
+  const activeGroup = groups.find((g) => g.groupKey === selectedGroupKey) || groups[0]
+  const currentSearch = activeGroup?.search || legacySearch || { queryId: null, query: '', status: 'idle', results: [], message: null }
+  const isConnected = activeGroup ? activeGroup.network.status === 'connected' : Boolean(legacyIsConnected)
+
+  const [queryInput, setQueryInput] = useState(currentSearch.query || '')
   const [isSearching, setIsSearching] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [sourceSelections, setSourceSelections] = useState<Record<string, number>>({})
+
+  const handleGroupChange = (newGroupKey: string) => {
+    onSelectGroup?.(newGroupKey)
+    const grp = groups.find((g) => g.groupKey === newGroupKey)
+    if (grp) {
+      setQueryInput(grp.search.query || '')
+    }
+  }
 
   const handleSearchSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
@@ -49,7 +71,12 @@ export const Search: React.FC<SearchProps> = ({
 
     setErrorMessage(null)
     setIsSearching(true)
-    const res = await onSearch(trimmed)
+    let res: ActionResult
+    if (activeGroup) {
+      res = await onSearch(activeGroup.groupKey, trimmed)
+    } else {
+      res = await onSearch(trimmed)
+    }
     setIsSearching(false)
     if (!res.ok) {
       setErrorMessage(`${res.code}: ${res.message}`)
@@ -59,7 +86,12 @@ export const Search: React.FC<SearchProps> = ({
   const handleDownloadClick = async (resultId: string): Promise<void> => {
     setDownloadingId(resultId)
     setErrorMessage(null)
-    const res = await onDownload(resultId)
+    let res: ActionResult
+    if (activeGroup) {
+      res = await onDownload(activeGroup.groupKey, resultId)
+    } else {
+      res = await onDownload(resultId)
+    }
     setDownloadingId(null)
     if (!res.ok) {
       setErrorMessage(`${res.code}: ${res.message}`)
@@ -68,7 +100,7 @@ export const Search: React.FC<SearchProps> = ({
 
   // Group search results by (sha256, size)
   const groupedMap = new Map<string, GroupedResult>()
-  for (const item of search.results) {
+  for (const item of currentSearch.results) {
     const key = `${item.file.sha256}:${item.file.size}`
     let group = groupedMap.get(key)
     if (!group) {
@@ -93,29 +125,57 @@ export const Search: React.FC<SearchProps> = ({
         Search Files
       </h1>
 
-      {!isNetworkConnected && (
+      {groups.length === 0 ? (
         <div className="status-banner status-degraded" role="alert">
-          You are currently disconnected from the peer network. Connect in the Network view before searching for files.
+          You are not currently in any P2P groups. Join a group in the Network tab to search files.
         </div>
-      )}
+      ) : !isConnected ? (
+        <div className="status-banner status-degraded" role="alert">
+          Group {activeGroup?.groupId} is currently disconnected. Reconnect in the Network tab before searching.
+        </div>
+      ) : null}
+
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+        {groups.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label htmlFor="search-group-select" className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>
+              Search in:
+            </label>
+            <select
+              id="search-group-select"
+              className="text-input"
+              style={{ width: 'auto', padding: '6px 12px' }}
+              value={activeGroup?.groupKey || ''}
+              onChange={(e) => handleGroupChange(e.target.value)}
+              disabled={isSearching}
+            >
+              {groups.map((g) => (
+                <option key={g.groupKey} value={g.groupKey}>
+                  {g.groupId} ({g.network.status})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
 
       <form className="search-form-row" onSubmit={handleSearchSubmit}>
         <input
           type="text"
           className="text-input search-input"
-          placeholder="Search by filename (e.g. rock, pdf, album)..."
+          placeholder="Search by filename (e.g. anthem, rock, album)..."
           value={queryInput}
           onChange={(e) => setQueryInput(e.target.value)}
-          disabled={!isNetworkConnected || isSearching}
+          disabled={!isConnected || isSearching}
           maxLength={120}
           aria-label="Search query"
         />
         <button
           type="submit"
           className="action-button primary-button"
-          disabled={!isNetworkConnected || isSearching || !queryInput.trim()}
+          disabled={!isConnected || isSearching || !queryInput.trim()}
         >
-          {isSearching || search.status === 'searching' ? 'Searching...' : 'Search'}
+          {isSearching || currentSearch.status === 'searching' ? 'Searching...' : 'Search'}
         </button>
       </form>
 
@@ -125,48 +185,42 @@ export const Search: React.FC<SearchProps> = ({
         </div>
       )}
 
-      {search.status === 'searching' && (
-        <div className="searching-panel" role="status">
-          <span className="spinner-indicator" aria-hidden="true" />
-          <span>Searching network through supernode index...</span>
+      {currentSearch.message && (
+        <div className={`status-banner status-${currentSearch.status}`} role="status">
+          {currentSearch.message}
         </div>
       )}
 
-      {search.status === 'partial' && (
-        <div className="status-banner status-degraded" role="status">
-          Notice: Results may be incomplete due to an unreachable supernode route.
-        </div>
-      )}
+      <div className="search-results-section" style={{ marginTop: '20px' }}>
+        <h2 className="section-subheading">
+          Results ({groupedList.length} unique file{groupedList.length === 1 ? '' : 's'})
+          {activeGroup && <span style={{ marginLeft: '8px', fontSize: '13px', color: 'var(--color-text-subtle)' }}>in group: {activeGroup.groupId}</span>}
+        </h2>
 
-      {search.status === 'complete' && groupedList.length === 0 && (
-        <div className="empty-state-panel">
-          <p className="empty-title">No files found</p>
-          <p className="empty-hint">Try adjusting your search terms or verify that peers are online.</p>
-        </div>
-      )}
-
-      {groupedList.length > 0 && (
-        <div className="search-results-section">
-          <div className="results-header-info">
-            <span>Found {groupedList.length} unique file(s) across network</span>
-            <span className="subtle-text">(Results capped at 200 items maximum)</span>
-          </div>
-
+        {groupedList.length === 0 ? (
+          <p className="empty-hint">
+            {currentSearch.status === 'complete' && currentSearch.query
+              ? `No files found matching "${currentSearch.query}" in this group.`
+              : 'Enter a search term above to find files across peers in the selected group.'}
+          </p>
+        ) : (
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
                 <tr>
                   <th>Filename</th>
                   <th>Size</th>
-                  <th>Sources</th>
-                  <th>Source Peer</th>
-                  <th>Actions</th>
+                  <th>Group</th>
+                  <th>Peer</th>
+                  <th>SHA-256</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {groupedList.map((group) => {
-                  const selectedIdx = sourceSelections[group.groupKey] || 0
-                  const chosenSource = group.sources[selectedIdx] || group.sources[0]
+                  const selectedIdx = sourceSelections[group.groupKey] ?? 0
+                  const activeSource = group.sources[selectedIdx] || group.sources[0]
+                  const isDownloading = downloadingId === activeSource.resultId
 
                   return (
                     <tr key={group.groupKey}>
@@ -175,39 +229,41 @@ export const Search: React.FC<SearchProps> = ({
                       </td>
                       <td>{formatBytes(group.size)}</td>
                       <td>
-                        <span className="badge badge-source-count">
-                          {group.sources.length} {group.sources.length === 1 ? 'source' : 'sources'}
+                        <span className="badge badge-connected" style={{ fontSize: '11px', padding: '1px 6px' }}>
+                          {activeGroup?.groupId || 'Group'}
                         </span>
                       </td>
                       <td>
                         {group.sources.length === 1 ? (
-                          <span>{chosenSource.ownerName}</span>
+                          activeSource.ownerName
                         ) : (
                           <select
-                            className="source-select"
+                            className="text-input"
+                            style={{ padding: '2px 4px', fontSize: '12px' }}
                             value={selectedIdx}
                             onChange={(e) => {
-                              const newIdx = parseInt(e.target.value, 10)
+                              const newIdx = Number(e.target.value)
                               setSourceSelections((prev) => ({ ...prev, [group.groupKey]: newIdx }))
                             }}
-                            aria-label={`Select source for ${group.primaryName}`}
                           >
-                            {group.sources.map((src, i) => (
-                              <option key={src.ownerSessionId} value={i}>
-                                {src.ownerName} ({src.ownerPeerId.slice(0, 6)}...)
+                            {group.sources.map((s, idx) => (
+                              <option key={s.resultId} value={idx}>
+                                {s.ownerName}
                               </option>
                             ))}
                           </select>
                         )}
                       </td>
+                      <td className="code-cell">{group.sha256.slice(0, 12)}...</td>
                       <td>
                         <button
                           type="button"
-                          className="action-button secondary-button inline-download-btn"
-                          onClick={() => void handleDownloadClick(chosenSource.resultId)}
-                          disabled={downloadingId === chosenSource.resultId}
+                          className="action-button primary-button"
+                          style={{ padding: '3px 10px', fontSize: '12px' }}
+                          onClick={() => void handleDownloadClick(activeSource.resultId)}
+                          disabled={isDownloading}
                         >
-                          {downloadingId === chosenSource.resultId ? 'Starting...' : 'Download'}
+                          {isDownloading ? 'Saving...' : 'Download'}
                         </button>
                       </td>
                     </tr>
@@ -216,8 +272,8 @@ export const Search: React.FC<SearchProps> = ({
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   )
 }

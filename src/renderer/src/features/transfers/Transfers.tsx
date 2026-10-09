@@ -1,11 +1,17 @@
 import React from 'react'
-import type { ActionResult, P2pTransfer } from '../../../../shared/p2p.ts'
+import type {
+  ActionResult,
+  MultiGroupTransfer,
+  P2pGroupState,
+  P2pTransfer
+} from '../../../../shared/p2p.ts'
 
 interface TransfersProps {
   headingRef: React.RefObject<HTMLHeadingElement | null>
-  transfers: P2pTransfer[]
+  transfers: (P2pTransfer | MultiGroupTransfer)[]
+  groups?: P2pGroupState[]
   onCancelTransfer: (transferId: string) => Promise<ActionResult>
-  onSearchAgain: (filename: string) => void
+  onSearchAgain?: (filename: string) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -29,6 +35,7 @@ function formatPath(path: P2pTransfer['path']): string {
 export const Transfers: React.FC<TransfersProps> = ({
   headingRef,
   transfers,
+  groups = [],
   onCancelTransfer,
   onSearchAgain
 }) => {
@@ -38,6 +45,15 @@ export const Transfers: React.FC<TransfersProps> = ({
   const completedTransfers = transfers.filter(
     (t) => t.state === 'completed' || t.state === 'failed' || t.state === 'cancelled'
   )
+
+  const resolveGroupName = (t: P2pTransfer | MultiGroupTransfer): string | null => {
+    if ('groupId' in t && t.groupId) return t.groupId
+    if ('groupKey' in t && t.groupKey) {
+      const g = groups.find((gr) => gr.groupKey === t.groupKey)
+      return g?.groupId || t.groupKey.split('#')[0] || null
+    }
+    return null
+  }
 
   return (
     <section className="view-content fluid-content" aria-labelledby="transfers-heading">
@@ -56,6 +72,7 @@ export const Transfers: React.FC<TransfersProps> = ({
                 <tr>
                   <th>Direction</th>
                   <th>Filename</th>
+                  <th>Group</th>
                   <th>Peer</th>
                   <th>Progress</th>
                   <th>Path</th>
@@ -66,6 +83,7 @@ export const Transfers: React.FC<TransfersProps> = ({
               <tbody>
                 {activeTransfers.map((t) => {
                   const percent = t.size > 0 ? Math.round((t.transferredBytes / t.size) * 100) : 100
+                  const groupName = resolveGroupName(t)
 
                   return (
                     <tr key={t.id}>
@@ -75,6 +93,15 @@ export const Transfers: React.FC<TransfersProps> = ({
                       <td className="filename-cell" title={t.fileName}>
                         {t.fileName}
                       </td>
+                      <td>
+                        {groupName ? (
+                          <span className="badge badge-connected" style={{ fontSize: '11px', padding: '1px 6px' }}>
+                            {groupName}
+                          </span>
+                        ) : (
+                          <span className="subtle-text">—</span>
+                        )}
+                      </td>
                       <td>{t.peerName}</td>
                       <td className="progress-cell">
                         <div
@@ -83,29 +110,24 @@ export const Transfers: React.FC<TransfersProps> = ({
                           aria-valuenow={percent}
                           aria-valuemin={0}
                           aria-valuemax={100}
-                          aria-label={`${t.fileName} transfer progress`}
+                          aria-label={`Transfer progress for ${t.fileName}`}
                         >
                           <div className="progress-bar-fill" style={{ width: `${percent}%` }} />
                         </div>
-                        <div className="progress-numbers">
-                          <span>
-                            {formatBytes(t.transferredBytes)} / {formatBytes(t.size)}
-                          </span>
-                          <span>{percent}%</span>
-                        </div>
+                        <span className="progress-text">
+                          {formatBytes(t.transferredBytes)} / {formatBytes(t.size)} ({percent}%)
+                        </span>
                       </td>
+                      <td>{formatPath(t.path)}</td>
                       <td>
-                        <span className={`badge badge-path-${t.path}`}>{formatPath(t.path)}</span>
-                      </td>
-                      <td>
-                        <span className={`badge badge-state-${t.state}`}>{t.state}</span>
+                        <span className={`badge badge-transfer-${t.state}`}>{t.state}</span>
                       </td>
                       <td>
                         <button
                           type="button"
                           className="inline-action-btn danger-btn"
                           onClick={() => void onCancelTransfer(t.id)}
-                          aria-label={`Cancel ${t.fileName}`}
+                          aria-label={`Cancel transfer for ${t.fileName}`}
                         >
                           Cancel
                         </button>
@@ -120,9 +142,9 @@ export const Transfers: React.FC<TransfersProps> = ({
       </div>
 
       <div className="transfers-section" style={{ marginTop: '28px' }}>
-        <h2 className="section-subheading">Recent Transfers ({completedTransfers.length})</h2>
+        <h2 className="section-subheading">Transfer History ({completedTransfers.length})</h2>
         {completedTransfers.length === 0 ? (
-          <p className="empty-hint">No recent transfer history.</p>
+          <p className="empty-hint">Completed and cancelled transfers will appear here.</p>
         ) : (
           <div className="table-wrapper">
             <table className="data-table">
@@ -130,39 +152,45 @@ export const Transfers: React.FC<TransfersProps> = ({
                 <tr>
                   <th>Direction</th>
                   <th>Filename</th>
+                  <th>Group</th>
+                  <th>Peer</th>
                   <th>Size</th>
                   <th>Status</th>
                   <th>Details</th>
-                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {completedTransfers.slice(0, 50).map((t) => (
-                  <tr key={t.id}>
-                    <td>
-                      <span className={`badge badge-dir-${t.direction}`}>{t.direction}</span>
-                    </td>
-                    <td className="filename-cell" title={t.fileName}>
-                      {t.fileName}
-                    </td>
-                    <td>{formatBytes(t.size)}</td>
-                    <td>
-                      <span className={`badge badge-state-${t.state}`}>{t.state}</span>
-                    </td>
-                    <td className="message-cell">{t.message || '—'}</td>
-                    <td>
-                      {t.state === 'failed' && t.direction === 'download' && (
-                        <button
-                          type="button"
-                          className="inline-action-btn secondary-btn"
-                          onClick={() => onSearchAgain(t.fileName)}
-                        >
-                          Search again
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {completedTransfers.map((t) => {
+                  const groupName = resolveGroupName(t)
+
+                  return (
+                    <tr key={t.id}>
+                      <td>
+                        <span className={`badge badge-dir-${t.direction}`}>{t.direction}</span>
+                      </td>
+                      <td className="filename-cell" title={t.fileName}>
+                        {t.fileName}
+                      </td>
+                      <td>
+                        {groupName ? (
+                          <span className="badge badge-connected" style={{ fontSize: '11px', padding: '1px 6px' }}>
+                            {groupName}
+                          </span>
+                        ) : (
+                          <span className="subtle-text">—</span>
+                        )}
+                      </td>
+                      <td>{t.peerName}</td>
+                      <td>{formatBytes(t.size)}</td>
+                      <td>
+                        <span className={`badge badge-transfer-${t.state}`}>{t.state}</span>
+                      </td>
+                      <td className="cell-subtext" title={t.message || undefined}>
+                        {t.message || '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

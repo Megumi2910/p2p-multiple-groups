@@ -2,11 +2,22 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type {
   ActionResult,
   ConnectOptions,
+  GroupKey,
+  JoinGroupOptions,
+  MultiGroupP2pState,
   P2pState
 } from '../../../../shared/p2p.ts'
 
-const DEFAULT_P2P_STATE: P2pState = {
+export type CombinedPeerState = MultiGroupP2pState & P2pState
+
+const DEFAULT_STATE: CombinedPeerState = {
   revision: 0,
+  identity: {
+    peerId: '',
+    displayName: ''
+  },
+  relayOnly: false,
+  groups: [],
   network: {
     status: 'disconnected',
     peerId: '',
@@ -27,7 +38,7 @@ const DEFAULT_P2P_STATE: P2pState = {
   library: {
     status: 'idle',
     files: [],
-    advertisedGeneration: null,
+    advertisedGeneration: 1,
     acknowledgedGeneration: null
   },
   search: {
@@ -41,30 +52,45 @@ const DEFAULT_P2P_STATE: P2pState = {
   recoveryEvents: []
 }
 
+function getBridge() {
+  return window.p2p || window.kazaa
+}
+
 export function usePeerState() {
-  const [state, setState] = useState<P2pState>(DEFAULT_P2P_STATE)
+  const [state, setState] = useState<CombinedPeerState>(DEFAULT_STATE)
+  const [selectedGroupKey, setSelectedGroupKey] = useState<GroupKey | null>(null)
   const [error, setError] = useState<string | null>(null)
   const lastRevisionRef = useRef(0)
 
+  // Automatically select first group if none selected or previous group was left
   useEffect(() => {
-    if (!window.kazaa?.p2p) {
+    if (state.groups.length > 0) {
+      if (!selectedGroupKey || !state.groups.some((g) => g.groupKey === selectedGroupKey)) {
+        setSelectedGroupKey(state.groups[0].groupKey)
+      }
+    } else {
+      setSelectedGroupKey(null)
+    }
+  }, [state.groups, selectedGroupKey])
+
+  useEffect(() => {
+    const bridge = getBridge()
+    if (!bridge?.p2p) {
       setError('P2P bridge unavailable')
       return
     }
 
-    const applyState = (incoming: P2pState) => {
+    const applyState = (incoming: CombinedPeerState) => {
       if (incoming.revision >= lastRevisionRef.current) {
         lastRevisionRef.current = incoming.revision
         setState(incoming)
       }
     }
 
-    // Subscribe before initial getState to ensure no events are missed
-    const unsubscribe = window.kazaa.p2p.onState(applyState)
-
-    window.kazaa.p2p
+    const unsubscribe = (bridge.p2p.onState as (listener: (state: any) => void) => () => void)(applyState)
+    bridge.p2p
       .getState()
-      .then(applyState)
+      .then((s) => applyState(s as CombinedPeerState))
       .catch((err) => {
         setError(err instanceof Error ? err.message : String(err))
       })
@@ -74,62 +100,131 @@ export function usePeerState() {
     }
   }, [])
 
-  const connect = useCallback(async (opts: ConnectOptions): Promise<ActionResult> => {
-    if (!window.kazaa?.p2p) return { ok: false, code: 'IO_ERROR', message: 'P2P bridge unavailable' }
-    return window.kazaa.p2p.connect(opts)
+  const joinGroup = useCallback(async (options: JoinGroupOptions): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.joinGroup) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.joinGroup(options)
   }, [])
 
-  const disconnect = useCallback(async (): Promise<ActionResult> => {
-    if (!window.kazaa?.p2p) return { ok: false, code: 'IO_ERROR', message: 'P2P bridge unavailable' }
-    return window.kazaa.p2p.disconnect()
+  const resumeGroup = useCallback(async (groupKey: GroupKey): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.resumeGroup) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.resumeGroup(groupKey)
   }, [])
 
-  const setSupernodeEligible = useCallback(async (eligible: boolean): Promise<ActionResult> => {
-    if (!window.kazaa?.p2p) return { ok: false, code: 'IO_ERROR', message: 'P2P bridge unavailable' }
-    return window.kazaa.p2p.setSupernodeEligible(eligible)
+  const leaveGroup = useCallback(async (groupKey: GroupKey): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.leaveGroup) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.leaveGroup(groupKey)
   }, [])
 
-  const addFiles = useCallback(async (): Promise<ActionResult> => {
-    if (!window.kazaa?.p2p) return { ok: false, code: 'IO_ERROR', message: 'P2P bridge unavailable' }
-    return window.kazaa.p2p.addFiles()
+  const setGroupAutoJoin = useCallback(async (groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.setGroupAutoJoin) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.setGroupAutoJoin(groupKey, autoJoin)
   }, [])
+
+  const forgetGroup = useCallback(async (groupKey: GroupKey): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.forgetGroup) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.forgetGroup(groupKey)
+  }, [])
+
+  const disconnectAll = useCallback(async (): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.disconnectAll) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.disconnectAll()
+  }, [])
+
+  const setSupernodeEligible = useCallback(async (arg1: unknown, arg2?: unknown): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.setSupernodeEligible) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return (bridge.p2p.setSupernodeEligible as any)(arg1, arg2)
+  }, [])
+
+  const addFiles = useCallback(async (groupKey?: GroupKey | null): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.addFiles) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.addFiles(groupKey !== undefined ? groupKey : selectedGroupKey)
+  }, [selectedGroupKey])
 
   const rescanLibrary = useCallback(async (): Promise<ActionResult> => {
-    if (!window.kazaa?.p2p) return { ok: false, code: 'IO_ERROR', message: 'P2P bridge unavailable' }
-    return window.kazaa.p2p.rescanLibrary()
+    const bridge = getBridge()
+    if (!bridge?.p2p?.rescanLibrary) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.rescanLibrary()
   }, [])
 
   const removeFile = useCallback(async (fileId: string): Promise<ActionResult> => {
-    if (!window.kazaa?.p2p) return { ok: false, code: 'IO_ERROR', message: 'P2P bridge unavailable' }
-    return window.kazaa.p2p.removeFile(fileId)
+    const bridge = getBridge()
+    if (!bridge?.p2p?.removeFile) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.removeFile(fileId)
   }, [])
 
-  const search = useCallback(async (query: string): Promise<ActionResult> => {
-    if (!window.kazaa?.p2p) return { ok: false, code: 'IO_ERROR', message: 'P2P bridge unavailable' }
-    return window.kazaa.p2p.search(query)
+  const setFileGroups = useCallback(async (fileId: string, groupKeys: GroupKey[]): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.setFileGroups) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.setFileGroups(fileId, groupKeys)
   }, [])
 
-  const download = useCallback(async (resultId: string): Promise<ActionResult> => {
-    if (!window.kazaa?.p2p) return { ok: false, code: 'IO_ERROR', message: 'P2P bridge unavailable' }
-    return window.kazaa.p2p.download(resultId)
-  }, [])
+  const search = useCallback(async (arg1: string, arg2?: string): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.search) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    if (arg2 !== undefined) {
+      return bridge.p2p.search(arg1, arg2)
+    }
+    const gk = selectedGroupKey || state.groups[0]?.groupKey || ''
+    return bridge.p2p.search(gk, arg1)
+  }, [selectedGroupKey, state.groups])
+
+  const download = useCallback(async (arg1: string, arg2?: string): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.download) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    if (arg2 !== undefined) {
+      return bridge.p2p.download(arg1, arg2)
+    }
+    const gk = selectedGroupKey || state.groups[0]?.groupKey || ''
+    return bridge.p2p.download(gk, arg1)
+  }, [selectedGroupKey, state.groups])
 
   const cancelTransfer = useCallback(async (transferId: string): Promise<ActionResult> => {
-    if (!window.kazaa?.p2p) return { ok: false, code: 'IO_ERROR', message: 'P2P bridge unavailable' }
-    return window.kazaa.p2p.cancelTransfer(transferId)
+    const bridge = getBridge()
+    if (!bridge?.p2p?.cancelTransfer) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.cancelTransfer(transferId)
+  }, [])
+
+  // Legacy connect / disconnect compatibility
+  const connect = useCallback(async (opts: ConnectOptions): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.connect) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.connect(opts)
+  }, [])
+
+  const disconnect = useCallback(async (): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.disconnect) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.disconnect()
   }, [])
 
   return {
     state,
+    selectedGroupKey,
+    setSelectedGroupKey,
     error,
-    connect,
-    disconnect,
+    joinGroup,
+    resumeGroup,
+    leaveGroup,
+    setGroupAutoJoin,
+    forgetGroup,
+    disconnectAll,
     setSupernodeEligible,
     addFiles,
     rescanLibrary,
     removeFile,
+    setFileGroups,
     search,
     download,
-    cancelTransfer
+    cancelTransfer,
+    connect,
+    disconnect
   }
 }

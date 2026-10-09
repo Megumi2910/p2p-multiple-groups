@@ -86,7 +86,7 @@ describe('Simultaneous Multi-Group P2P Mesh', () => {
           relayOnly: false,
           rememberInvitation: false
         })
-        assert.ok(resAlpha.ok, `Join alpha failed: ${resAlpha.message}`)
+        assert.ok(resAlpha.ok, `Join alpha failed: ${!resAlpha.ok ? (resAlpha as any).message : ''}`)
 
         // Join Beta
         const resBeta = await engine.joinGroup({
@@ -96,7 +96,7 @@ describe('Simultaneous Multi-Group P2P Mesh', () => {
           relayOnly: false,
           rememberInvitation: false
         })
-        assert.ok(resBeta.ok, `Join beta failed: ${resBeta.message}`)
+        assert.ok(resBeta.ok, `Join beta failed: ${!resBeta.ok ? (resBeta as any).message : ''}`)
 
       return engine
     }

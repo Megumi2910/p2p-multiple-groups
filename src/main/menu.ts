@@ -32,7 +32,7 @@ export function installMenu(onCommand: (command: ShellCommand) => void): void {
   commandHandler = onCommand
 
   app.setAboutPanelOptions({
-    applicationName: 'Kazaa',
+    applicationName: 'p2p-multiple-groups',
     applicationVersion: app.getVersion()
   })
 

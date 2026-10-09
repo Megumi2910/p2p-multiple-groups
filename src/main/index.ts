@@ -1,9 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, type IpcMainInvokeEvent } from 'electron'
 import { isAbsolute, join } from 'node:path'
-import { mkdirSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createThemeStore, type ThemeStore } from './theme-store.ts'
 import { installMenu, setMenuWindowActive } from './menu.ts'
+import { prepareProfileDirectory } from './profile-migration.ts'
 import {
   IPC_CHANNELS,
   isThemePreference,
@@ -12,28 +12,32 @@ import {
 } from '../shared/contracts.ts'
 import {
   validateConnectOptions,
+  validateJoinGroupOptions,
   type ActionResult,
+  type MultiGroupP2pState,
   type P2pErrorCode,
   type P2pState
 } from '../shared/p2p.ts'
 import { createPeerEngine, type PeerEngine } from './p2p/engine.ts'
 import { sanitizeDestinationFileName } from './p2p/transfers.ts'
-app.setName('Kazaa')
+
+app.setName('p2p-multiple-groups')
 
 let mainWindow: BrowserWindow | null = null
 let themeStore: ThemeStore | null = null
 let peerEngine: PeerEngine | null = null
 let isIpcRegistered = false
 
-let pendingStateSnapshot: P2pState | null = null
+let pendingStateSnapshot: (MultiGroupP2pState & P2pState) | null = null
 let stateThrottleTimer: NodeJS.Timeout | null = null
 
-function dispatchStateToWindow(state: P2pState): void {
+function dispatchStateToWindow(state: MultiGroupP2pState & P2pState): void {
   pendingStateSnapshot = state
   if (!stateThrottleTimer) {
     stateThrottleTimer = setTimeout(() => {
       stateThrottleTimer = null
       if (pendingStateSnapshot && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.P2P_V2_STATE, pendingStateSnapshot)
         mainWindow.webContents.send(IPC_CHANNELS.P2P_STATE, pendingStateSnapshot)
         pendingStateSnapshot = null
       }
@@ -130,6 +134,212 @@ function registerIpcHandlers(): void {
     }
   })
 
+  // Scoped v2 P2P channels
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_GET_STATE, async (event) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    return peerEngine.getState()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_JOIN_GROUP, async (event, options: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    const check = validateJoinGroupOptions(options)
+    if (!check.valid) {
+      return { ok: false, code: 'INVALID_INPUT', message: check.error }
+    }
+    try {
+      return await peerEngine.joinGroup(check.value)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_RESUME_GROUP, async (event, groupKey: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof groupKey !== 'string' || !groupKey) {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Group key is required' }
+    }
+    try {
+      return await peerEngine.resumeGroup(groupKey)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_LEAVE_GROUP, async (event, groupKey: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof groupKey !== 'string' || !groupKey) {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Group key is required' }
+    }
+    try {
+      return await peerEngine.leaveGroup(groupKey)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_SET_GROUP_AUTO_JOIN, async (event, groupKey: unknown, autoJoin: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof groupKey !== 'string' || typeof autoJoin !== 'boolean') {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid auto-join parameters' }
+    }
+    try {
+      return await peerEngine.setGroupAutoJoin(groupKey, autoJoin)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_SET_GROUP_ELIGIBILITY, async (event, groupKey: unknown, eligible: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof groupKey !== 'string' || typeof eligible !== 'boolean') {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid eligibility parameters' }
+    }
+    try {
+      return await peerEngine.setSupernodeEligible(groupKey, eligible)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_FORGET_GROUP, async (event, groupKey: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof groupKey !== 'string' || !groupKey) {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Group key is required' }
+    }
+    try {
+      return await peerEngine.forgetGroup(groupKey)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_DISCONNECT_ALL, async (event) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    try {
+      return await peerEngine.disconnectAll()
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_ADD_FILES, async (event, groupKey: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { ok: false, code: 'IO_ERROR', message: 'Main window unavailable' }
+    }
+    const dialogResult = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile', 'multiSelections']
+    })
+    if (dialogResult.canceled || dialogResult.filePaths.length === 0) {
+      return { ok: true }
+    }
+    try {
+      const gk = typeof groupKey === 'string' && groupKey ? groupKey : null
+      return await peerEngine.addFiles(gk, dialogResult.filePaths)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_RESCAN_LIBRARY, async (event) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    try {
+      return await peerEngine.rescanLibrary()
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_REMOVE_FILE, async (event, fileId: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof fileId !== 'string') {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid file ID' }
+    }
+    try {
+      return await peerEngine.removeFile(fileId)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_SET_FILE_GROUPS, async (event, fileId: unknown, groupKeys: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof fileId !== 'string' || !Array.isArray(groupKeys) || !groupKeys.every((k) => typeof k === 'string')) {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid file groups parameters' }
+    }
+    try {
+      return await peerEngine.setFileGroups(fileId, groupKeys as string[])
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_SEARCH, async (event, groupKey: unknown, query: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof groupKey !== 'string' || typeof query !== 'string') {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Group key and query must be strings' }
+    }
+    try {
+      return await peerEngine.search(groupKey, query)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_DOWNLOAD, async (event, groupKey: unknown, resultId: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { ok: false, code: 'IO_ERROR', message: 'Main window unavailable' }
+    }
+    if (typeof groupKey !== 'string' || typeof resultId !== 'string') {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid download parameters' }
+    }
+    const resolved = peerEngine.resolveSearchResult(groupKey, resultId)
+    if (!resolved) {
+      return { ok: false, code: 'NOT_FOUND', message: 'Search result not found or expired' }
+    }
+    const defaultName = sanitizeDestinationFileName(resolved.file.name)
+    const saveResult = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultName
+    })
+    if (saveResult.canceled || !saveResult.filePath) {
+      return { ok: true }
+    }
+    try {
+      return await peerEngine.download(groupKey, resultId, saveResult.filePath)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_CANCEL_TRANSFER, async (event, transferId: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof transferId !== 'string') {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid transfer ID' }
+    }
+    try {
+      return await peerEngine.cancelTransfer(transferId)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  // Legacy channels compatibility facade
   ipcMain.handle(IPC_CHANNELS.P2P_GET_STATE, async (event) => {
     validateSender(event)
     if (!peerEngine) throw new Error('Peer engine uninitialized')
@@ -282,7 +492,7 @@ async function createWindow(): Promise<BrowserWindow> {
   const preloadPath = fileURLToPath(new URL('../preload/index.cjs', import.meta.url))
 
   const win = new BrowserWindow({
-    title: 'Kazaa',
+    title: 'p2p-multiple-groups',
     width: 1100,
     height: 740,
     minWidth: 760,
@@ -331,18 +541,16 @@ async function createWindow(): Promise<BrowserWindow> {
   })
 
   if (isDev) {
-    const devUrl = process.env.ELECTRON_RENDERER_URL!
-    try {
-      const parsed = new URL(devUrl)
-      if (parsed.origin !== expectedDevOrigin || parsed.pathname !== '/') {
-        throw new Error(`Invalid ELECTRON_RENDERER_URL: ${devUrl}. Expected origin: ${expectedDevOrigin}`)
-      }
-    } catch (err) {
-      throw new Error(`Invalid ELECTRON_RENDERER_URL: ${devUrl}`, { cause: err })
-    }
-    await win.loadURL(devUrl)
+    const rendererUrl = process.env.ELECTRON_RENDERER_URL!
+    win.loadURL(rendererUrl).catch((err) => {
+      console.error('[main] Failed to load dev URL:', err)
+      dialog.showErrorBox('Failed to load application', String(err))
+    })
   } else {
-    await win.loadFile(productionHtmlPath)
+    win.loadFile(productionHtmlPath).catch((err) => {
+      console.error('[main] Failed to load production HTML:', err)
+      dialog.showErrorBox('Failed to load application', String(err))
+    })
   }
 
   return win
@@ -366,7 +574,6 @@ async function init(): Promise<void> {
       dispatchStateToWindow(state)
     })
 
-
     installMenu((command: ShellCommand) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.COMMAND, command)
@@ -376,7 +583,7 @@ async function init(): Promise<void> {
     await createWindow()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    dialog.showErrorBox('Kazaa failed to start', message)
+    dialog.showErrorBox('p2p-multiple-groups failed to start', message)
     app.exit(1)
   }
 }
@@ -418,13 +625,16 @@ app.on('before-quit', (event) => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow().catch((err) => {
-      dialog.showErrorBox('Kazaa failed to start', err instanceof Error ? err.message : String(err))
+      dialog.showErrorBox('p2p-multiple-groups failed to start', err instanceof Error ? err.message : String(err))
       app.exit(1)
     })
   }
 })
+
 function setupDataDirectory(): void {
   const dataDirArgs = process.argv.filter((arg) => arg.startsWith('--data-dir=') || arg === '--data-dir')
+  let explicitDir: string | undefined
+
   if (dataDirArgs.length > 1) {
     console.error('Duplicate --data-dir arguments are not allowed.')
     app.exit(1)
@@ -442,10 +652,19 @@ function setupDataDirectory(): void {
       app.exit(1)
       return
     }
-    mkdirSync(val, { recursive: true })
-    app.setPath('userData', val)
-    app.setPath('sessionData', join(val, 'session'))
+    explicitDir = val
   }
+
+  app.setName('p2p-multiple-groups')
+
+  const appData = app.getPath('appData')
+  const { dataDirectory } = prepareProfileDirectory({
+    appDataDirectory: appData,
+    explicitDataDirectory: explicitDir
+  })
+
+  app.setPath('userData', dataDirectory)
+  app.setPath('sessionData', join(dataDirectory, 'session'))
 
   const gotLock = app.requestSingleInstanceLock()
   if (!gotLock) {
@@ -462,6 +681,5 @@ function setupDataDirectory(): void {
 }
 
 setupDataDirectory()
-
 
 app.whenReady().then(init)

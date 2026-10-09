@@ -2,41 +2,66 @@ import React, { useState } from 'react'
 import type {
   ActionResult,
   ConnectOptions,
+  GroupKey,
+  JoinGroupOptions,
+  P2pGroupState,
   P2pNetworkState,
   P2pRecoveryEvent
 } from '../../../../shared/p2p.ts'
-import { parseNetworkInvitation } from '../../../../shared/p2p.ts'
+import { parseGroupInvitation } from '../../../../shared/p2p.ts'
 
 interface NetworkProps {
   headingRef: React.RefObject<HTMLHeadingElement | null>
-  network: P2pNetworkState
-  recoveryEvents: P2pRecoveryEvent[]
-  onConnect: (options: ConnectOptions) => Promise<ActionResult>
-  onDisconnect: () => Promise<ActionResult>
-  onSetEligibility: (eligible: boolean) => Promise<ActionResult>
+  groups?: P2pGroupState[]
+  selectedGroupKey?: string | null
+  onSelectGroup?: (groupKey: string) => void
+  identity?: { peerId: string; displayName: string }
+  onJoinGroup?: (options: JoinGroupOptions) => Promise<ActionResult>
+  onLeaveGroup?: (groupKey: string) => Promise<ActionResult>
+  onSetGroupAutoJoin?: (groupKey: string, autoJoin: boolean) => Promise<ActionResult>
+  onSetGroupEligibility?: (groupKey: string, eligible: boolean) => Promise<ActionResult>
+  onForgetGroup?: (groupKey: string) => Promise<ActionResult>
+  onDisconnectAll?: () => Promise<ActionResult>
+  // Backward compatibility legacy props
+  network?: P2pNetworkState
+  recoveryEvents?: P2pRecoveryEvent[]
+  onConnect?: (options: ConnectOptions) => Promise<ActionResult>
+  onDisconnect?: () => Promise<ActionResult>
+  onSetEligibility?: (eligible: boolean) => Promise<ActionResult>
 }
 
 export const Network: React.FC<NetworkProps> = ({
   headingRef,
+  groups = [],
+  selectedGroupKey = null,
+  onSelectGroup,
+  identity,
+  onJoinGroup,
+  onLeaveGroup,
+  onSetGroupAutoJoin,
+  onSetGroupEligibility,
+  onForgetGroup,
+  onDisconnectAll,
   network,
-  recoveryEvents,
+  recoveryEvents = [],
   onConnect,
   onDisconnect,
   onSetEligibility
 }) => {
-  const [displayName, setDisplayName] = useState(network.displayName || '')
+  const [displayName, setDisplayName] = useState(identity?.displayName || network?.displayName || '')
   const [invitationText, setInvitationText] = useState('')
-  const [eligible, setEligible] = useState(network.supernodeEligible)
+  const [eligible, setEligible] = useState(true)
+  const [autoJoin, setAutoJoin] = useState(true)
+  const [rememberInvitation, setRememberInvitation] = useState(true)
   const [relayOnly, setRelayOnly] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
 
-  const isConnected = network.status === 'connected' || network.status === 'degraded' || network.status === 'recovering'
-  const isConnecting = network.status === 'connecting'
-
-  const handleConnectSubmit = async (e: React.FormEvent): Promise<void> => {
+  const handleJoinSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     setFormError(null)
+    setActionMessage(null)
 
     const trimmedName = displayName.trim()
     if (!trimmedName) {
@@ -44,292 +69,327 @@ export const Network: React.FC<NetworkProps> = ({
       return
     }
 
-    const invitation = parseNetworkInvitation(invitationText)
+    const invitation = parseGroupInvitation(invitationText)
     if (!invitation) {
-      setFormError('Invalid invitation JSON. Please paste a valid Kazaa network invitation.')
+      setFormError('Invalid invitation JSON. Please paste a valid network invitation.')
       return
     }
 
     setIsSubmitting(true)
-    // Clear invitation text immediately to avoid echoing secret token in UI
     setInvitationText('')
 
-    const result = await onConnect({
-      signalingUrl: invitation.signalingUrl,
-      roomId: invitation.roomId,
-      token: invitation.token,
-      displayName: trimmedName,
-      supernodeEligible: eligible,
-      relayOnly
-    })
+    let result: ActionResult
+    if (onJoinGroup) {
+      result = await onJoinGroup({
+        invitation,
+        displayName: trimmedName,
+        supernodeEligible: eligible,
+        autoJoin,
+        relayOnly,
+        rememberInvitation
+      })
+    } else if (onConnect) {
+      result = await onConnect({
+        signalingUrl: invitation.signalingUrl,
+        roomId: invitation.groupId,
+        token: invitation.token,
+        displayName: trimmedName,
+        supernodeEligible: eligible,
+        relayOnly
+      })
+    } else {
+      result = { ok: false, code: 'IO_ERROR', message: 'Join handler unavailable' }
+    }
 
     setIsSubmitting(false)
     if (!result.ok) {
       setFormError(`${result.code}: ${result.message}`)
+    } else {
+      setActionMessage('Successfully joined group!')
     }
   }
 
-  const handleDisconnectClick = async (): Promise<void> => {
+  const handleLeaveClick = async (groupKey: string): Promise<void> => {
+    if (!onLeaveGroup) return
     setIsSubmitting(true)
-    await onDisconnect()
+    const res = await onLeaveGroup(groupKey)
     setIsSubmitting(false)
-  }
-
-  const handleEligibilityToggle = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const nextVal = e.target.checked
-    setEligible(nextVal)
-    if (isConnected) {
-      await onSetEligibility(nextVal)
+    if (!res.ok) {
+      setFormError(`${res.code}: ${res.message}`)
     }
   }
+
+  const handleForgetClick = async (groupKey: string): Promise<void> => {
+    if (!onForgetGroup) return
+    setIsSubmitting(true)
+    const res = await onForgetGroup(groupKey)
+    setIsSubmitting(false)
+    if (!res.ok) {
+      setFormError(`${res.code}: ${res.message}`)
+    }
+  }
+
+  const selectedGroup = groups.find((g) => g.groupKey === selectedGroupKey) || groups[0]
 
   return (
     <section className="view-content fluid-content" aria-labelledby="network-heading">
       <h1 id="network-heading" ref={headingRef} tabIndex={-1} className="view-heading">
-        Network
+        Network & Groups
       </h1>
 
-      {network.message && (
-        <div className={`status-banner status-${network.status}`} role="status">
-          {network.message}
+      {actionMessage && (
+        <div className="status-banner status-connected" role="status">
+          {actionMessage}
         </div>
       )}
 
-      {!isConnected && !isConnecting ? (
-        <div className="network-connect-panel">
-          <form className="settings-form" onSubmit={handleConnectSubmit}>
-            <div className="form-group">
-              <label htmlFor="p2p-display-name" className="form-label">
-                Display name
-              </label>
-              <input
-                id="p2p-display-name"
-                type="text"
-                className="text-input"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                maxLength={40}
-                required
-                disabled={isSubmitting}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="p2p-invitation" className="form-label">
-                Network invitation (JSON)
-              </label>
-              <textarea
-                id="p2p-invitation"
-                className="text-area-input"
-                rows={4}
-                value={invitationText}
-                onChange={(e) => setInvitationText(e.target.value)}
-                placeholder='Paste {"version":1,"signalingUrl":"...","roomId":"...","token":"..."}'
-                required
-                disabled={isSubmitting}
-              />
-              <p className="field-hint">
-                Paste the invitation provided by the classroom or network operator. The token will not be stored on disk.
-              </p>
-            </div>
-
-            <div className="checkbox-group">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={eligible}
-                  onChange={handleEligibilityToggle}
-                  disabled={isSubmitting}
-                />
-                Allow this computer to become a supernode
-              </label>
-              <p className="field-hint">
-                Longest-connected eligible peers are chosen to index metadata and route search queries.
-              </p>
-            </div>
-
-            <div className="checkbox-group">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={relayOnly}
-                  onChange={(e) => setRelayOnly(e.target.checked)}
-                  disabled={isSubmitting}
-                />
-                Force relayed connection (Relay-only / TURN)
-              </label>
-              <p className="field-hint">
-                Forces all peer traffic through the authenticated TURN relay for testing strict NAT environments.
-              </p>
-            </div>
-
-            {formError && (
-              <div className="error-message" role="alert">
-                {formError}
-              </div>
-            )}
-
-            <div className="form-actions">
-              <button type="submit" className="action-button primary-button" disabled={isSubmitting}>
-                {isSubmitting ? 'Connecting...' : 'Connect to Network'}
-              </button>
-            </div>
-          </form>
+      {/* Active Groups List */}
+      <div className="transfers-section" style={{ marginBottom: '24px' }}>
+        <div className="view-header-row" style={{ marginBottom: '12px' }}>
+          <h2 className="section-subheading" style={{ margin: 0 }}>
+            Joined Groups ({groups.length})
+          </h2>
+          {groups.length > 0 && onDisconnectAll && (
+            <button
+              type="button"
+              className="action-button secondary-button"
+              onClick={() => onDisconnectAll()}
+              disabled={isSubmitting}
+            >
+              Disconnect All
+            </button>
+          )}
         </div>
-      ) : (
-        <div className="network-active-panel">
+
+        {groups.length === 0 ? (
+          <p className="empty-hint">You have not joined any P2P groups yet. Join a group below to start sharing and searching files.</p>
+        ) : (
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Group ID</th>
+                  <th>Status</th>
+                  <th>Role</th>
+                  <th>Members</th>
+                  <th>Auto-Join</th>
+                  <th>Supernode</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((g) => {
+                  const isSelected = g.groupKey === (selectedGroupKey || groups[0]?.groupKey)
+                  return (
+                    <tr
+                      key={g.groupKey}
+                      style={{
+                        backgroundColor: isSelected ? 'var(--color-bg-selected, rgba(66, 153, 225, 0.1))' : undefined,
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => onSelectGroup?.(g.groupKey)}
+                    >
+                      <td className="filename-cell">
+                        <strong>{g.groupId}</strong>
+                        {isSelected && <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--color-primary)' }}>(active)</span>}
+                      </td>
+                      <td>
+                        <span className={`badge badge-${g.network.status}`}>{g.network.status}</span>
+                      </td>
+                      <td>
+                        <span className={`badge badge-role-${g.network.role}`}>{g.network.role}</span>
+                      </td>
+                      <td>{g.network.members.length}</td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={g.autoJoin}
+                          onChange={(e) => onSetGroupAutoJoin?.(g.groupKey, e.target.checked)}
+                          onClick={(e) => e.stopPropagation()}
+                          title="Automatically rejoin this group on launch"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={g.network.supernodeEligible}
+                          onChange={(e) => onSetGroupEligibility?.(g.groupKey, e.target.checked)}
+                          onClick={(e) => e.stopPropagation()}
+                          title="Allow this peer to be elected supernode for this group"
+                        />
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            type="button"
+                            className="action-button secondary-button"
+                            style={{ padding: '2px 8px', fontSize: '12px' }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleLeaveClick(g.groupKey)
+                            }}
+                            disabled={isSubmitting}
+                          >
+                            Leave
+                          </button>
+                          <button
+                            type="button"
+                            className="action-button secondary-button"
+                            style={{ padding: '2px 8px', fontSize: '12px' }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleForgetClick(g.groupKey)
+                            }}
+                            disabled={isSubmitting}
+                          >
+                            Forget
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Selected Group Inspection */}
+      {selectedGroup && (
+        <div className="network-active-panel" style={{ marginBottom: '24px' }}>
+          <h2 className="section-subheading">Active Group Details: {selectedGroup.groupId}</h2>
           <div className="network-summary-card">
             <div className="summary-row">
               <span className="summary-label">Status:</span>
-              <span className={`badge badge-${network.status}`}>{network.status}</span>
+              <span className={`badge badge-${selectedGroup.network.status}`}>{selectedGroup.network.status}</span>
             </div>
             <div className="summary-row">
               <span className="summary-label">Your Role:</span>
-              <span className={`badge badge-role-${network.role}`}>
-                {network.role === 'supernode' ? 'Supernode (Indexing & Routing)' : 'Ordinary Peer'}
+              <span className={`badge badge-role-${selectedGroup.network.role}`}>
+                {selectedGroup.network.role === 'supernode' ? 'Supernode (Indexing & Routing)' : 'Ordinary Peer'}
               </span>
             </div>
-            <div className="summary-row">
-              <span className="summary-label">Room:</span>
-              <span className="code-text">{network.roomId || 'None'}</span>
-            </div>
-            {network.role === 'ordinary' && (
+            {selectedGroup.network.role === 'ordinary' && (
               <>
                 <div className="summary-row">
                   <span className="summary-label">Primary Supernode:</span>
-                  <span className="code-text">{network.primaryPeerId || 'Detecting...'}</span>
+                  <span className="code-text">{selectedGroup.network.primaryPeerId || 'Detecting...'}</span>
                 </div>
                 <div className="summary-row">
                   <span className="summary-label">Standby Supernode:</span>
-                  <span className="code-text">{network.standbyPeerId || 'None'}</span>
+                  <span className="code-text">{selectedGroup.network.standbyPeerId || 'None'}</span>
                 </div>
               </>
             )}
-
-            <div className="checkbox-group" style={{ marginTop: '12px' }}>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={eligible}
-                  onChange={handleEligibilityToggle}
-                />
-                Eligible to become supernode
-              </label>
+            <div className="summary-row">
+              <span className="summary-label">Active Links:</span>
+              <span>{selectedGroup.network.links.filter((l) => l.state === 'open').length} open WebRTC link(s)</span>
             </div>
-
-            <div className="form-actions" style={{ marginTop: '16px' }}>
-              <button
-                type="button"
-                className="action-button secondary-button"
-                onClick={handleDisconnectClick}
-                disabled={isSubmitting}
-              >
-                Disconnect
-              </button>
-            </div>
-          </div>
-
-          <div className="table-section">
-            <h2 className="section-subheading">Network Members ({network.members.length})</h2>
-            {network.members.length === 0 ? (
-              <p className="empty-hint">No peers connected to room.</p>
-            ) : (
-              <div className="table-wrapper">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Role</th>
-                      <th>Order</th>
-                      <th>Eligible</th>
-                      <th>Peer ID</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {network.members.map((m) => (
-                      <tr key={m.peerId} className={m.peerId === network.peerId ? 'self-row' : ''}>
-                        <td>
-                          {m.displayName} {m.peerId === network.peerId && '(You)'}
-                        </td>
-                        <td>
-                          <span className={`badge badge-role-${m.role}`}>{m.role}</span>
-                        </td>
-                        <td>#{m.joinOrder}</td>
-                        <td>{m.supernodeEligible ? 'Yes' : 'No'}</td>
-                        <td className="code-cell">{m.peerId.slice(0, 8)}...</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="table-section">
-            <h2 className="section-subheading">Direct / Relay Links ({network.links.length})</h2>
-            {network.links.length === 0 ? (
-              <p className="empty-hint">No active peer links.</p>
-            ) : (
-              <div className="table-wrapper">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Target Peer</th>
-                      <th>Link State</th>
-                      <th>Transport Path</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {network.links.map((link) => (
-                      <tr key={link.peerId}>
-                        <td className="code-cell">{link.peerId.slice(0, 8)}...</td>
-                        <td>
-                          <span className={`badge badge-${link.state}`}>{link.state}</span>
-                        </td>
-                        <td>
-                          <span className={`badge badge-path-${link.path}`}>{link.path}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="table-section">
-            <h2 className="section-subheading">Recovery & Self-Healing Events</h2>
-            {recoveryEvents.length === 0 ? (
-              <p className="empty-hint">No recovery events recorded.</p>
-            ) : (
-              <div className="table-wrapper">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Event</th>
-                      <th>Duration</th>
-                      <th>Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recoveryEvents.slice(0, 20).map((ev) => (
-                      <tr key={ev.id}>
-                        <td>{new Date(ev.at).toLocaleTimeString()}</td>
-                        <td>
-                          <span className="badge">{ev.type}</span>
-                        </td>
-                        <td>{ev.durationMs !== null ? `${ev.durationMs}ms` : '—'}</td>
-                        <td className="message-cell">{ev.message}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </div>
       )}
+
+      {/* Join New Group Panel */}
+      <div className="network-connect-panel">
+        <h2 className="section-subheading">Join a Group</h2>
+        <form className="settings-form" onSubmit={handleJoinSubmit}>
+          <div className="form-group">
+            <label htmlFor="p2p-display-name" className="form-label">
+              Your Display Name
+            </label>
+            <input
+              id="p2p-display-name"
+              type="text"
+              className="text-input"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              maxLength={40}
+              required
+              disabled={isSubmitting}
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="p2p-invitation" className="form-label">
+              Group Invitation (JSON)
+            </label>
+            <textarea
+              id="p2p-invitation"
+              className="text-area-input"
+              rows={4}
+              value={invitationText}
+              onChange={(e) => setInvitationText(e.target.value)}
+              placeholder='Paste {"version":2,"signalingUrl":"...","groupId":"...","token":"..."}'
+              required
+              disabled={isSubmitting}
+            />
+            <p className="field-hint">
+              Paste a group invitation generated by create-invite or provided by your network operator.
+            </p>
+          </div>
+
+          <div className="checkbox-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={eligible}
+                onChange={(e) => setEligible(e.target.checked)}
+                disabled={isSubmitting}
+              />
+              Allow this computer to become a supernode in this group
+            </label>
+          </div>
+
+          <div className="checkbox-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={autoJoin}
+                onChange={(e) => setAutoJoin(e.target.checked)}
+                disabled={isSubmitting}
+              />
+              Automatically join this group on startup
+            </label>
+          </div>
+
+          <div className="checkbox-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={rememberInvitation}
+                onChange={(e) => setRememberInvitation(e.target.checked)}
+                disabled={isSubmitting}
+              />
+              Remember invitation token securely on this device
+            </label>
+          </div>
+
+          <div className="checkbox-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={relayOnly}
+                onChange={(e) => setRelayOnly(e.target.checked)}
+                disabled={isSubmitting}
+              />
+              Force relayed connection (Relay-only / TURN)
+            </label>
+          </div>
+
+          {formError && (
+            <div className="error-message" role="alert">
+              {formError}
+            </div>
+          )}
+
+          <div className="form-actions">
+            <button type="submit" className="action-button primary-button" disabled={isSubmitting}>
+              {isSubmitting ? 'Joining...' : 'Join Group'}
+            </button>
+          </div>
+        </form>
+      </div>
     </section>
   )
 }

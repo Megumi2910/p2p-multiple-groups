@@ -25,6 +25,7 @@ import {
 export interface SignalingGroupConfig {
   groupId: string
   token: string
+  name?: string
 }
 
 export interface SignalingOptions {

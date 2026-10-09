@@ -91,7 +91,7 @@ describe('End-to-End Verified Peer Transfers', () => {
 
         const check = (s: P2pState) => {
           if (done) return
-          if (rejectPredicate) {
+          if (typeof rejectPredicate === 'function') {
             const err = rejectPredicate(s)
             if (err) {
               done = true
@@ -167,7 +167,9 @@ describe('End-to-End Verified Peer Transfers', () => {
       // 2. Downloader searches for files
       const searchDone = waitForState(
         downloader,
-        (s) => s.search.status === 'complete' && s.search.results.some((r) => r.file.name === 'payload.bin'),
+        (s) => {
+          return s.search.status === 'complete' && s.search.results.some((r) => r.file.name === 'payload.bin')
+        },
         25000,
         undefined,
         'search-done'

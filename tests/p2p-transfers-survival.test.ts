@@ -12,7 +12,8 @@ function waitForState(
   engine: PeerEngine,
   predicate: (state: P2pState) => boolean,
   timeoutMs = 25000,
-  rejectPredicate?: (state: P2pState) => string | null
+  rejectPredicate?: (state: P2pState) => string | null,
+  label?: string
 ): Promise<P2pState> {
   const { promise, resolve, reject } = Promise.withResolvers<P2pState>()
   let done = false
@@ -21,7 +22,7 @@ function waitForState(
     if (!done) {
       done = true
       unsub()
-      reject(new Error(`Timeout (${timeoutMs}ms) waiting for peer state condition`))
+      reject(new Error(`Timeout (${timeoutMs}ms) waiting for: ${label || 'peer state condition'}`))
     }
   }, timeoutMs)
 
@@ -102,15 +103,11 @@ describe('Peer Transfer Survival Across Supernode Failure', () => {
       uploader = await createEngine('Uploader', false)
       downloader = await createEngine('Downloader', false)
 
-      function waitForPeers(engine: PeerEngine, count: number): Promise<P2pState> {
-        return waitForState(engine, (s) => s.network.members.length === count, 25000)
-      }
-
       await Promise.all([
-        waitForPeers(sn1, 4),
-        waitForPeers(sn2, 4),
-        waitForPeers(uploader, 4),
-        waitForPeers(downloader, 4)
+        waitForState(sn1, (s) => s.network.members.length === 4, 25000, undefined, 'sn1-peers-4'),
+        waitForState(sn2, (s) => s.network.members.length === 4, 25000, undefined, 'sn2-peers-4'),
+        waitForState(uploader, (s) => s.network.members.length === 4 && Boolean(s.network.primaryPeerId) && s.network.links.some(l => l.peerId === s.network.primaryPeerId && l.state === 'open'), 25000, undefined, 'uploader-peers-4-open'),
+        waitForState(downloader, (s) => s.network.members.length === 4 && Boolean(s.network.primaryPeerId) && s.network.links.some(l => l.peerId === s.network.primaryPeerId && l.state === 'open'), 25000, undefined, 'downloader-peers-4-open')
       ])
 
       // Prepare large file (256 KiB) on uploader

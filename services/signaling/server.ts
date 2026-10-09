@@ -556,6 +556,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
 
           group.members.set(peerId, member)
           sess.joinedGroupIds.add(msg.groupId)
+          group.revision++
 
           sendToWs(ws, {
             v: 2,
@@ -567,7 +568,6 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
             peers: getRosterV2(group)
           })
 
-          group.revision++
           broadcastGroupRosterV2(group, peerId)
           return
         }
@@ -721,6 +721,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
         }
         group.members.set(msg.peerId, member)
 
+        group.revision++
         sendToWs(ws, {
           v: 1,
           type: 'welcome',
@@ -729,7 +730,6 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
           iceConfig: generateIceConfig(sessionId)
         } as ServerSignalingMessage)
 
-        group.revision++
         broadcastGroupRosterV1(group)
         return
       }

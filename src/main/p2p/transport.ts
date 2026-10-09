@@ -626,24 +626,10 @@ export class TransportManager {
         if (parsed.type === 'hello') return
 
         const groupCtx = this.groupContexts.get(parsed.groupId)
-        if (!groupCtx) {
-          // Unknown or unjoined group, ignore without dropping physical link
-          return
-        }
-        if (parsed.epoch !== groupCtx.epoch) {
-          // Stale epoch, ignore
-          return
-        }
+        if (!groupCtx) return
+        if (parsed.epoch !== groupCtx.epoch) return
         const sender = groupCtx.peers.get(record.peerId)
-        if (!sender || sender.membershipId !== parsed.senderMembershipId) {
-          // Sender membership incarnated, drop
-          return
-        }
-        if (parsed.revision > groupCtx.revision) {
-          // Newer than authoritative roster revision, ignore
-          return
-        }
-
+        if (!sender || sender.membershipId !== parsed.senderMembershipId) return
         this.events.onControlMessage(record.peerId, parsed)
         return
       }
@@ -652,7 +638,6 @@ export class TransportManager {
       if (isOverlayControlMessage(parsed)) {
         const overlayMsg = parsed as OverlayControlMessage
         if (overlayMsg.epoch !== this.legacyEpoch) {
-          console.log('EPOCH_CHECK_DROPPED:', { parsedEpoch: overlayMsg.epoch, legacyEpoch: this.legacyEpoch, type: overlayMsg.type })
           return
         }
         this.events.onControlMessage(record.peerId, parsed)

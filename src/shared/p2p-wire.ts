@@ -962,7 +962,6 @@ export function isOverlayControlMessageV2(val: unknown): val is OverlayControlMe
             typeof e === 'object' &&
             isUuid((e as Record<string, unknown>).ownerPeerId) &&
             isUuid((e as Record<string, unknown>).ownerSessionId) &&
-            isUuid((e as Record<string, unknown>).ownerMembershipId) &&
             isValidFileMetadata((e as Record<string, unknown>).file)
         ) &&
         typeof r.done === 'boolean' &&

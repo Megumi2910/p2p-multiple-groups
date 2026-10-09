@@ -16,6 +16,7 @@ export const CATALOG_STAGING_TTL_MS = 5000 // 5s
 export interface OwnerCatalogue {
   peerId: string
   sessionId: string
+  membershipId?: string
   generation: number
   entries: P2pFileMetadata[]
 }
@@ -118,9 +119,15 @@ export class SupernodeIndexManager {
       return false
     }
 
+    const senderMembershipId =
+      msg && typeof msg === 'object' && 'senderMembershipId' in msg && typeof (msg as Record<string, unknown>).senderMembershipId === 'string'
+        ? ((msg as Record<string, unknown>).senderMembershipId as string)
+        : ownerSessionId
+
     this.ownerCatalogues.set(ownerPeerId, {
       peerId: ownerPeerId,
       sessionId: ownerSessionId,
+      membershipId: senderMembershipId,
       generation: msg.generation,
       entries: staged.entries
     })
@@ -132,11 +139,13 @@ export class SupernodeIndexManager {
     localPeerId: string,
     localSessionId: string,
     generation: number,
-    entries: P2pFileMetadata[]
+    entries: P2pFileMetadata[],
+    membershipId?: string
   ): void {
     this.ownerCatalogues.set(localPeerId, {
       peerId: localPeerId,
       sessionId: localSessionId,
+      membershipId: membershipId || localSessionId,
       generation,
       entries: [...entries]
     })
@@ -197,8 +206,9 @@ export class SupernodeIndexManager {
           matchedEntries.push({
             ownerPeerId: catalogue.peerId,
             ownerSessionId: catalogue.sessionId,
+            ownerMembershipId: catalogue.membershipId || catalogue.sessionId,
             file
-          })
+          } as unknown as WireSearchResultEntry)
           if (matchedEntries.length >= MAX_SEARCH_RESULTS) {
             return { entries: matchedEntries, isNewQuery: true }
           }

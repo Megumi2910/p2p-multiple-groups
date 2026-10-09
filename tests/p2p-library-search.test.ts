@@ -41,7 +41,7 @@ function waitForState(
 
   const check = (s: P2pState) => {
     if (done) return
-    if (rejectPredicate) {
+    if (typeof rejectPredicate === 'function') {
       const err = rejectPredicate(s)
       if (err) {
         done = true
@@ -303,7 +303,11 @@ describe('End-to-End Search & Catalogue Propagation', () => {
       // Wait for peer to see supernode and have its role set to ordinary
       await waitForState(
         peerEngine,
-        (state) => state.network.status === 'connected' && state.network.role === 'ordinary' && Boolean(state.network.primaryPeerId),
+        (state) =>
+          state.network.status === 'connected' &&
+          state.network.role === 'ordinary' &&
+          Boolean(state.network.primaryPeerId) &&
+          state.network.links.some((l) => l.peerId === state.network.primaryPeerId && l.state === 'open'),
         25000,
         undefined,
         'peer-ordinary-connected'
@@ -316,10 +320,13 @@ describe('End-to-End Search & Catalogue Propagation', () => {
 
       const ackPromise = waitForState(
         peerEngine,
-        (state) =>
-          state.library.acknowledgedGeneration !== null &&
-          state.library.acknowledgedGeneration === state.library.advertisedGeneration &&
-          state.library.files.some((f) => f.name === 'great-anthem.mp3' && f.status === 'shared'),
+        (state) => {
+          return (
+            state.library.acknowledgedGeneration !== null &&
+            state.library.acknowledgedGeneration === state.library.advertisedGeneration &&
+            state.library.files.some((f) => f.name === 'great-anthem.mp3' && f.status === 'shared')
+          )
+        },
         25000,
         (s) => {
           const errFile = s.library.files.find((f) => f.status === 'error' || f.status === 'unavailable')

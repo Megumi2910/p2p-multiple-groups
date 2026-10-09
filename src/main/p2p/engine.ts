@@ -1,35 +1,60 @@
-import WebSocket from 'ws'
-import type { RTCDataChannel } from 'werift'
+import { randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import {
+  makeGroupKey,
+  validateDisplayName,
+  validateJoinGroupOptions,
+  type ActionResult,
   type ConnectOptions,
+  type GroupInvitation,
+  type GroupKey,
+  type JoinGroupOptions,
+  type MultiGroupLibraryFile,
+  type MultiGroupNetworkState,
+  type MultiGroupP2pState,
+  type MultiGroupRosterMember,
+  type MultiGroupSearchResult,
+  type MultiGroupTransfer,
   type P2pCandidatePath,
+  type P2pErrorCode,
+  type P2pGroupCatalogState,
+  type P2pGroupState,
   type P2pLinkState,
   type P2pNetworkState,
+  type P2pNetworkStatus,
   type P2pRecoveryEvent,
   type P2pRole,
   type P2pRosterMember,
+  type P2pSearchResult,
   type P2pState,
-  validateConnectOptions
+  type P2pTransfer
 } from '../../shared/p2p.ts'
 import {
-  isServerSignalingMessage,
+  isServerSignalingMessageV2,
+  MAX_CATALOG_BATCH_ENTRIES,
+  MAX_SEARCH_QUERY_LENGTH,
+  type GroupJoinedMessage,
+  type OverlayCatalogAckMessageV2,
+  type OverlayCatalogBatchMessageV2,
+  type OverlayCatalogBeginMessageV2,
+  type OverlayCatalogEndMessageV2,
   type OverlayControlMessage,
-  type OverlayPingMessage,
-  type OverlayPongMessage,
-  type ServerSignalingMessage,
-  type SignalingRosterPeer,
-  type OverlayCatalogBeginMessage,
-  type OverlayCatalogBatchMessage,
-  type OverlayCatalogEndMessage
+  type OverlayControlMessageV2,
+  type OverlaySearchMessageV2,
+  type ServerSignalingMessageV2,
+  type SignalingIceConfig,
+  type SignalingRosterPeerV2
 } from '../../shared/p2p-wire.ts'
-import type { P2pSearchResult } from '../../shared/p2p.ts'
-import { randomUUID } from 'node:crypto'
 import { LibraryManager } from './library.ts'
 import { SupernodeIndexManager, SearchResultsTracker } from './search-index.ts'
 import { TransferManager } from './transfers.ts'
-import { createPeerStore, type PeerStore } from './peer-store.ts'
-import { TransportManager } from './transport.ts'
+import {
+  createMultiGroupPeerStore,
+  type MultiGroupPeerStore,
+  type PersistedGroupV2
+} from './peer-store.ts'
+import { TransportManager, type TransportEvents } from './transport.ts'
+import { SignalingClient } from './signaling-client.ts'
 import {
   calculatePeerRole,
   electSupernodes,
@@ -37,495 +62,168 @@ import {
   selectSupernodesForPeer
 } from './election.ts'
 
+export interface CreatePeerEngineOptions {
+  dataDirectory: string
+  transportFactory?: (signalingUrl: string, events: TransportEvents) => TransportManager
+}
+
 export interface PeerEngine {
-  getState(): P2pState
-  subscribe(listener: (state: P2pState) => void): () => void
+  getState(): MultiGroupP2pState & P2pState
+  subscribe(listener: (state: MultiGroupP2pState & P2pState) => void): () => void
+  joinGroup(options: JoinGroupOptions): Promise<ActionResult>
+  resumeGroup(groupKey: GroupKey): Promise<ActionResult>
+  leaveGroup(groupKey: GroupKey): Promise<ActionResult>
+  forgetGroup(groupKey: GroupKey): Promise<ActionResult>
+  disconnectAll(): Promise<ActionResult>
+  setSupernodeEligible(groupKey: GroupKey, eligible: boolean): Promise<ActionResult>
+  setRelayOnly(relayOnly: boolean): Promise<ActionResult>
+  addFiles(groupKey: GroupKey | null, paths: readonly string[]): Promise<ActionResult>
+  rescanLibrary(): Promise<ActionResult>
+  removeFile(fileId: string): Promise<ActionResult>
+  setFileGroups(fileId: string, groupKeys: GroupKey[]): Promise<ActionResult>
+  search(groupKey: GroupKey, queryText: string): Promise<ActionResult>
+  download(groupKey: GroupKey, resultId: string, destination: string): Promise<ActionResult>
+  cancelTransfer(transferId: string): Promise<ActionResult>
+  resolveSearchResult(groupKey: GroupKey, resultId: string): MultiGroupSearchResult | undefined
+  getAuthorizedFile(fileId: string): Promise<{ path: string; size: number; sha256: string }>
+  dispose(): Promise<void>
+
+  // Backward compatibility signatures for existing tests and fixtures
   connect(options: ConnectOptions): Promise<void>
   disconnect(): Promise<void>
   setSupernodeEligible(eligible: boolean): Promise<void>
   addFiles(paths: readonly string[]): Promise<void>
-  rescanLibrary(): Promise<void>
-  removeFile(fileId: string): Promise<void>
   search(query: string): Promise<void>
   download(resultId: string, destination: string): Promise<void>
-  cancelTransfer(transferId: string): Promise<void>
   resolveSearchResult(resultId: string): P2pSearchResult | undefined
-  getAuthorizedFile(fileId: string): Promise<{ path: string; size: number; sha256: string }>
-  dispose(): Promise<void>
 }
 
-export async function createPeerEngine(options: { dataDirectory: string }): Promise<PeerEngine> {
-  const store: PeerStore = await createPeerStore(options.dataDirectory)
+interface GroupRuntime {
+  groupKey: GroupKey
+  groupId: string
+  signalingUrl: string
+  autoJoin: boolean
+  supernodeEligible: boolean
+  credentialStatus: 'memory' | 'stored' | 'required'
+
+  status: P2pNetworkStatus
+  role: P2pRole
+  epoch: string | null
+  membershipRevision: number
+  membershipId: string | null
+  primaryPeerId: string | null
+  standbyPeerId: string | null
+  message: string | null
+  members: MultiGroupRosterMember[]
+  activeElectedSupernodes: string[]
+  lossDetectedTimestamp: number | null
+
+  supernodeIndex: SupernodeIndexManager
+  searchResults: SearchResultsTracker
+  recoveryRing: RecoveryEventRingBuffer
+
+  searchQueryId: string | null
+  searchQueryText: string
+  searchStatus: 'idle' | 'searching' | 'complete' | 'partial' | 'error'
+  searchMessage: string | null
+  searchTimeoutTimer?: NodeJS.Timeout
+
+  advertisedGeneration: number
+  acknowledgedGeneration: number | null
+  lastRosterRenewedAt: number
+  isJoined: boolean
+}
+
+export async function createPeerEngine(
+  optsOrDir: string | CreatePeerEngineOptions
+): Promise<PeerEngine> {
+  const options: CreatePeerEngineOptions =
+    typeof optsOrDir === 'string' ? { dataDirectory: optsOrDir } : optsOrDir
+
+  const store: MultiGroupPeerStore = await createMultiGroupPeerStore(options.dataDirectory)
   const persisted = store.get()
 
-  const recoveryRing = new RecoveryEventRingBuffer(100)
-  const subscribers = new Set<(state: P2pState) => void>()
-  let stateRevision = 1
-  let isDisposed = false
-
-  // Active network state
-  let currentStatus: P2pNetworkState['status'] = 'disconnected'
-  let currentSessionId: string | null = null
-  let currentEpoch: string | null = null
-  let currentMembershipRevision = 0
-  let currentRole: P2pRole = 'ordinary'
-  let currentPrimaryId: string | null = null
-  let currentStandbyId: string | null = null
-  let currentMessage: string | null = null
-  let currentMembers: P2pRosterMember[] = []
-  let lastRosterTimestamp = 0
-
-  // Recovery tracking
-  let lossDetectedTimestamp: number | null = null
-  let activeElectedSupernodes: string[] = []
-
-  // Link responsiveness tracking: peerId -> timestamp of last pong
-  const linkPongs = new Map<string, number>()
-
-  // Signaling socket and reconnect timer
-  let signalingWs: WebSocket | null = null
-  let activeConnectOptions: ConnectOptions | null = null
-  let reconnectTimer: NodeJS.Timeout | null = null
-  let reconnectAttempts = 0
-  let isExplicitlyDisconnected = true
-  // Outbound signaling pacer to prevent tripping server rate limiter
-  const outboundSignalingQueue: string[] = []
-  let signalingDrainTimer: NodeJS.Timeout | null = null
-  let clientTokens = 30
-  let lastClientTokenUpdate = Date.now()
-
-  function processSignalingQueue(): void {
-    if (!signalingWs || signalingWs.readyState !== WebSocket.OPEN) {
-      if (signalingDrainTimer) {
-        clearInterval(signalingDrainTimer)
-        signalingDrainTimer = null
-      }
-      return
-    }
-    const now = Date.now()
-    const elapsed = (now - lastClientTokenUpdate) / 1000
-    lastClientTokenUpdate = now
-    clientTokens = Math.min(30, clientTokens + elapsed * 18)
-
-    while (outboundSignalingQueue.length > 0 && clientTokens >= 1) {
-      const msgStr = outboundSignalingQueue.shift()!
-      clientTokens -= 1
-      try {
-        signalingWs.send(msgStr)
-      } catch {
-        // ignore send error
-      }
-    }
-
-    if (outboundSignalingQueue.length === 0 && signalingDrainTimer) {
-      clearInterval(signalingDrainTimer)
-      signalingDrainTimer = null
-    }
-  }
-
-  function enqueueSignaling(msgStr: string): void {
-    outboundSignalingQueue.push(msgStr)
-    processSignalingQueue()
-    if (outboundSignalingQueue.length > 0 && !signalingDrainTimer) {
-      signalingDrainTimer = setInterval(processSignalingQueue, 40)
-    }
-  }
-  // Library and search managers
   const library = new LibraryManager()
-  const supernodeIndex = new SupernodeIndexManager()
-  const searchResults = new SearchResultsTracker()
+  let isDisposed = false
+  let stateRevision = 1
+  let relayOnly = persisted.relayOnly
+
+  const subscribers = new Set<(state: MultiGroupP2pState & P2pState) => void>()
+  const groups = new Map<GroupKey, GroupRuntime>()
+  const memoryCredentials = new Map<GroupKey, string>()
+
+  const endpointClients = new Map<string, SignalingClient>()
+  const endpointTransports = new Map<string, TransportManager>()
+
+  // Load stored shared files into library
+  await library.loadStoredFiles(persisted.sharedFiles.map((f) => ({ fileId: f.fileId, path: f.path })))
+
   const transfers = new TransferManager({
     onStateChange: () => publishState(),
     getAuthorizedFile: (fileId) => library.getAuthorizedFile(fileId),
-    getPeerPath: (peerId) => transport.getLinkState(peerId)?.path || 'unknown'
+    getPeerPath: (peerId) => {
+      for (const t of endpointTransports.values()) {
+        const link = t.getLinkState(peerId)
+        if (link) return link.path
+      }
+      return 'unknown'
+    }
   })
 
-  let currentSearchQueryId: string | null = null
-  let currentSearchQueryText = ''
-  let currentSearchStatus: 'idle' | 'searching' | 'complete' | 'partial' | 'error' = 'idle'
-  let currentSearchMessage: string | null = null
-  let searchTimeoutTimer: NodeJS.Timeout | undefined
-
-  void library.loadStoredFiles(persisted.sharedFiles)
-
-  library.subscribe(() => {
-    publishState()
-  })
-
-  let announcePending = false
-  function scheduleAnnounceCatalogue(): void {
-    if (isDisposed || isExplicitlyDisconnected) return
-    if (announcePending) return
-    announcePending = true
-    queueMicrotask(() => {
-      announcePending = false
-      if (isDisposed || isExplicitlyDisconnected) return
-      announceCatalogue()
-    })
+  // Initialize group runtimes from persisted store
+  for (const g of persisted.groups) {
+    createGroupRuntime(g.groupKey, g.groupId, g.signalingUrl, g.supernodeEligible, g.autoJoin, 'required')
   }
 
-  library.subscribeMetadata(() => {
-    scheduleAnnounceCatalogue()
-  })
-  function announceCatalogue(): void {
-    if (isDisposed || isExplicitlyDisconnected) return
-    const p = store.get()
-    const gen = library.getGeneration()
+  function createGroupRuntime(
+    groupKey: GroupKey,
+    groupId: string,
+    signalingUrl: string,
+    supernodeEligible: boolean,
+    autoJoin: boolean,
+    credentialStatus: 'memory' | 'stored' | 'required'
+  ): GroupRuntime {
+    const existing = groups.get(groupKey)
+    if (existing) return existing
 
-    if (currentRole === 'supernode') {
-      if (currentSessionId) {
-        supernodeIndex.updateLocalCatalogue(
-          p.peerId,
-          currentSessionId,
-          gen,
-          library.getSharedMetadata()
-        )
-        library.setAcknowledgedGeneration(gen)
-      }
-      return
+    const runtime: GroupRuntime = {
+      groupKey,
+      groupId,
+      signalingUrl,
+      autoJoin,
+      supernodeEligible,
+      credentialStatus,
+      status: 'disconnected',
+      role: 'ordinary',
+      epoch: null,
+      membershipRevision: 0,
+      membershipId: null,
+      primaryPeerId: null,
+      standbyPeerId: null,
+      message: 'Not connected',
+      members: [],
+      activeElectedSupernodes: [],
+      lossDetectedTimestamp: null,
+      supernodeIndex: new SupernodeIndexManager(),
+      searchResults: new SearchResultsTracker(),
+      recoveryRing: new RecoveryEventRingBuffer(100),
+      searchQueryId: null,
+      searchQueryText: '',
+      searchStatus: 'idle',
+      searchMessage: null,
+      advertisedGeneration: 1,
+      acknowledgedGeneration: null,
+      lastRosterRenewedAt: 0,
+      isJoined: false
     }
 
-    if (currentRole === 'ordinary' && currentPrimaryId && currentEpoch) {
-      const targetId = currentPrimaryId
-      const batches = library.createBatches()
-      const allEntries = library.getSharedMetadata()
-
-      const sendBatches = () => {
-        const begin: OverlayCatalogBeginMessage = {
-          v: 1,
-          type: 'catalog-begin',
-          epoch: currentEpoch!,
-          revision: currentMembershipRevision,
-          generation: gen,
-          count: allEntries.length
-        }
-        transport.sendControl(targetId, begin)
-
-        for (const batch of batches) {
-          const batchMsg: OverlayCatalogBatchMessage = {
-            v: 1,
-            type: 'catalog-batch',
-            epoch: currentEpoch!,
-            revision: currentMembershipRevision,
-            generation: gen,
-            entries: batch
-          }
-          transport.sendControl(targetId, batchMsg)
-        }
-
-        const end: OverlayCatalogEndMessage = {
-          v: 1,
-          type: 'catalog-end',
-          epoch: currentEpoch!,
-          revision: currentMembershipRevision,
-          generation: gen
-        }
-        transport.sendControl(targetId, end)
-      }
-
-      if (transport.getLinkState(targetId)?.state === 'open') {
-        sendBatches()
-      }
-    }
-  }
-  let transport: TransportManager
-
-  const hooks: {
-    controlMessage: ((fromPeerId: string, message: OverlayControlMessage) => void) | null
-    fileChannel: ((fromPeerId: string, transferId: string, channel: unknown) => void) | null
-  } = {
-    controlMessage: (fromPeerId, msg) => {
-      switch (msg.type) {
-        case 'catalog-begin': {
-          if (currentRole === 'supernode') {
-            const senderSession = currentMembers.find((m) => m.peerId === fromPeerId)?.sessionId || ''
-            const instantAck = supernodeIndex.handleCatalogBegin(fromPeerId, senderSession, msg)
-            if (instantAck) {
-              const ackMsg = {
-                v: 1 as const,
-                type: 'catalog-ack' as const,
-                epoch: currentEpoch || '',
-                revision: currentMembershipRevision,
-                generation: msg.generation
-              }
-              const sent = transport.sendControl(fromPeerId, ackMsg)
-              if (!sent) {
-                let retryTimer: NodeJS.Timeout | null = null
-                let clearTimer: NodeJS.Timeout | null = null
-                const cleanup = () => {
-                  if (retryTimer) { clearInterval(retryTimer); retryTimer = null }
-                  if (clearTimer) { clearTimeout(clearTimer); clearTimer = null }
-                }
-                retryTimer = setInterval(() => {
-                  if (isDisposed || isExplicitlyDisconnected) { cleanup(); return }
-                  if (transport.getLinkState(fromPeerId)?.state === 'open') {
-                    if (transport.sendControl(fromPeerId, ackMsg)) cleanup()
-                  }
-                }, 40)
-                clearTimer = setTimeout(cleanup, 3000)
-              }
-            }
-          }
-          break
-        }
-        case 'catalog-batch': {
-          if (currentRole === 'supernode') {
-            supernodeIndex.handleCatalogBatch(fromPeerId, msg)
-          }
-          break
-        }
-        case 'catalog-end': {
-          if (currentRole === 'supernode') {
-            const senderSession = currentMembers.find((m) => m.peerId === fromPeerId)?.sessionId || ''
-            const swapped = supernodeIndex.handleCatalogEnd(fromPeerId, senderSession, msg)
-            if (swapped) {
-              const ackMsg = {
-                v: 1 as const,
-                type: 'catalog-ack' as const,
-                epoch: currentEpoch || '',
-                revision: currentMembershipRevision,
-                generation: msg.generation
-              }
-              const sent = transport.sendControl(fromPeerId, ackMsg)
-              if (!sent) {
-                let retryTimer: NodeJS.Timeout | null = null
-                let clearTimer: NodeJS.Timeout | null = null
-                const cleanup = () => {
-                  if (retryTimer) { clearInterval(retryTimer); retryTimer = null }
-                  if (clearTimer) { clearTimeout(clearTimer); clearTimer = null }
-                }
-                retryTimer = setInterval(() => {
-                  if (isDisposed || isExplicitlyDisconnected) { cleanup(); return }
-                  if (transport.getLinkState(fromPeerId)?.state === 'open') {
-                    if (transport.sendControl(fromPeerId, ackMsg)) cleanup()
-                  }
-                }, 40)
-                clearTimer = setTimeout(cleanup, 3000)
-              }
-            }
-          }
-          break
-        }
-        case 'catalog-ack': {
-          if (msg.generation <= library.getGeneration()) {
-            const currentAck = library.getAcknowledgedGeneration() ?? 0
-            if (msg.generation >= currentAck) {
-              library.setAcknowledgedGeneration(msg.generation)
-            }
-            recoveryRing.add(
-              'index-ready',
-              [fromPeerId],
-              currentEpoch,
-              currentMembershipRevision,
-              null,
-              'Catalogue indexed and acknowledged by supernode'
-            )
-            publishState()
-          }
-          break
-        }
-        case 'search': {
-          if (currentRole === 'supernode') {
-            const res = supernodeIndex.search(msg.query, fromPeerId, msg.queryId)
-            const batches = supernodeIndex.splitResultBatches(res.entries)
-            const hasForward = msg.ttl > 0 && activeElectedSupernodes.some((id) => id !== store.get().peerId && id !== fromPeerId)
-
-            if (batches.length === 0) {
-              transport.sendControl(fromPeerId, {
-                v: 1,
-                type: 'search-results',
-                epoch: currentEpoch || '',
-                revision: currentMembershipRevision,
-                queryId: msg.queryId,
-                originPeerId: fromPeerId,
-                entries: [],
-                done: !hasForward,
-                partial: false
-              })
-            } else {
-              batches.forEach((batch, idx) => {
-                transport.sendControl(fromPeerId, {
-                  v: 1,
-                  type: 'search-results',
-                  epoch: currentEpoch || '',
-                  revision: currentMembershipRevision,
-                  queryId: msg.queryId,
-                  originPeerId: fromPeerId,
-                  entries: batch,
-                  done: idx === batches.length - 1 && !hasForward,
-                  partial: false
-                })
-              })
-            }
-
-            if (msg.ttl > 0) {
-              const otherSupernode = activeElectedSupernodes.find(
-                (id) => id !== store.get().peerId && id !== fromPeerId
-              )
-              if (otherSupernode) {
-                transport.sendControl(otherSupernode, {
-                  v: 1,
-                  type: 'search-forward',
-                  epoch: currentEpoch || '',
-                  revision: currentMembershipRevision,
-                  queryId: msg.queryId,
-                  query: msg.query,
-                  originPeerId: fromPeerId,
-                  ttl: 0
-                })
-              }
-            }
-          }
-          break
-        }
-        case 'search-forward': {
-          if (currentRole === 'supernode') {
-            const res = supernodeIndex.search(msg.query, msg.originPeerId, msg.queryId)
-            const batches = supernodeIndex.splitResultBatches(res.entries)
-            const target = transport.getLinkState(msg.originPeerId)?.state === 'open' ? msg.originPeerId : fromPeerId
-
-            if (batches.length === 0) {
-              transport.sendControl(target, {
-                v: 1,
-                type: 'search-results',
-                epoch: currentEpoch || '',
-                revision: currentMembershipRevision,
-                queryId: msg.queryId,
-                originPeerId: msg.originPeerId,
-                entries: [],
-                done: true,
-                partial: false
-              })
-            } else {
-              batches.forEach((batch, idx) => {
-                transport.sendControl(target, {
-                  v: 1,
-                  type: 'search-results',
-                  epoch: currentEpoch || '',
-                  revision: currentMembershipRevision,
-                  queryId: msg.queryId,
-                  originPeerId: msg.originPeerId,
-                  entries: batch,
-                  done: idx === batches.length - 1,
-                  partial: false
-                })
-              })
-            }
-          }
-          break
-        }
-        case 'search-results': {
-          const myPeerId = store.get().peerId
-          if (msg.originPeerId === myPeerId) {
-            if (msg.queryId === currentSearchQueryId) {
-              searchResults.addBatch(msg.queryId, msg.entries, (id) => {
-                const member = currentMembers.find((m) => m.peerId === id)
-                return member ? member.displayName : `Peer-${id.slice(0, 6)}`
-              })
-              if (msg.done) {
-                currentSearchStatus = 'complete'
-                if (searchTimeoutTimer) {
-                  clearTimeout(searchTimeoutTimer)
-                  searchTimeoutTimer = undefined
-                }
-              }
-              publishState()
-            }
-          } else if (currentRole === 'supernode') {
-            transport.sendControl(msg.originPeerId, msg)
-          }
-          break
-        }
-      }
-    },
-    fileChannel: (fromPeerId, transferId, channel) => {
-      void transfers.handleIncomingChannel(fromPeerId, transferId, channel as RTCDataChannel)
-    }
-  }
-  transport = new TransportManager({
-    onControlMessage: (fromPeerId, msg) => {
-      if (msg.type === 'ping') {
-        const pong: OverlayPongMessage = {
-          v: 1,
-          type: 'pong',
-          epoch: msg.epoch,
-          revision: msg.revision
-        }
-        transport.sendControl(fromPeerId, pong)
-        return
-      }
-      if (msg.type === 'pong') {
-        linkPongs.set(fromPeerId, Date.now())
-        return
-      }
-      if ('v' in msg && msg.v === 1) {
-        hooks.controlMessage?.(fromPeerId, msg as OverlayControlMessage)
-      }
-    },
-    onFileChannel: (fromPeerId: string, transferId: string, channel: RTCDataChannel) => {
-      hooks.fileChannel?.(fromPeerId, transferId, channel)
-    },
-    onLinkStateChange: (peerId, state, path) => {
-      if (state === 'open') {
-        linkPongs.set(peerId, Date.now())
-        if (peerId === currentPrimaryId) {
-          scheduleAnnounceCatalogue()
-        }
-      }
-      publishState()
-    },
-    onSendSignal: (sig) => {
-      enqueueSignaling(
-        JSON.stringify({
-          v: 1,
-          type: 'signal',
-          targetPeerId: sig.targetPeerId,
-          targetSessionId: sig.targetSessionId,
-          connectionId: sig.connectionId,
-          kind: sig.kind,
-          payload: sig.payload
-        })
-      )
-    }
-  })
-
-  function buildStateSnapshot(): P2pState {
-    const p = store.get()
-    return {
-      revision: stateRevision,
-      network: {
-        status: currentStatus,
-        peerId: p.peerId,
-        sessionId: currentSessionId,
-        displayName: p.displayName,
-        supernodeEligible: p.supernodeEligible,
-        signalingUrl: activeConnectOptions ? activeConnectOptions.signalingUrl : p.signalingUrl,
-        roomId: activeConnectOptions ? activeConnectOptions.roomId : p.roomId,
-        role: currentRole,
-        epoch: currentEpoch,
-        membershipRevision: currentMembershipRevision,
-        primaryPeerId: currentPrimaryId,
-        standbyPeerId: currentStandbyId,
-        members: [...currentMembers],
-        links: transport.getAllLinks(),
-        message: currentMessage
-      },
-      library: library.getState(),
-      search: {
-        queryId: currentSearchQueryId,
-        query: currentSearchQueryText,
-        status: currentSearchStatus,
-        results: searchResults.getResults(),
-        message: currentSearchMessage
-      },
-      transfers: transfers.getTransfers(),
-      recoveryEvents: recoveryRing.getAll()
-    }
+    groups.set(groupKey, runtime)
+    return runtime
   }
 
   function publishState(): void {
     stateRevision++
-    const snapshot = buildStateSnapshot()
+    const snapshot = buildCombinedSnapshot()
     for (const listener of subscribers) {
       try {
         listener(snapshot)
@@ -535,187 +233,184 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
     }
   }
 
-  function scheduleReconnect(): void {
-    if (isExplicitlyDisconnected || isDisposed) return
-    if (reconnectTimer) return
-
-    const intervals = [1000, 2000, 4000, 8000, 15000]
-    const base = intervals[Math.min(reconnectAttempts, intervals.length - 1)]
-    const jitter = Math.floor(Math.random() * 500)
-    const delay = base + jitter
-    reconnectAttempts++
-
-    currentStatus = 'recovering'
-    currentMessage = `Reconnecting in ${(delay / 1000).toFixed(1)}s (attempt ${reconnectAttempts})...`
-    publishState()
-
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null
-      if (!isExplicitlyDisconnected && !isDisposed && activeConnectOptions) {
-        doConnect(activeConnectOptions).catch(() => {})
+  let announcePending = false
+  function scheduleAnnounceAll(): void {
+    if (isDisposed) return
+    if (announcePending) return
+    announcePending = true
+    queueMicrotask(() => {
+      announcePending = false
+      if (isDisposed) return
+      for (const runtime of groups.values()) {
+        if (runtime.isJoined) {
+          announceCatalogue(runtime)
+        }
       }
-    }, delay)
+    })
   }
 
-  async function doConnect(opts: ConnectOptions): Promise<void> {
-    if (signalingWs) {
-      try {
-        signalingWs.close()
-      } catch {
-        // ignore
-      }
-      signalingWs = null
-    }
-
-    currentStatus = 'connecting'
-    currentMessage = 'Connecting to signaling helper...'
+  library.subscribe(() => {
     publishState()
-    if (signalingDrainTimer) {
-      clearInterval(signalingDrainTimer)
-      signalingDrainTimer = null
+  })
+
+  library.subscribeMetadata(() => {
+    scheduleAnnounceAll()
+  })
+
+  function getOrCreateEndpoint(signalingUrl: string): { client: SignalingClient; transport: TransportManager } {
+    let client = endpointClients.get(signalingUrl)
+    let transport = endpointTransports.get(signalingUrl)
+
+    if (client && transport) {
+      return { client, transport }
     }
-    outboundSignalingQueue.length = 0
-    clientTokens = 30
-    lastClientTokenUpdate = Date.now()
 
-    const { promise, resolve, reject } = Promise.withResolvers<void>()
-    let connected = false
+    const currentIdentity = store.get()
 
-    try {
-      const ws = new WebSocket(opts.signalingUrl, {
-        headers: { Authorization: `Bearer ${opts.token}` }
-      })
-      signalingWs = ws
-
-      ws.on('open', () => {
-        connected = true
-        reconnectAttempts = 0
-        currentStatus = 'connected'
-        currentMessage = 'Connected to signaling helper. Joining room...'
-        publishState()
-
-        const p = store.get()
-        ws.send(
-          JSON.stringify({
-            v: 1,
-            type: 'join',
-            roomId: opts.roomId,
-            peerId: p.peerId,
-            displayName: opts.displayName,
-            supernodeEligible: p.supernodeEligible
+    const transportEvents: TransportEvents = {
+      onControlMessage: (fromPeerId, msg) => {
+        handleControlMessage(signalingUrl, fromPeerId, msg)
+      },
+      onFileChannel: (groupId, fromPeerId, fromSessionId, transferId, channel) => {
+        void transfers.handleIncomingChannel(fromPeerId, transferId, channel)
+      },
+      onLinkStateChange: (peerId, state, path) => {
+        handleLinkStateChange(signalingUrl, peerId, state, path)
+      },
+      onSendSignal: (sig) => {
+        const c = endpointClients.get(signalingUrl)
+        if (c && sig.groupId) {
+          c.sendSignal({
+            groupId: sig.groupId,
+            targetPeerId: sig.targetPeerId,
+            targetSessionId: sig.targetSessionId,
+            connectionId: sig.connectionId,
+            kind: sig.kind,
+            payload: sig.payload
           })
-        )
-      })
-
-      ws.on('message', (data: Buffer) => {
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(data.toString('utf-8'))
-        } catch {
-          return
         }
+      }
+    }
 
-        if (!isServerSignalingMessage(parsed)) return
-        const msg = parsed as ServerSignalingMessage
+    if (!transport) {
+      transport = options.transportFactory
+        ? options.transportFactory(signalingUrl, transportEvents)
+        : new TransportManager(transportEvents)
+      endpointTransports.set(signalingUrl, transport)
+    }
 
-        if (msg.type === 'welcome') {
-          currentSessionId = msg.sessionId
-          currentEpoch = msg.epoch
-          transport.setSignalingContext(
-            msg.epoch,
-            1,
-            store.get().peerId,
-            msg.sessionId,
-            msg.iceConfig,
-            opts.relayOnly
-          )
-          resolve()
-          publishState()
-          return
-        }
-
-        if (msg.type === 'roster') {
-          handleRosterUpdate(msg.epoch, msg.revision, msg.peers)
-          return
-        }
-
-        if (msg.type === 'signal') {
-          void transport.handleSignal(
-            msg.fromPeerId,
-            msg.fromSessionId,
-            msg.connectionId,
-            msg.kind,
-            msg.payload
-          )
-          return
-        }
-
-        if (msg.type === 'error') {
-          currentStatus = 'error'
-          currentMessage = `${msg.code}: ${msg.message}`
-          publishState()
-          if (!connected) {
-            reject(new Error(`${msg.code}: ${msg.message}`))
+    if (!client) {
+      client = new SignalingClient({
+        signalingUrl,
+        peerId: currentIdentity.peerId,
+        displayName: currentIdentity.displayName,
+        callbacks: {
+          onGroupJoined: (msg) => {
+            handleGroupJoined(signalingUrl, msg)
+          },
+          onRoster: (groupId, epoch, revision, peers) => {
+            handleRosterUpdate(signalingUrl, groupId, epoch, revision, peers)
+          },
+          onGroupLeft: (groupId) => {
+            handleGroupLeft(signalingUrl, groupId)
+          },
+          onSignal: (msg) => {
+            const t = endpointTransports.get(signalingUrl)
+            if (t) {
+              void t.handleSignal(msg.groupId, msg.fromPeerId, msg.fromSessionId, msg.connectionId, msg.kind, msg.payload)
+            }
+          },
+          onIceConfig: (iceConfig) => {
+            const t = endpointTransports.get(signalingUrl)
+            if (t && client) {
+              t.setPeerContext(store.get().peerId, client.getSessionId() || '', iceConfig, relayOnly)
+            }
+          },
+          onError: (groupId, code, message) => {
+            if (groupId) {
+              const key = makeGroupKey(signalingUrl, groupId)
+              const runtime = groups.get(key)
+              if (runtime) {
+                runtime.status = code === 'AUTH_FAILED' ? 'error' : 'error'
+                runtime.message = `${code}: ${message}`
+                publishState()
+              }
+            }
+          },
+          onStatusChange: (status, message) => {
+            if (status === 'disconnected' || status === 'error') {
+              for (const runtime of groups.values()) {
+                if (runtime.signalingUrl === signalingUrl && runtime.isJoined) {
+                  runtime.status = status
+                  runtime.message = message
+                }
+              }
+              publishState()
+            }
           }
         }
       })
-
-      ws.on('close', () => {
-        if (!connected) {
-          reject(new Error('Signaling connection failed'))
-        }
-        if (!isExplicitlyDisconnected && !isDisposed) {
-          scheduleReconnect()
-        }
-      })
-
-      ws.on('error', (err) => {
-        if (!connected) {
-          reject(err)
-        }
-      })
-    } catch (err) {
-      reject(err)
+      endpointClients.set(signalingUrl, client)
     }
 
-    return promise
+    return { client, transport }
   }
 
-  function handleRosterUpdate(epoch: string, revision: number, peers: SignalingRosterPeer[]): void {
-    if (epoch !== currentEpoch) {
-      currentEpoch = epoch
-    }
-    currentMembershipRevision = revision
-    lastRosterTimestamp = Date.now()
+  function handleGroupJoined(signalingUrl: string, msg: GroupJoinedMessage): void {
+    const key = makeGroupKey(signalingUrl, msg.groupId)
+    const runtime = groups.get(key)
+    if (!runtime) return
 
-    const localPeerId = store.get().peerId
+    runtime.membershipId = msg.membershipId
+    runtime.epoch = msg.epoch
+    runtime.membershipRevision = msg.revision
+    runtime.isJoined = true
+    runtime.status = 'connected'
+    runtime.lastRosterRenewedAt = Date.now()
+
+    handleRosterUpdate(signalingUrl, msg.groupId, msg.epoch, msg.revision, msg.peers)
+    announceCatalogue(runtime)
+  }
+
+  function handleRosterUpdate(
+    signalingUrl: string,
+    groupId: string,
+    epoch: string,
+    revision: number,
+    peers: SignalingRosterPeerV2[]
+  ): void {
+    const key = makeGroupKey(signalingUrl, groupId)
+    const runtime = groups.get(key)
+    if (!runtime) return
+
+    runtime.lastRosterRenewedAt = Date.now()
+
+    // Stale revision check in same epoch
+    if (runtime.epoch === epoch && revision < runtime.membershipRevision) {
+      return
+    }
+
+    // Changing epoch resets authorities
+    if (runtime.epoch !== epoch) {
+      runtime.epoch = epoch
+      runtime.supernodeIndex.clear()
+      runtime.searchResults.clear()
+      runtime.acknowledgedGeneration = null
+    }
+
+    runtime.membershipRevision = revision
+
+    // Election deterministically by joinOrder then peerId
     const election = electSupernodes(peers)
-    const newElectedIds = election.electedSupernodes.map((s) => s.peerId)
-
-    // Detect lost supernodes
-    const lostSupernodes = activeElectedSupernodes.filter((id) => !newElectedIds.includes(id))
-    if (lostSupernodes.length > 0) {
-      lossDetectedTimestamp = performance.now()
-      recoveryRing.add(
-        'supernode-lost',
-        lostSupernodes,
-        epoch,
-        revision,
-        null,
-        `Lost supernode(s): ${lostSupernodes.join(', ')}`
-      )
-    }
-    activeElectedSupernodes = newElectedIds
-
-    // Compute own role
-    const prevRole = currentRole
-    const newRole = calculatePeerRole(localPeerId, election.electedSupernodes)
-    currentRole = newRole
+    runtime.activeElectedSupernodes = election.electedSupernodes.map((s) => s.peerId)
+    const newRole = calculatePeerRole(store.get().peerId, election.electedSupernodes)
+    const prevRole = runtime.role
+    runtime.role = newRole
 
     if (prevRole !== newRole) {
-      recoveryRing.add(
+      runtime.recoveryRing.add(
         'role-changed',
-        [localPeerId],
+        runtime.activeElectedSupernodes,
         epoch,
         revision,
         null,
@@ -723,310 +418,1016 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
       )
     }
 
-    // Compute primary and standby
-    const prevPrimary = currentPrimaryId
+    const prevPrimary = runtime.primaryPeerId
     if (newRole === 'ordinary') {
-      const selected = selectSupernodesForPeer(localPeerId, election.electedSupernodes)
-      currentPrimaryId = selected.primary ? selected.primary.peerId : null
-      currentStandbyId = selected.standby ? selected.standby.peerId : null
+      const selected = selectSupernodesForPeer(store.get().peerId, election.electedSupernodes)
+      runtime.primaryPeerId = selected.primary ? selected.primary.peerId : null
+      runtime.standbyPeerId = selected.standby ? selected.standby.peerId : null
     } else {
-      currentPrimaryId = null
-      currentStandbyId = null
+      runtime.primaryPeerId = null
+      runtime.standbyPeerId = null
     }
 
-    if (currentPrimaryId !== prevPrimary && currentPrimaryId !== null) {
+    if (runtime.primaryPeerId !== prevPrimary && runtime.primaryPeerId !== null) {
       let durationMs: number | null = null
-      if (lossDetectedTimestamp !== null) {
-        durationMs = Math.round(performance.now() - lossDetectedTimestamp)
-        lossDetectedTimestamp = null
+      if (runtime.lossDetectedTimestamp !== null) {
+        durationMs = Math.round(performance.now() - runtime.lossDetectedTimestamp)
+        runtime.lossDetectedTimestamp = null
       }
-
-      recoveryRing.add(
+      runtime.recoveryRing.add(
         'route-changed',
-        currentPrimaryId ? [currentPrimaryId] : [],
+        runtime.primaryPeerId ? [runtime.primaryPeerId] : [],
         epoch,
         revision,
         durationMs,
-        `Primary serving route updated to ${currentPrimaryId}`
+        `Primary serving route updated to ${runtime.primaryPeerId}`
       )
     }
 
-    // Prune departed members from supernode index before updating roster
+    // Clean up departed members from index
     const activeIds = new Set(peers.map((p) => p.peerId))
-    for (const member of currentMembers) {
+    for (const member of runtime.members) {
       if (!activeIds.has(member.peerId)) {
-        supernodeIndex.removeOwner(member.peerId)
+        runtime.supernodeIndex.removeOwner(member.peerId)
       }
     }
 
-    // Update roster members with calculated roles
-    currentMembers = peers.map((p) => ({
+    // Update roster members
+    runtime.members = peers.map((p) => ({
       peerId: p.peerId,
       sessionId: p.sessionId,
+      membershipId: p.membershipId,
       joinOrder: p.joinOrder,
       displayName: p.displayName,
       supernodeEligible: p.supernodeEligible,
       role: calculatePeerRole(p.peerId, election.electedSupernodes)
     }))
 
-    // Update status message
     if (election.electedSupernodes.length === 0) {
-      currentMessage = 'No eligible supernode available in network.'
+      runtime.message = 'No eligible supernode available in network.'
     } else if (newRole === 'supernode') {
-      currentMessage = `Operating as active supernode (${election.electedSupernodes.length} total).`
+      runtime.message = `Operating as active supernode (${election.electedSupernodes.length} total).`
     } else {
-      currentMessage = `Connected to supernode ${currentPrimaryId || 'none'}.`
+      runtime.message = `Connected to supernode ${runtime.primaryPeerId || 'none'}.`
     }
 
-    // Update transport roster
-    transport.updateRoster(peers)
-    scheduleAnnounceCatalogue()
+    // Update transport group context
+    const transport = endpointTransports.get(signalingUrl)
+    if (transport) {
+      transport.updateGroupContext(groupId, epoch, revision, peers, true)
+    }
+
+    announceCatalogue(runtime)
     publishState()
   }
-  // Periodic heartbeat & freshness monitor: every 2 seconds
-  const monitorTimer = setInterval(() => {
-    if (isDisposed || isExplicitlyDisconnected) return
 
-    const now = Date.now()
+  function handleGroupLeft(signalingUrl: string, groupId: string): void {
+    const key = makeGroupKey(signalingUrl, groupId)
+    const runtime = groups.get(key)
+    if (!runtime) return
 
-    // 1. Roster freshness check: >6s without roster update -> degraded
-    if (lastRosterTimestamp > 0 && now - lastRosterTimestamp > 6000) {
-      if (currentStatus === 'connected') {
-        currentStatus = 'degraded'
-        currentMessage = 'Membership unavailable (no heartbeat from signaling helper).'
-        recoveryRing.add(
-          'membership-unavailable',
-          [],
-          currentEpoch,
-          currentMembershipRevision,
-          null,
-          'Signaling roster expired (>6s without update)'
-        )
-        publishState()
-      }
+    runtime.isJoined = false
+    runtime.status = 'disconnected'
+    runtime.message = 'Left group'
+    runtime.members = []
+    runtime.supernodeIndex.clear()
+    runtime.searchResults.clear()
+    runtime.acknowledgedGeneration = null
+
+    const transport = endpointTransports.get(signalingUrl)
+    if (transport) {
+      transport.removeGroupContext(groupId)
     }
 
-    // 2. Control link heartbeat & failover for ordinary peers
-    if (currentRole === 'ordinary' && currentPrimaryId) {
-      const primaryPing = transport.sendControl(currentPrimaryId, {
-        v: 1,
-        type: 'ping',
-        epoch: currentEpoch || '',
-        revision: currentMembershipRevision
-      })
+    publishState()
+  }
 
-      const lastPong = linkPongs.get(currentPrimaryId) || 0
-      const unresponsive = !primaryPing || (lastPong > 0 && now - lastPong > 6000)
+  function handleControlMessage(
+    signalingUrl: string,
+    fromPeerId: string,
+    msg: OverlayControlMessageV2 | OverlayControlMessage
+  ): void {
+    if ('v' in msg && msg.v === 2) {
+      const v2 = msg as OverlayControlMessageV2
+      if (v2.type === 'hello') return
 
-      if (unresponsive && currentStandbyId) {
-        // Failover to standby supernode
-        const failedPrimary = currentPrimaryId
-        currentPrimaryId = currentStandbyId
-        currentStandbyId = failedPrimary
+      const key = makeGroupKey(signalingUrl, v2.groupId)
+      const runtime = groups.get(key)
+      if (!runtime || !runtime.isJoined) return
 
-        recoveryRing.add(
-          'route-changed',
-          [currentPrimaryId],
-          currentEpoch,
-          currentMembershipRevision,
-          null,
-          `Primary route unresponsive, switched to standby: ${currentPrimaryId}`
-        )
-        publishState()
+      switch (v2.type) {
+        case 'ping': {
+          const pong: OverlayControlMessageV2 = {
+            v: 2,
+            type: 'pong',
+            groupId: v2.groupId,
+            epoch: v2.epoch,
+            revision: v2.revision,
+            senderMembershipId: runtime.membershipId || ''
+          }
+          const transport = endpointTransports.get(signalingUrl)
+          transport?.sendControl(v2.groupId, fromPeerId, pong)
+          break
+        }
+
+        case 'pong': {
+          break
+        }
+
+        case 'catalog-begin': {
+          if (runtime.role === 'supernode') {
+            const senderSession = runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || ''
+            const instantAck = runtime.supernodeIndex.handleCatalogBegin(fromPeerId, senderSession, v2 as any)
+            if (instantAck) {
+              const ack: OverlayCatalogAckMessageV2 = {
+                v: 2,
+                type: 'catalog-ack',
+                groupId: v2.groupId,
+                epoch: runtime.epoch || '',
+                revision: runtime.membershipRevision,
+                senderMembershipId: runtime.membershipId || '',
+                generation: v2.generation
+              }
+              const transport = endpointTransports.get(signalingUrl)
+              const sent = transport?.sendControl(v2.groupId, fromPeerId, ack)
+              if (!sent) {
+                let retryTimer: NodeJS.Timeout | null = null
+                let clearTimer: NodeJS.Timeout | null = null
+                const cleanup = () => {
+                  if (retryTimer) { clearInterval(retryTimer); retryTimer = null }
+                  if (clearTimer) { clearTimeout(clearTimer); clearTimer = null }
+                }
+                retryTimer = setInterval(() => {
+                  if (isDisposed) { cleanup(); return }
+                  const t = endpointTransports.get(signalingUrl)
+                  if (t?.getLinkState(fromPeerId)?.state === 'open') {
+                    if (t.sendControl(v2.groupId, fromPeerId, ack)) cleanup()
+                  }
+                }, 40)
+                clearTimer = setTimeout(cleanup, 3000)
+              }
+            }
+          }
+          break
+        }
+
+        case 'catalog-batch': {
+          if (runtime.role === 'supernode') {
+            runtime.supernodeIndex.handleCatalogBatch(fromPeerId, v2 as any)
+          }
+          break
+        }
+
+        case 'catalog-end': {
+          if (runtime.role === 'supernode') {
+            const senderSession = runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || ''
+            const swapped = runtime.supernodeIndex.handleCatalogEnd(fromPeerId, senderSession, v2 as any)
+            if (swapped) {
+              const ack: OverlayCatalogAckMessageV2 = {
+                v: 2,
+                type: 'catalog-ack',
+                groupId: v2.groupId,
+                epoch: runtime.epoch || '',
+                revision: runtime.membershipRevision,
+                senderMembershipId: runtime.membershipId || '',
+                generation: v2.generation
+              }
+              const transport = endpointTransports.get(signalingUrl)
+              const sent = transport?.sendControl(v2.groupId, fromPeerId, ack)
+              if (!sent) {
+                let retryTimer: NodeJS.Timeout | null = null
+                let clearTimer: NodeJS.Timeout | null = null
+                const cleanup = () => {
+                  if (retryTimer) { clearInterval(retryTimer); retryTimer = null }
+                  if (clearTimer) { clearTimeout(clearTimer); clearTimer = null }
+                }
+                retryTimer = setInterval(() => {
+                  if (isDisposed) { cleanup(); return }
+                  const t = endpointTransports.get(signalingUrl)
+                  if (t?.getLinkState(fromPeerId)?.state === 'open') {
+                    if (t.sendControl(v2.groupId, fromPeerId, ack)) cleanup()
+                  }
+                }, 40)
+                clearTimer = setTimeout(cleanup, 3000)
+              }
+            }
+          }
+          break
+        }
+
+        case 'catalog-ack': {
+          if (v2.generation <= runtime.advertisedGeneration) {
+            const curAck = runtime.acknowledgedGeneration ?? 0
+            if (v2.generation >= curAck) {
+              runtime.acknowledgedGeneration = v2.generation
+              library.setAcknowledgedGeneration(v2.generation)
+              runtime.recoveryRing.add(
+                'index-ready',
+                [fromPeerId],
+                runtime.epoch,
+                runtime.membershipRevision,
+                null,
+                'Catalogue indexed and acknowledged by supernode'
+              )
+              publishState()
+            }
+          }
+          break
+        }
+
+        case 'search': {
+          if (runtime.role === 'supernode') {
+            const res = runtime.supernodeIndex.search(v2.query, fromPeerId, v2.queryId)
+            const batches = runtime.supernodeIndex.splitResultBatches(res.entries)
+            const otherSupernode = runtime.activeElectedSupernodes.find(
+              (id) => id !== store.get().peerId && id !== fromPeerId
+            )
+            const hasForward = v2.ttl > 0 && Boolean(otherSupernode)
+            const transport = endpointTransports.get(signalingUrl)
+            if (batches.length === 0) {
+              transport?.sendControl(v2.groupId, fromPeerId, {
+                v: 2,
+                type: 'search-results',
+                groupId: v2.groupId,
+                epoch: runtime.epoch || '',
+                revision: runtime.membershipRevision,
+                senderMembershipId: runtime.membershipId || '',
+                responderPeerId: store.get().peerId,
+                responderMembershipId: runtime.membershipId || '',
+                queryId: v2.queryId,
+                originPeerId: fromPeerId,
+                originMembershipId: v2.senderMembershipId,
+                entries: [],
+                done: !hasForward,
+                partial: false
+              })
+            } else {
+              batches.forEach((batch, idx) => {
+                transport?.sendControl(v2.groupId, fromPeerId, {
+                  v: 2,
+                  type: 'search-results',
+                  groupId: v2.groupId,
+                  epoch: runtime.epoch || '',
+                  revision: runtime.membershipRevision,
+                  senderMembershipId: runtime.membershipId || '',
+                  responderPeerId: store.get().peerId,
+                  responderMembershipId: runtime.membershipId || '',
+                  queryId: v2.queryId,
+                  originPeerId: fromPeerId,
+                  originMembershipId: v2.senderMembershipId,
+                  entries: batch.map((b) => ({
+                    ownerPeerId: b.ownerPeerId,
+                    ownerSessionId: b.ownerSessionId,
+                    ownerMembershipId: (b as any).ownerMembershipId || '',
+                    file: b.file
+                  })),
+                  done: idx === batches.length - 1 && !hasForward,
+                  partial: false
+                })
+              })
+            }
+
+            if (v2.ttl > 0 && otherSupernode) {
+              transport?.sendControl(v2.groupId, otherSupernode, {
+                v: 2,
+                type: 'search-forward',
+                groupId: v2.groupId,
+                epoch: runtime.epoch || '',
+                revision: runtime.membershipRevision,
+                senderMembershipId: runtime.membershipId || '',
+                queryId: v2.queryId,
+                query: v2.query,
+                originPeerId: fromPeerId,
+                originMembershipId: v2.senderMembershipId,
+                ttl: 0
+              })
+            }
+          }
+          break
+        }
+
+        case 'search-forward': {
+          if (runtime.role === 'supernode') {
+            const res = runtime.supernodeIndex.search(v2.query, v2.originPeerId, v2.queryId)
+            const batches = runtime.supernodeIndex.splitResultBatches(res.entries)
+            const transport = endpointTransports.get(signalingUrl)
+            const target = transport?.getLinkState(v2.originPeerId)?.state === 'open' ? v2.originPeerId : fromPeerId
+
+            if (batches.length === 0) {
+              transport?.sendControl(v2.groupId, target, {
+                v: 2,
+                type: 'search-results',
+                groupId: v2.groupId,
+                epoch: runtime.epoch || '',
+                revision: runtime.membershipRevision,
+                senderMembershipId: runtime.membershipId || '',
+                responderPeerId: store.get().peerId,
+                responderMembershipId: runtime.membershipId || '',
+                queryId: v2.queryId,
+                originPeerId: v2.originPeerId,
+                originMembershipId: v2.originMembershipId,
+                entries: [],
+                done: true,
+                partial: false
+              })
+            } else {
+              batches.forEach((batch, idx) => {
+                transport?.sendControl(v2.groupId, target, {
+                  v: 2,
+                  type: 'search-results',
+                  groupId: v2.groupId,
+                  epoch: runtime.epoch || '',
+                  revision: runtime.membershipRevision,
+                  senderMembershipId: runtime.membershipId || '',
+                  responderPeerId: store.get().peerId,
+                  responderMembershipId: runtime.membershipId || '',
+                  queryId: v2.queryId,
+                  originPeerId: v2.originPeerId,
+                  originMembershipId: v2.originMembershipId,
+                  entries: batch.map((b) => ({
+                    ownerPeerId: b.ownerPeerId,
+                    ownerSessionId: b.ownerSessionId,
+                    ownerMembershipId: (b as any).ownerMembershipId || '',
+                    file: b.file
+                  })),
+                  done: idx === batches.length - 1,
+                  partial: false
+                })
+              })
+            }
+          }
+          break
+        }
+
+        case 'search-results': {
+          const myPeerId = store.get().peerId
+          if (v2.originPeerId === myPeerId) {
+            if (v2.queryId === runtime.searchQueryId) {
+              runtime.searchResults.addBatch(v2.queryId, v2.entries as any, (id) => {
+                const member = runtime.members.find((m) => m.peerId === id)
+                return member ? member.displayName : `Peer-${id.slice(0, 6)}`
+              })
+              if (v2.done) {
+                runtime.searchStatus = 'complete'
+                if (runtime.searchTimeoutTimer) {
+                  clearTimeout(runtime.searchTimeoutTimer)
+                  runtime.searchTimeoutTimer = undefined
+                }
+              }
+              publishState()
+            }
+          } else if (runtime.role === 'supernode') {
+            const transport = endpointTransports.get(signalingUrl)
+            transport?.sendControl(v2.groupId, v2.originPeerId, v2)
+          }
+          break
+        }
+      }
+    }
+  }
+
+  function handleLinkStateChange(
+    signalingUrl: string,
+    peerId: string,
+    state: P2pLinkState,
+    _path: P2pCandidatePath
+  ): void {
+    if (state === 'open') {
+      for (const runtime of groups.values()) {
+        if (runtime.signalingUrl === signalingUrl && runtime.isJoined) {
+          if (peerId === runtime.primaryPeerId) {
+            announceCatalogue(runtime)
+          }
+        }
+      }
+    }
+    publishState()
+  }
+
+  function announceCatalogue(runtime: GroupRuntime): void {
+    if (isDisposed || !runtime.isJoined) return
+
+    // Filter library metadata by committed v2 grants for this groupKey
+    const committedFiles = store.get().sharedFiles
+    const groupGrantedFileIds = new Set(
+      committedFiles
+        .filter((f) => f.groupKeys.includes(runtime.groupKey))
+        .map((f) => f.fileId)
+    )
+
+    const allMetadata = library.getSharedMetadata()
+    const groupMetadata = allMetadata.filter((m) => groupGrantedFileIds.has(m.fileId))
+
+    const gen = library.getGeneration()
+    runtime.advertisedGeneration = gen
+    if (runtime.acknowledgedGeneration !== gen) {
+      runtime.acknowledgedGeneration = null
+    }
+    if (runtime.role === 'supernode') {
+      runtime.supernodeIndex.updateLocalCatalogue(
+        store.get().peerId,
+        runtime.membershipId || '',
+        gen,
+        groupMetadata
+      )
+      runtime.acknowledgedGeneration = gen
+      library.setAcknowledgedGeneration(gen)
+      publishState()
+      return
+    }
+
+    if (runtime.role === 'ordinary' && runtime.primaryPeerId && runtime.epoch) {
+      const targetId = runtime.primaryPeerId
+      const transport = endpointTransports.get(runtime.signalingUrl)
+      if (!transport) return
+
+      const batches: (typeof groupMetadata)[] = []
+      for (let i = 0; i < groupMetadata.length; i += MAX_CATALOG_BATCH_ENTRIES) {
+        batches.push(groupMetadata.slice(i, i + MAX_CATALOG_BATCH_ENTRIES))
+      }
+
+      const sendBatches = () => {
+        const begin: OverlayCatalogBeginMessageV2 = {
+          v: 2,
+          type: 'catalog-begin',
+          groupId: runtime.groupId,
+          epoch: runtime.epoch!,
+          revision: runtime.membershipRevision,
+          senderMembershipId: runtime.membershipId || '',
+          generation: gen,
+          count: groupMetadata.length
+        }
+        transport.sendControl(runtime.groupId, targetId, begin)
+
+        for (const batch of batches) {
+          const batchMsg: OverlayCatalogBatchMessageV2 = {
+            v: 2,
+            type: 'catalog-batch',
+            groupId: runtime.groupId,
+            epoch: runtime.epoch!,
+            revision: runtime.membershipRevision,
+            senderMembershipId: runtime.membershipId || '',
+            generation: gen,
+            entries: batch
+          }
+          transport.sendControl(runtime.groupId, targetId, batchMsg)
+        }
+
+        const end: OverlayCatalogEndMessageV2 = {
+          v: 2,
+          type: 'catalog-end',
+          groupId: runtime.groupId,
+          epoch: runtime.epoch!,
+          revision: runtime.membershipRevision,
+          senderMembershipId: runtime.membershipId || '',
+          generation: gen
+        }
+        transport.sendControl(runtime.groupId, targetId, end)
+      }
+
+      if (transport.getLinkState(targetId)?.state === 'open') {
+        sendBatches()
+      }
+    }
+  }
+
+  // Heartbeat & freshness monitor (every 2 seconds)
+  const monitorTimer = setInterval(() => {
+    if (isDisposed) return
+    const now = Date.now()
+
+    for (const runtime of groups.values()) {
+      if (runtime.isJoined) {
+        // Freshness: expires after 6s without authoritative renewal
+        if (runtime.lastRosterRenewedAt > 0 && now - runtime.lastRosterRenewedAt > 6000) {
+          runtime.status = 'recovering'
+          runtime.message = 'Roster freshness expired'
+          publishState()
+        }
       }
     }
   }, 2000)
 
-  return {
-    getState: () => buildStateSnapshot(),
+  function buildCombinedSnapshot(): MultiGroupP2pState & P2pState {
+    const persistedState = store.get()
+    const activeGroupList: P2pGroupState[] = []
 
-    subscribe: (listener: (state: P2pState) => void) => {
+    for (const runtime of groups.values()) {
+      const groupLinks = endpointTransports.get(runtime.signalingUrl)?.getGroupLinks(runtime.groupId) || []
+      const netState: MultiGroupNetworkState = {
+        status: runtime.status,
+        peerId: persistedState.peerId,
+        sessionId: endpointClients.get(runtime.signalingUrl)?.getSessionId() || null,
+        membershipId: runtime.membershipId,
+        displayName: persistedState.displayName,
+        supernodeEligible: runtime.supernodeEligible,
+        signalingUrl: runtime.signalingUrl,
+        groupId: runtime.groupId,
+        role: runtime.role,
+        epoch: runtime.epoch,
+        membershipRevision: runtime.membershipRevision,
+        primaryPeerId: runtime.primaryPeerId,
+        standbyPeerId: runtime.standbyPeerId,
+        members: [...runtime.members],
+        links: groupLinks,
+        message: runtime.message
+      }
+
+      const catState: P2pGroupCatalogState = {
+        advertisedGeneration: runtime.advertisedGeneration,
+        acknowledgedGeneration: runtime.acknowledgedGeneration
+      }
+
+      activeGroupList.push({
+        groupKey: runtime.groupKey,
+        groupId: runtime.groupId,
+        signalingUrl: runtime.signalingUrl,
+        autoJoin: runtime.autoJoin,
+        credentialStatus: runtime.credentialStatus,
+        network: netState,
+        catalog: catState,
+        search: {
+          queryId: runtime.searchQueryId,
+          query: runtime.searchQueryText,
+          status: runtime.searchStatus,
+          results: runtime.searchResults.getResults() as unknown as P2pSearchResult[],
+          message: runtime.searchMessage
+        },
+        recoveryEvents: runtime.recoveryRing.getAll()
+      })
+    }
+
+    // Map library files to MultiGroupLibraryFile
+    const libState = library.getState()
+    const multiGroupFiles: MultiGroupLibraryFile[] = libState.files.map((f) => {
+      const persistedFile = persistedState.sharedFiles.find((sf) => sf.fileId === f.fileId)
+      return {
+        ...f,
+        groupKeys: persistedFile ? [...persistedFile.groupKeys] : []
+      }
+    })
+
+    // Active transfers
+    const transferList: MultiGroupTransfer[] = transfers.getTransfers().map((t) => ({
+      id: t.id,
+      groupKey: '',
+      groupId: '',
+      direction: t.direction,
+      fileName: t.fileName,
+      peerId: t.peerId,
+      peerName: t.peerName,
+      size: t.size,
+      transferredBytes: t.transferredBytes,
+      sha256: t.sha256,
+      state: t.state,
+      path: t.path,
+      message: t.message
+    }))
+
+    // Legacy projection for untouched components / tests
+    const firstGroup = activeGroupList[0]
+    const legacyNet: P2pNetworkState = firstGroup
+      ? {
+          status: firstGroup.network.status,
+          peerId: firstGroup.network.peerId,
+          sessionId: firstGroup.network.sessionId,
+          displayName: firstGroup.network.displayName,
+          supernodeEligible: firstGroup.network.supernodeEligible,
+          signalingUrl: firstGroup.network.signalingUrl,
+          roomId: firstGroup.network.groupId,
+          role: firstGroup.network.role,
+          epoch: firstGroup.network.epoch,
+          membershipRevision: firstGroup.network.membershipRevision,
+          primaryPeerId: firstGroup.network.primaryPeerId,
+          standbyPeerId: firstGroup.network.standbyPeerId,
+          members: firstGroup.network.members.map((m) => ({
+            peerId: m.peerId,
+            sessionId: m.sessionId,
+            joinOrder: m.joinOrder,
+            displayName: m.displayName,
+            supernodeEligible: m.supernodeEligible,
+            role: m.role
+          })),
+          links: firstGroup.network.links,
+          message: firstGroup.network.message
+        }
+      : {
+          status: 'disconnected',
+          peerId: persistedState.peerId,
+          sessionId: null,
+          displayName: persistedState.displayName,
+          supernodeEligible: true,
+          signalingUrl: '',
+          roomId: '',
+          role: 'ordinary',
+          epoch: null,
+          membershipRevision: 0,
+          primaryPeerId: null,
+          standbyPeerId: null,
+          members: [],
+          links: [],
+          message: 'Disconnected'
+        }
+
+    return {
+      revision: stateRevision,
+      identity: {
+        peerId: persistedState.peerId,
+        displayName: persistedState.displayName
+      },
+      relayOnly,
+      groups: activeGroupList,
+      library: {
+        status: libState.status,
+        files: multiGroupFiles,
+        advertisedGeneration: firstGroup ? firstGroup.catalog.advertisedGeneration : libState.advertisedGeneration,
+        acknowledgedGeneration: firstGroup ? firstGroup.catalog.acknowledgedGeneration : libState.acknowledgedGeneration
+      },
+      transfers: transferList,
+      // Legacy P2pState fields
+      network: legacyNet,
+      search: firstGroup ? firstGroup.search : {
+        queryId: null,
+        query: '',
+        status: 'idle',
+        results: [],
+        message: null
+      },
+      recoveryEvents: firstGroup ? firstGroup.recoveryEvents : []
+    }
+  }
+  const engineInstance = {
+    getState: () => buildCombinedSnapshot(),
+
+    subscribe: (listener: (state: MultiGroupP2pState & P2pState) => void) => {
       subscribers.add(listener)
       return () => {
         subscribers.delete(listener)
       }
     },
 
-    connect: async (opts: ConnectOptions) => {
-      const check = validateConnectOptions(opts)
+    joinGroup: async (options: JoinGroupOptions): Promise<ActionResult> => {
+      const check = validateJoinGroupOptions(options)
       if (!check.valid) {
-        throw new Error(`Invalid connect options: ${check.error}`)
+        return { ok: false, code: 'INVALID_INPUT', message: check.error }
       }
-      activeConnectOptions = check.value
-      isExplicitlyDisconnected = false
-      reconnectAttempts = 0
 
-      await store.setDisplayName(opts.displayName)
-      await store.setSupernodeEligible(opts.supernodeEligible)
-      await store.setConnectionParams(opts.signalingUrl, opts.roomId)
-
-      await doConnect(check.value)
-    },
-
-    disconnect: async () => {
-      isExplicitlyDisconnected = true
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer)
-        reconnectTimer = null
-      }
-      if (signalingDrainTimer) {
-        clearInterval(signalingDrainTimer)
-        signalingDrainTimer = null
-      }
-      outboundSignalingQueue.length = 0
-      if (signalingWs) {
-        try {
-          signalingWs.send(JSON.stringify({ v: 1, type: 'leave' }))
-          signalingWs.close()
-        } catch {
-          // ignore
+      // Check relay policy compatibility
+      const hasActive = Array.from(groups.values()).some((g) => g.isJoined)
+      if (hasActive && options.relayOnly !== relayOnly) {
+        return {
+          ok: false,
+          code: 'INVALID_INPUT',
+          message: 'Changing relay policy requires disconnecting all groups first'
         }
-        signalingWs = null
       }
-      await transfers.dispose()
-      await transport.dispose()
-      currentStatus = 'disconnected'
-      currentSessionId = null
-      currentEpoch = null
-      currentMembershipRevision = 0
-      currentPrimaryId = null
-      currentStandbyId = null
-      currentMembers = []
-      currentMessage = 'Disconnected.'
-      publishState()
-    },
 
-    setSupernodeEligible: async (eligible: boolean) => {
-      await store.setSupernodeEligible(eligible)
-      if (signalingWs && signalingWs.readyState === WebSocket.OPEN) {
-        signalingWs.send(
-          JSON.stringify({
-            v: 1,
-            type: 'eligibility',
-            supernodeEligible: eligible
-          })
+      const inv = options.invitation
+      const groupKey = makeGroupKey(inv.signalingUrl, inv.groupId)
+      const credStatus = options.rememberInvitation ? 'stored' : 'memory'
+
+      memoryCredentials.set(groupKey, inv.token)
+
+      const runtime = createGroupRuntime(
+        groupKey,
+        inv.groupId,
+        inv.signalingUrl,
+        options.supernodeEligible,
+        false,
+        credStatus
+      )
+      runtime.supernodeEligible = options.supernodeEligible
+
+      const { client, transport } = getOrCreateEndpoint(inv.signalingUrl)
+      if (options.displayName) {
+        client.setDisplayName(options.displayName)
+      }
+      transport.setPeerContext(
+        store.get().peerId,
+        client.getSessionId() || '',
+        { expiresAt: 0, servers: [] },
+        relayOnly
+      )
+
+      try {
+        await client.joinGroup(inv.groupId, inv.token, options.supernodeEligible)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { ok: false, code: msg.includes('AUTH_FAILED') ? 'AUTH_FAILED' : 'IO_ERROR', message: msg }
+      }
+
+      // Authoritatively accepted: commit to store
+      try {
+        await store.upsertGroup(
+          {
+            groupKey,
+            signalingUrl: inv.signalingUrl,
+            groupId: inv.groupId,
+            supernodeEligible: options.supernodeEligible,
+            autoJoin: false,
+            credentialCiphertext: null
+          },
+          {
+            displayName: options.displayName,
+            relayOnly: options.relayOnly
+          }
         )
+      } catch (err) {
+        // Rollback
+        await client.leaveGroup(inv.groupId)
+        return { ok: false, code: 'IO_ERROR', message: 'Failed to persist group membership' }
       }
+
       publishState()
+      return { ok: true }
     },
 
-    addFiles: async (paths: readonly string[]) => {
+    resumeGroup: async (groupKey: GroupKey): Promise<ActionResult> => {
+      const runtime = groups.get(groupKey)
+      if (!runtime) {
+        return { ok: false, code: 'NOT_FOUND', message: 'Group not found' }
+      }
+
+      const token = memoryCredentials.get(groupKey)
+      if (!token) {
+        return { ok: false, code: 'INVITATION_REQUIRED', message: 'Invitation token required to resume group' }
+      }
+
+      const { client, transport } = getOrCreateEndpoint(runtime.signalingUrl)
+      transport.setPeerContext(
+        store.get().peerId,
+        client.getSessionId() || '',
+        { expiresAt: 0, servers: [] },
+        relayOnly
+      )
+
+      try {
+        await client.joinGroup(runtime.groupId, token, runtime.supernodeEligible)
+        publishState()
+        return { ok: true }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { ok: false, code: msg.includes('AUTH_FAILED') ? 'AUTH_FAILED' : 'IO_ERROR', message: msg }
+      }
+    },
+
+    leaveGroup: async (groupKey: GroupKey): Promise<ActionResult> => {
+      const runtime = groups.get(groupKey)
+      if (!runtime) {
+        return { ok: false, code: 'NOT_FOUND', message: 'Group not found' }
+      }
+
+      const client = endpointClients.get(runtime.signalingUrl)
+      if (client) {
+        await client.leaveGroup(runtime.groupId)
+      }
+
+      handleGroupLeft(runtime.signalingUrl, runtime.groupId)
+      await store.setGroupAutoJoin(groupKey, false)
+      publishState()
+      return { ok: true }
+    },
+
+    forgetGroup: async (groupKey: GroupKey): Promise<ActionResult> => {
+      const runtime = groups.get(groupKey)
+      if (runtime) {
+        const client = endpointClients.get(runtime.signalingUrl)
+        if (client) {
+          await client.leaveGroup(runtime.groupId)
+        }
+        handleGroupLeft(runtime.signalingUrl, runtime.groupId)
+      }
+
+      memoryCredentials.delete(groupKey)
+      groups.delete(groupKey)
+      await store.removeGroup(groupKey)
+      publishState()
+      return { ok: true }
+    },
+
+    disconnectAll: async (): Promise<ActionResult> => {
+      for (const runtime of groups.values()) {
+        if (runtime.isJoined) {
+          const client = endpointClients.get(runtime.signalingUrl)
+          if (client) {
+            await client.leaveGroup(runtime.groupId)
+          }
+          handleGroupLeft(runtime.signalingUrl, runtime.groupId)
+          await store.setGroupAutoJoin(runtime.groupKey, false)
+        }
+      }
+      publishState()
+      return { ok: true }
+    },
+
+    setSupernodeEligible: async (arg1: unknown, arg2?: unknown): Promise<any> => {
+      if (typeof arg1 === 'boolean') {
+        // Legacy single-group call
+        const eligible = arg1
+        for (const runtime of groups.values()) {
+          runtime.supernodeEligible = eligible
+          const client = endpointClients.get(runtime.signalingUrl)
+          client?.setEligibility(runtime.groupId, eligible)
+          await store.setGroupEligibility(runtime.groupKey, eligible)
+        }
+        publishState()
+        return
+      }
+
+      const groupKey = arg1 as GroupKey
+      const eligible = Boolean(arg2)
+      const runtime = groups.get(groupKey)
+      if (!runtime) {
+        return { ok: false, code: 'NOT_FOUND', message: 'Group not found' }
+      }
+
+      runtime.supernodeEligible = eligible
+      const client = endpointClients.get(runtime.signalingUrl)
+      client?.setEligibility(runtime.groupId, eligible)
+      await store.setGroupEligibility(groupKey, eligible)
+      publishState()
+      return { ok: true }
+    },
+
+    setRelayOnly: async (newRelayOnly: boolean): Promise<ActionResult> => {
+      const hasActive = Array.from(groups.values()).some((g) => g.isJoined)
+      if (hasActive) {
+        return {
+          ok: false,
+          code: 'INVALID_INPUT',
+          message: 'Changing relay policy requires disconnecting all groups first'
+        }
+      }
+      relayOnly = newRelayOnly
+      await store.setRelayOnly(newRelayOnly)
+      publishState()
+      return { ok: true }
+    },
+
+    addFiles: async (arg1: unknown, arg2?: unknown): Promise<any> => {
+      let groupKey: GroupKey | null
+      let paths: readonly string[]
+
+      if (Array.isArray(arg1)) {
+        // Legacy single-group call
+        paths = arg1 as readonly string[]
+        groupKey = groups.keys().next().value || null
+      } else {
+        groupKey = arg1 as GroupKey | null
+        paths = arg2 as readonly string[]
+      }
+
       const added = await library.addFiles(paths)
       for (const item of added) {
-        await store.addSharedFile(item)
+        await store.addSharedFile({
+          fileId: item.fileId,
+          path: item.path,
+          groupKeys: groupKey ? [groupKey] : []
+        })
       }
-      scheduleAnnounceCatalogue()
+
+      scheduleAnnounceAll()
+      publishState()
+      if (Array.isArray(arg1)) return
+      return { ok: true }
     },
 
-    rescanLibrary: async () => {
+    rescanLibrary: async (): Promise<any> => {
       await library.rescan()
-      scheduleAnnounceCatalogue()
+      scheduleAnnounceAll()
+      publishState()
+      return { ok: true }
     },
 
-    removeFile: async (fileId: string) => {
+    removeFile: async (fileId: string): Promise<any> => {
       library.removeFile(fileId)
       await store.removeSharedFile(fileId)
-      scheduleAnnounceCatalogue()
+      scheduleAnnounceAll()
+      publishState()
+      return { ok: true }
     },
 
-    search: async (queryText: string) => {
+    setFileGroups: async (fileId: string, groupKeys: GroupKey[]): Promise<ActionResult> => {
+      await store.setFileGroups(fileId, groupKeys)
+      scheduleAnnounceAll()
+      publishState()
+      return { ok: true }
+    },
+
+    search: async (arg1: string, arg2?: string): Promise<any> => {
+      let groupKey: GroupKey
+      let queryText: string
+
+      if (arg2 !== undefined) {
+        groupKey = arg1
+        queryText = arg2
+      } else {
+        // Legacy single-group call
+        groupKey = groups.keys().next().value || ''
+        queryText = arg1
+      }
+
       const trimmed = queryText.trim()
-      if (trimmed.length < 1 || trimmed.length > 120) {
+      if (trimmed.length < 1 || trimmed.length > MAX_SEARCH_QUERY_LENGTH) {
         throw new Error('Query must be 1 to 120 characters')
       }
-      currentSearchQueryText = trimmed
-      currentSearchQueryId = randomUUID()
-      currentSearchStatus = 'searching'
-      currentSearchMessage = null
-      searchResults.startNewSearch(currentSearchQueryId, trimmed)
+
+      const runtime = groups.get(groupKey)
+      if (!runtime || !runtime.isJoined) {
+        throw new Error('No active group joined for search')
+      }
+
+      runtime.searchQueryText = trimmed
+      runtime.searchQueryId = randomUUID()
+      runtime.searchStatus = 'searching'
+      runtime.searchMessage = null
+      runtime.searchResults.startNewSearch(runtime.searchQueryId, trimmed)
       publishState()
 
-      clearTimeout(searchTimeoutTimer)
-      searchTimeoutTimer = undefined
-      searchTimeoutTimer = setTimeout(() => {
-        if (currentSearchStatus === 'searching') {
-          currentSearchStatus = 'complete'
+      clearTimeout(runtime.searchTimeoutTimer)
+      runtime.searchTimeoutTimer = setTimeout(() => {
+        if (runtime.searchStatus === 'searching') {
+          runtime.searchStatus = 'complete'
           publishState()
         }
       }, 8000)
 
-      if (currentRole === 'supernode') {
-        const localRes = supernodeIndex.search(trimmed, store.get().peerId, currentSearchQueryId)
-        searchResults.addBatch(currentSearchQueryId, localRes.entries, (id) => {
-          const m = currentMembers.find((x) => x.peerId === id)
+      const transport = endpointTransports.get(runtime.signalingUrl)
+      if (runtime.role === 'supernode') {
+        const localRes = runtime.supernodeIndex.search(trimmed, store.get().peerId, runtime.searchQueryId)
+        runtime.searchResults.addBatch(runtime.searchQueryId, localRes.entries as any, (id) => {
+          const m = runtime.members.find((x) => x.peerId === id)
           return m ? m.displayName : `Peer-${id.slice(0, 6)}`
         })
 
-        const otherSupernode = activeElectedSupernodes.find((id) => id !== store.get().peerId)
+        const otherSupernode = runtime.activeElectedSupernodes.find((id) => id !== store.get().peerId)
         if (otherSupernode) {
-          transport.sendControl(otherSupernode, {
-            v: 1,
+          transport?.sendControl(runtime.groupId, otherSupernode, {
+            v: 2,
             type: 'search-forward',
-            epoch: currentEpoch || '',
-            revision: currentMembershipRevision,
-            queryId: currentSearchQueryId,
+            groupId: runtime.groupId,
+            epoch: runtime.epoch || '',
+            revision: runtime.membershipRevision,
+            senderMembershipId: runtime.membershipId || '',
+            queryId: runtime.searchQueryId,
             query: trimmed,
             originPeerId: store.get().peerId,
+            originMembershipId: runtime.membershipId || '',
             ttl: 0
           })
         } else {
-          currentSearchStatus = 'complete'
-          if (searchTimeoutTimer) {
-            clearTimeout(searchTimeoutTimer)
-            searchTimeoutTimer = undefined
-          }
+          runtime.searchStatus = 'complete'
+          clearTimeout(runtime.searchTimeoutTimer)
         }
         publishState()
-      } else if (currentRole === 'ordinary' && currentPrimaryId) {
-        const targetId = currentPrimaryId
-        const queryId = currentSearchQueryId
-        const sendSearch = () => {
-          transport.sendControl(targetId, {
-            v: 1,
-            type: 'search',
-            epoch: currentEpoch || '',
-            revision: currentMembershipRevision,
-            queryId,
-            query: trimmed,
-            ttl: 1
-          })
-        }
-
-        if (transport.getLinkState(targetId)?.state === 'open') {
-          sendSearch()
-        } else {
-          let checkTimer: NodeJS.Timeout | null = null
-          let fallbackTimer: NodeJS.Timeout | null = null
-          const clearBoth = () => {
-            if (checkTimer) {
-              clearInterval(checkTimer)
-              checkTimer = null
-            }
-            if (fallbackTimer) {
-              clearTimeout(fallbackTimer)
-              fallbackTimer = null
-            }
-          }
-          checkTimer = setInterval(() => {
-            if (transport.getLinkState(targetId)?.state === 'open') {
-              clearBoth()
-              sendSearch()
-            }
-          }, 50)
-          fallbackTimer = setTimeout(clearBoth, 5000)
-        }
+      } else if (runtime.role === 'ordinary' && runtime.primaryPeerId) {
+        const targetId = runtime.primaryPeerId
+        const queryId = runtime.searchQueryId
+        transport?.sendControl(runtime.groupId, targetId, {
+          v: 2,
+          type: 'search',
+          groupId: runtime.groupId,
+          epoch: runtime.epoch || '',
+          revision: runtime.membershipRevision,
+          senderMembershipId: runtime.membershipId || '',
+          queryId,
+          query: trimmed,
+          ttl: 1
+        })
       } else {
-        currentSearchStatus = 'error'
-        currentSearchMessage = 'No supernode available to route search'
+        runtime.searchStatus = 'error'
+        runtime.searchMessage = 'No supernode available to route search'
         publishState()
       }
+
+      if (arg2 === undefined) return
+      return { ok: true }
     },
 
-    download: async (resultId: string, destination: string) => {
-      const result = searchResults.resolveResult(resultId)
-      if (!result) {
-        throw new Error('NOT_FOUND')
+    download: async (arg1: string, arg2: string, arg3?: string): Promise<any> => {
+      let groupKey: GroupKey
+      let resultId: string
+      let destination: string
+
+      if (arg3 !== undefined) {
+        groupKey = arg1
+        resultId = arg2
+        destination = arg3
+      } else {
+        groupKey = groups.keys().next().value || ''
+        resultId = arg1
+        destination = arg2
       }
+
+      const runtime = groups.get(groupKey)
+      if (!runtime) throw new Error('NOT_FOUND')
+
+      const result = runtime.searchResults.resolveResult(resultId)
+      if (!result) throw new Error('NOT_FOUND')
+
+      const transport = endpointTransports.get(runtime.signalingUrl)
+      if (!transport) throw new Error('NOT_FOUND')
+
       const transferId = randomUUID()
       await transfers.startDownload({
         transferId,
@@ -1037,51 +1438,80 @@ export async function createPeerEngine(options: { dataDirectory: string }): Prom
         peerId: result.ownerPeerId,
         peerName: result.ownerName,
         destination,
-        openChannel: () => transport.openFileChannel(result.ownerPeerId, transferId)
+        openChannel: () => transport.openFileChannel(runtime.groupId, result.ownerPeerId, transferId)
       })
+
+      if (arg3 === undefined) return
+      return { ok: true }
     },
 
-    cancelTransfer: async (transferId: string) => {
+    cancelTransfer: async (transferId: string): Promise<any> => {
       await transfers.cancelTransfer(transferId)
+      publishState()
+      return { ok: true }
     },
 
-    resolveSearchResult: (resultId: string) => {
-      return searchResults.resolveResult(resultId)
+    resolveSearchResult: (arg1: string, arg2?: string): any => {
+      if (arg2 !== undefined) {
+        const runtime = groups.get(arg1 as GroupKey)
+        return runtime?.searchResults.resolveResult(arg2)
+      }
+      for (const runtime of groups.values()) {
+        const res = runtime.searchResults.resolveResult(arg1)
+        if (res) return res as unknown as P2pSearchResult
+      }
+      return undefined
     },
 
-    getAuthorizedFile: async (fileId: string) => {
+    getAuthorizedFile: async (fileId: string): Promise<{ path: string; size: number; sha256: string }> => {
       return library.getAuthorizedFile(fileId)
     },
-    dispose: async () => {
+
+    // Legacy connect / disconnect methods
+    connect: async (opts: ConnectOptions): Promise<void> => {
+      const inv: GroupInvitation = {
+        version: 2,
+        signalingUrl: opts.signalingUrl,
+        groupId: opts.roomId,
+        token: opts.token
+      }
+      const res = await engineInstance.joinGroup({
+        invitation: inv,
+        displayName: opts.displayName,
+        supernodeEligible: opts.supernodeEligible,
+        relayOnly: opts.relayOnly,
+        rememberInvitation: false
+      })
+      if (!res.ok) {
+        throw new Error(`${res.code}: ${res.message}`)
+      }
+    },
+
+    disconnect: async (): Promise<void> => {
+      await engineInstance.disconnectAll()
+    },
+    dispose: async (): Promise<void> => {
       if (isDisposed) return
       isDisposed = true
+
       clearInterval(monitorTimer)
-      if (searchTimeoutTimer) {
-        clearTimeout(searchTimeoutTimer)
-        searchTimeoutTimer = undefined
+      for (const runtime of groups.values()) {
+        clearTimeout(runtime.searchTimeoutTimer)
       }
-      supernodeIndex.clear()
-      searchResults.clear()
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer)
-        reconnectTimer = null
+
+      for (const client of endpointClients.values()) {
+        client.dispose()
       }
-      if (signalingDrainTimer) {
-        clearInterval(signalingDrainTimer)
-        signalingDrainTimer = null
+      endpointClients.clear()
+
+      for (const transport of endpointTransports.values()) {
+        await transport.dispose()
       }
-      outboundSignalingQueue.length = 0
-      if (signalingWs) {
-        try {
-          signalingWs.close()
-        } catch {
-          // ignore
-        }
-        signalingWs = null
-      }
+      endpointTransports.clear()
+
       await transfers.dispose()
-      await transport.dispose()
       subscribers.clear()
     }
   }
+  return engineInstance as unknown as PeerEngine
 }

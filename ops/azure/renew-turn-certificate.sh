@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Certbot Deploy Hook for Kazaa Helper
-# Install to /etc/letsencrypt/renewal-hooks/deploy/kazaa-renew.sh and chmod +x
+# Certbot Deploy Hook for p2p-multiple-groups Helper
+# Install to /etc/letsencrypt/renewal-hooks/deploy/p2p-renew.sh and chmod +x
 # Triggered automatically upon successful Let's Encrypt certificate renewal.
 
 set -euo pipefail
@@ -9,11 +9,11 @@ DOMAIN="${RENEWED_DOMAINS:-}"
 LINEAGE="${RENEWED_LINEAGE:-}"
 
 if [[ -z "$LINEAGE" ]]; then
-    echo "[kazaa-renew] RENEWED_LINEAGE is not set; exiting."
+    echo "[p2p-renew] RENEWED_LINEAGE is not set; exiting."
     exit 1
 fi
 
-echo "[kazaa-renew] Renewed certificate for lineage: $LINEAGE"
+echo "[p2p-renew] Renewed certificate for lineage: $LINEAGE"
 
 # 1. Update Coturn TLS certificates
 COTURN_CERT_DIR="/etc/coturn/certs"
@@ -31,11 +31,11 @@ chmod 0640 "$COTURN_CERT_DIR/turn_server_cert.pem"
 chmod 0640 "$COTURN_CERT_DIR/turn_server_pkey.pem"
 
 # 2. Restart Coturn to load updated TLS certificates
-echo "[kazaa-renew] Restarting coturn service..."
+echo "[p2p-renew] Restarting coturn service..."
 systemctl restart coturn
 
 # 3. Reload Nginx to load updated HTTPS certificate
-echo "[kazaa-renew] Reloading nginx service..."
+echo "[p2p-renew] Reloading nginx service..."
 systemctl reload nginx
 
-echo "[kazaa-renew] Certificate renewal deployment completed successfully."
+echo "[p2p-renew] Certificate renewal deployment completed successfully."

@@ -1,6 +1,6 @@
-# Nginx Configuration Example for Kazaa Signaling Helper
-# Install to /etc/nginx/sites-available/kazaa and symlink to /etc/nginx/sites-enabled/
-# Replace <FQDN> with your actual Azure VM FQDN, e.g. kazaa-demo.eastus.cloudapp.azure.com
+# Nginx Configuration Example for p2p-multiple-groups Signaling Helper
+# Install to /etc/nginx/sites-available/p2p-multiple-groups and symlink to /etc/nginx/sites-enabled/
+# Replace <FQDN> with your actual Azure VM FQDN, e.g. p2p-demo.eastus.cloudapp.azure.com
 
 map $http_upgrade $connection_upgrade {
     default upgrade;
@@ -50,8 +50,8 @@ server {
     add_header X-Frame-Options DENY always;
 
     # Logging: sanitized format that NEVER logs Authorization headers or query tokens
-    access_log /var/log/nginx/kazaa_access.log combined;
-    error_log /var/log/nginx/kazaa_error.log warn;
+    access_log /var/log/nginx/p2p_access.log combined;
+    error_log /var/log/nginx/p2p_error.log warn;
 
     # WebSocket signaling endpoint
     location /signal {

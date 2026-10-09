@@ -1,5 +1,5 @@
 [Unit]
-Description=Kazaa P2P Authenticated Signaling Service
+Description=p2p-multiple-groups Authenticated Signaling Service
 After=network.target
 
 [Service]

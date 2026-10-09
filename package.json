@@ -13,7 +13,10 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "node --test tests/theme-store.test.ts && node --test tests/p2p-protocol.test.ts && node --test tests/p2p-integration.test.ts && node --test tests/p2p-transfers.test.ts",
+    "test:unit": "node --test tests/theme-store.test.ts && node --test tests/credential-store.test.ts && node --test tests/peer-store-v2.test.ts && node --test tests/profile-migration.test.ts && node --test tests/signaling-config.test.ts && node --test tests/p2p-protocol.test.ts",
+    "test:p2p": "node --test tests/signaling-server.test.ts && node --test tests/signaling-client.test.ts && node --test tests/p2p-integration.test.ts && node --test tests/p2p-library-search.test.ts && node --test tests/p2p-transfers.test.ts && node --test tests/p2p-transfers-survival.test.ts && node --test tests/p2p-multi-group.test.ts && node --test tests/p2p-group-security.test.ts",
+    "test:e2e": "node --test tests/electron-e2e.test.ts",
+    "test": "npm run test:unit && npm run test:p2p && npm run test:e2e",
     "build": "npm run typecheck && electron-vite build",
     "signal:start": "node --env-file-if-exists=.env services/signaling/index.ts",
     "signal:invite": "node --env-file-if-exists=.env scripts/create-invite.ts"

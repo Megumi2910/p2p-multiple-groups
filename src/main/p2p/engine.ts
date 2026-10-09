@@ -48,6 +48,7 @@ import {
 import { LibraryManager } from './library.ts'
 import { SupernodeIndexManager, SearchResultsTracker } from './search-index.ts'
 import { TransferManager, type TransferAuthorizationContext } from './transfers.ts'
+import { createCredentialStore } from './credential-store.ts'
 import {
   createMultiGroupPeerStore,
   type MultiGroupPeerStore,
@@ -217,12 +218,23 @@ export async function createPeerEngine(
       return 'unknown'
     }
   })
+  const credentialStore = createCredentialStore({ dataDirectory: options.dataDirectory })
 
-  // Initialize group runtimes from persisted store
+  // Initialize group runtimes from persisted store and load remembered credentials
   for (const g of persisted.groups) {
-    createGroupRuntime(g.groupKey, g.groupId, g.signalingUrl, g.supernodeEligible, g.autoJoin, 'required')
+    const token = await credentialStore.getCredential(g.groupKey)
+    if (token) {
+      memoryCredentials.set(g.groupKey, token)
+      createGroupRuntime(g.groupKey, g.groupId, g.signalingUrl, g.supernodeEligible, g.autoJoin, 'stored')
+      if (g.autoJoin) {
+        queueMicrotask(() => {
+          void engineInstance.resumeGroup(g.groupKey)
+        })
+      }
+    } else {
+      createGroupRuntime(g.groupKey, g.groupId, g.signalingUrl, g.supernodeEligible, g.autoJoin, 'required')
+    }
   }
-
   function createGroupRuntime(
     groupKey: GroupKey,
     groupId: string,
@@ -1176,6 +1188,14 @@ export async function createPeerEngine(
         return { ok: false, code: msg.includes('AUTH_FAILED') ? 'AUTH_FAILED' : 'IO_ERROR', message: msg }
       }
 
+      if (options.rememberInvitation) {
+        await credentialStore.setCredential(groupKey, inv.token)
+        runtime.credentialStatus = 'stored'
+      } else {
+        runtime.credentialStatus = 'memory'
+      }
+      runtime.autoJoin = options.autoJoin !== false
+
       // Authoritatively accepted: commit to store
       try {
         await store.upsertGroup(
@@ -1184,7 +1204,7 @@ export async function createPeerEngine(
             signalingUrl: inv.signalingUrl,
             groupId: inv.groupId,
             supernodeEligible: options.supernodeEligible,
-            autoJoin: false,
+            autoJoin: runtime.autoJoin,
             credentialCiphertext: null
           },
           {
@@ -1268,6 +1288,7 @@ export async function createPeerEngine(
       }
 
       memoryCredentials.delete(groupKey)
+      await credentialStore.deleteCredential(groupKey)
       groups.delete(groupKey)
       await store.removeGroup(groupKey)
       publishState()

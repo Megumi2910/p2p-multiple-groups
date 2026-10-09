@@ -148,10 +148,11 @@ describe('LibraryManager & File Indexing', () => {
     const added1 = await lib.addFiles([file1])
     assert.equal(added1.length, 1)
 
-    // Duplicate path
+    // Duplicate path: returns existing ID without creating duplicate entries
     const added2 = await lib.addFiles([file1])
-    assert.equal(added2.length, 0)
-
+    assert.equal(added2.length, 1)
+    assert.equal(added2[0].fileId, added1[0].fileId)
+    assert.equal(lib.getState().files.length, 1)
     // Non-existent path
     const added3 = await lib.addFiles([join(tempDir, 'ghost.txt')])
     assert.equal(added3.length, 0)

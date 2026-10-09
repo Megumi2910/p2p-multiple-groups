@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs'
+import { createReadStream, type ReadStream } from 'node:fs'
 import { open, link, unlink, stat, type FileHandle } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { createHash, randomUUID, type Hash } from 'node:crypto'
@@ -11,7 +11,9 @@ import type {
 } from '../../shared/p2p.ts'
 import {
   isTransferControlMessage,
+  isTransferControlMessageV2,
   type TransferControlMessage,
+  type TransferControlMessageV2,
   MAX_TRANSFER_CHUNK_SIZE
 } from '../../shared/p2p-wire.ts'
 
@@ -24,6 +26,7 @@ const MAX_UNACK_BYTES = 512 * 1024 // 512 KiB
 const HIGH_WATER_BUFFER = 256 * 1024 // 256 KiB
 const LOW_WATER_BUFFER = 128 * 1024 // 128 KiB
 const STALL_TIMEOUT_MS = 30000 // 30s
+const MAX_CONTROL_PAYLOAD_BYTES = 1024 // 1 KiB control byte limit
 
 export function sanitizeDestinationFileName(name: string): string {
   let cleaned = name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim()
@@ -42,6 +45,26 @@ export function sanitizeDestinationFileName(name: string): string {
   return cleaned
 }
 
+export interface TransferAuthorizationContext {
+  direction: P2pTransferDirection
+  groupKey: string
+  fileId: string
+  epoch: string
+  requesterPeerId: string
+  requesterSessionId: string
+  requesterMembershipId: string
+  ownerPeerId: string
+  ownerSessionId: string
+  ownerMembershipId: string
+}
+
+export interface TransferCallbacks {
+  onStateChange: () => void
+  getAuthorizedFile: (context: TransferAuthorizationContext) => Promise<{ path: string; size: number; sha256: string }>
+  isAuthorized: (context: TransferAuthorizationContext) => boolean
+  getPeerPath: (peerId: string) => P2pCandidatePath
+}
+
 interface TransferSession {
   id: string
   direction: P2pTransferDirection
@@ -56,22 +79,25 @@ interface TransferSession {
   message: string | null
   channel: RTCDataChannel | null
   stallTimer: NodeJS.Timeout | null
+  groupKey: string
+  groupId: string
+  epoch: string
+  fileId: string
+  remoteSessionId: string
+  localMembershipId: string
+  remoteMembershipId: string
+  authContext?: TransferAuthorizationContext
   // Upload-specific
   filePath?: string
   lastAckedBytes?: number
   resumeStream?: () => void
+  readStream?: ReadStream
   // Download-specific
   destinationPath?: string
   partPath?: string
   fileHandle?: FileHandle
   hasher?: Hash
   writeQueue?: Promise<void>
-}
-
-export interface TransferCallbacks {
-  onStateChange: () => void
-  getAuthorizedFile: (fileId: string) => Promise<{ path: string; size: number; sha256: string }>
-  getPeerPath: (peerId: string) => P2pCandidatePath
 }
 
 export class TransferManager {
@@ -138,6 +164,9 @@ export class TransferManager {
 
   async startDownload(params: {
     transferId: string
+    groupKey?: string
+    groupId?: string
+    epoch?: string
     fileId: string
     fileName: string
     size: number
@@ -146,11 +175,39 @@ export class TransferManager {
     peerName: string
     destination: string
     openChannel: () => Promise<RTCDataChannel>
+    remoteSessionId?: string
+    localMembershipId?: string
+    remoteMembershipId?: string
   }): Promise<void> {
     if (this.isDisposed) throw new Error('TransferManager is disposed')
 
+    // Concurrency slots globally bounded (max 2 downloads)
     if (this.getActiveDownloadsCount() >= MAX_CONCURRENT_DOWNLOADS) {
       throw new Error('BUSY')
+    }
+
+    const groupKey = params.groupKey || ''
+    const groupId = params.groupId || ''
+    const epoch = params.epoch || ''
+    const remoteSessionId = params.remoteSessionId || ''
+    const localMembershipId = params.localMembershipId || ''
+    const remoteMembershipId = params.remoteMembershipId || ''
+
+    const authContext: TransferAuthorizationContext = {
+      direction: 'download',
+      groupKey,
+      fileId: params.fileId,
+      epoch,
+      requesterPeerId: '',
+      requesterSessionId: '',
+      requesterMembershipId: localMembershipId,
+      ownerPeerId: params.peerId,
+      ownerSessionId: remoteSessionId,
+      ownerMembershipId: remoteMembershipId
+    }
+
+    if (groupKey && !this.callbacks.isAuthorized(authContext)) {
+      throw new Error('NOT_AUTHORIZED')
     }
 
     // Refuse existing destination
@@ -163,7 +220,8 @@ export class TransferManager {
       }
     }
 
-    const partPath = join(dirname(params.destination), `.kazaa-${params.transferId}.part`)
+    // New part files are .p2p-multiple-groups-<transferId>.part (never sweep old .kazaa-* downloads)
+    const partPath = join(dirname(params.destination), `.p2p-multiple-groups-${params.transferId}.part`)
     let fileHandle: FileHandle
     try {
       fileHandle = await open(partPath, 'wx')
@@ -185,6 +243,14 @@ export class TransferManager {
       message: 'Connecting to peer...',
       channel: null,
       stallTimer: null,
+      groupKey,
+      groupId,
+      epoch,
+      fileId: params.fileId,
+      remoteSessionId,
+      localMembershipId,
+      remoteMembershipId,
+      authContext,
       destinationPath: params.destination,
       partPath,
       fileHandle,
@@ -194,11 +260,17 @@ export class TransferManager {
     this.transfers.set(session.id, session)
     this.resetStallTimer(session)
     this.callbacks.onStateChange()
-
     try {
       const channel = await params.openChannel()
       session.channel = channel
       session.path = this.callbacks.getPeerPath(params.peerId)
+
+      // Recheck authorization after channel opening
+      if (groupKey && !this.callbacks.isAuthorized(authContext)) {
+        await this.failTransfer(session, 'Transfer authorization revoked')
+        return
+      }
+
       this.setupDownloadChannel(session, channel, params.fileId)
     } catch (err) {
       await this.failTransfer(session, `Failed to open file channel: ${err instanceof Error ? err.message : String(err)}`)
@@ -206,69 +278,129 @@ export class TransferManager {
   }
 
   private setupDownloadChannel(session: TransferSession, channel: RTCDataChannel, fileId: string): void {
-    const requestMsg: TransferControlMessage = {
-      v: 1,
-      type: 'request',
-      fileId,
-      size: session.size,
-      sha256: session.sha256
-    }
-    channel.send(Buffer.from(JSON.stringify(requestMsg), 'utf-8'))
+    const requestMsg: TransferControlMessageV2 | TransferControlMessage = session.groupId
+      ? {
+          v: 2,
+          type: 'request',
+          groupId: session.groupId,
+          transferId: session.id,
+          epoch: session.epoch,
+          requesterMembershipId: session.localMembershipId,
+          ownerMembershipId: session.remoteMembershipId,
+          fileId,
+          size: session.size,
+          sha256: session.sha256
+        }
+      : {
+          v: 1,
+          type: 'request',
+          fileId,
+          size: session.size,
+          sha256: session.sha256
+        }
+
+    // Send control message exclusively as RTC text
+    channel.send(JSON.stringify(requestMsg))
 
     channel.onmessage = async (event) => {
+      if (session.state === 'cancelled' || session.state === 'completed' || session.state === 'failed') return
       this.resetStallTimer(session)
       const data = event.data
 
-      if (typeof data === 'string' || (Buffer.isBuffer(data) && data.length > 0 && data[0] === 123 /* '{' */)) {
-        // Control message
+      if (typeof data === 'string') {
+        // Control message (RTC text) bounded at 1 KiB
+        if (Buffer.byteLength(data, 'utf-8') > MAX_CONTROL_PAYLOAD_BYTES) {
+          await this.failTransfer(session, 'Control message exceeded maximum allowed size (1 KiB)')
+          return
+        }
+
         let parsed: unknown
         try {
-          parsed = JSON.parse(data.toString())
+          parsed = JSON.parse(data)
         } catch {
           await this.failTransfer(session, 'Invalid control message from peer')
           return
         }
 
-        if (!isTransferControlMessage(parsed)) return
+        if (isTransferControlMessageV2(parsed)) {
+          // Verify group and transfer binding
+          if (parsed.groupId !== session.groupId || parsed.transferId !== session.id) {
+            await this.failTransfer(session, 'Mismatched group or transfer context')
+            return
+          }
 
-        if (parsed.type === 'accepted') {
-          session.state = 'transferring'
-          session.message = 'Transfer in progress'
-          this.callbacks.onStateChange()
-          return
-        }
+          if (parsed.type === 'accepted') {
+            session.state = 'transferring'
+            session.message = 'Transfer in progress'
+            this.callbacks.onStateChange()
+            return
+          }
 
-        if (parsed.type === 'end') {
-          session.state = 'verifying'
-          session.message = 'Verifying file integrity...'
-          this.callbacks.onStateChange()
-          await this.finalizeDownload(session)
-          return
-        }
+          if (parsed.type === 'end') {
+            session.state = 'verifying'
+            session.message = 'Verifying file integrity...'
+            this.callbacks.onStateChange()
+            await this.finalizeDownload(session)
+            return
+          }
 
-        if (parsed.type === 'error') {
-          await this.failTransfer(session, `Remote peer rejected transfer: ${parsed.code}`)
-          return
-        }
+          if (parsed.type === 'error') {
+            await this.failTransfer(session, `Remote peer rejected transfer: ${parsed.code}`)
+            return
+          }
 
-        if (parsed.type === 'cancel') {
-          await this.cancelSession(session, false)
-          return
+          if (parsed.type === 'cancel') {
+            await this.cancelSession(session, false)
+            return
+          }
+        } else if (isTransferControlMessage(parsed)) {
+          if (parsed.type === 'accepted') {
+            session.state = 'transferring'
+            session.message = 'Transfer in progress'
+            this.callbacks.onStateChange()
+            return
+          }
+
+          if (parsed.type === 'end') {
+            session.state = 'verifying'
+            session.message = 'Verifying file integrity...'
+            this.callbacks.onStateChange()
+            await this.finalizeDownload(session)
+            return
+          }
+
+          if (parsed.type === 'error') {
+            await this.failTransfer(session, `Remote peer rejected transfer: ${parsed.code}`)
+            return
+          }
+
+          if (parsed.type === 'cancel') {
+            await this.cancelSession(session, false)
+            return
+          }
         }
-      } else if (Buffer.isBuffer(data)) {
-        // Binary chunk frame
+      } else {
+        // Binary chunk frame exclusively (Buffer or ArrayBuffer)
+        const chunkBuf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer)
+
         if (session.state !== 'transferring') {
           await this.failTransfer(session, 'Received binary frame before acceptance')
           return
         }
 
-        if (data.length < 8) {
+        // Recheck authorization on chunk receipt
+        if (session.authContext && session.groupKey && !this.callbacks.isAuthorized(session.authContext)) {
+          await this.failTransfer(session, 'Transfer authorization revoked')
+          return
+        }
+
+        if (chunkBuf.length < 8) {
           await this.failTransfer(session, 'Malformed binary frame (missing offset)')
           return
         }
 
-        const offset = Number(data.readBigUInt64LE(0))
-        const chunk = data.subarray(8)
+        const offset = Number(chunkBuf.readBigUInt64LE(0))
+        const chunk = chunkBuf.subarray(8)
 
         if (chunk.length > MAX_TRANSFER_CHUNK_SIZE) {
           await this.failTransfer(session, 'Chunk exceeds maximum allowed size')
@@ -284,22 +416,28 @@ export class TransferManager {
           return
         }
 
-        // Synchronously update transferredBytes and hash to maintain packet arrival sequence
         session.transferredBytes += chunk.length
         session.hasher!.update(chunk)
         this.callbacks.onStateChange()
 
         // Send ACK after each 256 KiB written or EOF
         if (session.transferredBytes % ACK_INTERVAL_BYTES < chunk.length || session.transferredBytes === session.size) {
-          const ack: TransferControlMessage = {
-            v: 1,
-            type: 'ack',
-            receivedBytes: session.transferredBytes
-          }
-          channel.send(Buffer.from(JSON.stringify(ack), 'utf-8'))
+          const ackMsg: TransferControlMessageV2 | TransferControlMessage = session.groupId
+            ? {
+                v: 2,
+                type: 'ack',
+                groupId: session.groupId,
+                transferId: session.id,
+                receivedBytes: session.transferredBytes
+              }
+            : {
+                v: 1,
+                type: 'ack',
+                receivedBytes: session.transferredBytes
+              }
+          channel.send(JSON.stringify(ackMsg))
         }
 
-        // Queue disk write in order
         session.writeQueue = (session.writeQueue || Promise.resolve())
           .then(async () => {
             if (session.fileHandle) {
@@ -323,7 +461,14 @@ export class TransferManager {
   }
 
   private async finalizeDownload(session: TransferSession): Promise<void> {
-    if (session.state === 'completed' || session.state === 'failed') return
+    if (session.state === 'completed' || session.state === 'failed' || session.state === 'cancelled') return
+
+    // Recheck authorization before final publication
+    if (session.authContext && session.groupKey && !this.callbacks.isAuthorized(session.authContext)) {
+      await this.failTransfer(session, 'Transfer authorization revoked before publication')
+      return
+    }
+
     try {
       if (session.writeQueue) {
         await session.writeQueue
@@ -358,7 +503,7 @@ export class TransferManager {
         return
       }
 
-      // Remove .part file (cleanup failure is non-fatal to verified file)
+      // Remove .part file
       await unlink(session.partPath!).catch(() => {})
 
       session.state = 'completed'
@@ -369,8 +514,19 @@ export class TransferManager {
       }
 
       if (session.channel && session.channel.readyState === 'open') {
-        const verifiedMsg: TransferControlMessage = { v: 1, type: 'verified' }
-        session.channel.send(Buffer.from(JSON.stringify(verifiedMsg), 'utf-8'))
+        const verifiedMsg: TransferControlMessageV2 | TransferControlMessage = session.groupId
+          ? {
+              v: 2,
+              type: 'verified',
+              groupId: session.groupId,
+              transferId: session.id
+            }
+          : { v: 1, type: 'verified' }
+        try {
+          session.channel.send(JSON.stringify(verifiedMsg))
+        } catch {
+          // ignore
+        }
       }
 
       this.archiveSession(session)
@@ -380,15 +536,32 @@ export class TransferManager {
     }
   }
 
-  async handleIncomingChannel(fromPeerId: string, transferId: string, channel: RTCDataChannel): Promise<void> {
+  async handleIncomingChannel(
+    fromPeerId: string,
+    transferId: string,
+    channel: RTCDataChannel,
+    channelGroupContext?: {
+      groupKey: string
+      groupId: string
+      epoch: string
+      localMembershipId: string
+      remoteSessionId: string
+      remoteMembershipId: string
+    }
+  ): Promise<void> {
     if (this.isDisposed) {
       channel.close()
       return
     }
 
+    // Reserve concurrency slot before asynchronous authorization
     if (this.getActiveUploadsCount() >= MAX_CONCURRENT_UPLOADS) {
-      const err: TransferControlMessage = { v: 1, type: 'error', code: 'BUSY' }
-      channel.send(Buffer.from(JSON.stringify(err), 'utf-8'))
+      const err = channelGroupContext?.groupId
+        ? { v: 2, type: 'error', groupId: channelGroupContext.groupId, transferId, code: 'BUSY' }
+        : { v: 1, type: 'error', code: 'BUSY' }
+      try {
+        channel.send(JSON.stringify(err))
+      } catch {}
       channel.close()
       return
     }
@@ -406,7 +579,14 @@ export class TransferManager {
       path: this.callbacks.getPeerPath(fromPeerId),
       message: 'Incoming request...',
       channel,
-      stallTimer: null
+      stallTimer: null,
+      groupKey: channelGroupContext?.groupKey || '',
+      groupId: channelGroupContext?.groupId || '',
+      epoch: channelGroupContext?.epoch || '',
+      fileId: '',
+      remoteSessionId: channelGroupContext?.remoteSessionId || '',
+      localMembershipId: channelGroupContext?.localMembershipId || '',
+      remoteMembershipId: channelGroupContext?.remoteMembershipId || ''
     }
 
     this.transfers.set(session.id, session)
@@ -414,79 +594,255 @@ export class TransferManager {
     this.callbacks.onStateChange()
 
     channel.onmessage = async (event) => {
+      if (session.state === 'cancelled' || session.state === 'completed' || session.state === 'failed') return
       this.resetStallTimer(session)
       const data = event.data
 
+      if (typeof data !== 'string') {
+        // Uploader does not accept binary frames from downloader
+        return
+      }
+
+      if (Buffer.byteLength(data, 'utf-8') > MAX_CONTROL_PAYLOAD_BYTES) {
+        await this.failTransfer(session, 'Control message exceeded maximum allowed size (1 KiB)')
+        return
+      }
+
       let parsed: unknown
       try {
-        parsed = JSON.parse(data.toString())
+        parsed = JSON.parse(data)
       } catch {
         return
       }
 
-      if (!isTransferControlMessage(parsed)) return
-
-      if (parsed.type === 'request') {
-        let authorized: { path: string; size: number; sha256: string }
-        try {
-          authorized = await this.callbacks.getAuthorizedFile(parsed.fileId)
-        } catch {
-          const err: TransferControlMessage = { v: 1, type: 'error', code: 'NOT_FOUND' }
-          channel.send(Buffer.from(JSON.stringify(err), 'utf-8'))
-          await this.failTransfer(session, 'File not authorized or modified on disk')
+      if (isTransferControlMessageV2(parsed)) {
+        if (session.groupId && parsed.groupId !== session.groupId) {
+          await this.failTransfer(session, 'Mismatched group context')
+          return
+        }
+        if (parsed.transferId !== session.id) {
+          await this.failTransfer(session, 'Mismatched transfer ID')
           return
         }
 
-        if (authorized.size !== parsed.size || authorized.sha256 !== parsed.sha256) {
-          const err: TransferControlMessage = { v: 1, type: 'error', code: 'FILE_CHANGED' }
-          channel.send(Buffer.from(JSON.stringify(err), 'utf-8'))
-          await this.failTransfer(session, 'File changed on disk')
+        if (parsed.type === 'request') {
+          // Context is immutable after first accepted request
+          if (session.state !== 'connecting') {
+            await this.failTransfer(session, 'Repeated request rejected')
+            return
+          }
+
+          session.fileId = parsed.fileId
+          session.groupKey = session.groupKey || channelGroupContext?.groupKey || ''
+          session.groupId = parsed.groupId
+          session.epoch = parsed.epoch
+
+          const authContext: TransferAuthorizationContext = {
+            direction: 'upload',
+            groupKey: session.groupKey,
+            fileId: parsed.fileId,
+            epoch: parsed.epoch,
+            requesterPeerId: fromPeerId,
+            requesterSessionId: session.remoteSessionId,
+            requesterMembershipId: parsed.requesterMembershipId,
+            ownerPeerId: '',
+            ownerSessionId: '',
+            ownerMembershipId: session.localMembershipId
+          }
+          session.authContext = authContext
+
+          // Authorization check before acceptance
+          if (session.groupKey && !this.callbacks.isAuthorized(authContext)) {
+            const err: TransferControlMessageV2 = {
+              v: 2,
+              type: 'error',
+              groupId: parsed.groupId,
+              transferId: parsed.transferId,
+              code: 'NOT_FOUND'
+            }
+            try { channel.send(JSON.stringify(err)) } catch {}
+            await this.failTransfer(session, 'File not authorized')
+            return
+          }
+
+          let authorized: { path: string; size: number; sha256: string }
+          try {
+            authorized = await this.callbacks.getAuthorizedFile(authContext)
+          } catch {
+            const err: TransferControlMessageV2 = {
+              v: 2,
+              type: 'error',
+              groupId: parsed.groupId,
+              transferId: parsed.transferId,
+              code: 'NOT_FOUND'
+            }
+            try { channel.send(JSON.stringify(err)) } catch {}
+            await this.failTransfer(session, 'File not authorized or modified on disk')
+            return
+          }
+
+          // Recheck authorization after awaited file validation
+          if (session.groupKey && !this.callbacks.isAuthorized(authContext)) {
+            const err: TransferControlMessageV2 = {
+              v: 2,
+              type: 'error',
+              groupId: parsed.groupId,
+              transferId: parsed.transferId,
+              code: 'NOT_FOUND'
+            }
+            try { channel.send(JSON.stringify(err)) } catch {}
+            await this.failTransfer(session, 'File not authorized')
+            return
+          }
+
+          if (authorized.size !== parsed.size || authorized.sha256 !== parsed.sha256) {
+            const err: TransferControlMessageV2 = {
+              v: 2,
+              type: 'error',
+              groupId: parsed.groupId,
+              transferId: parsed.transferId,
+              code: 'FILE_CHANGED'
+            }
+            try { channel.send(JSON.stringify(err)) } catch {}
+            await this.failTransfer(session, 'File changed on disk')
+            return
+          }
+
+          session.fileName = sanitizeDestinationFileName(authorized.path.split(/[\\/]/).pop() || 'file')
+          session.size = authorized.size
+          session.sha256 = authorized.sha256
+          session.filePath = authorized.path
+          session.lastAckedBytes = 0
+          session.state = 'transferring'
+          session.message = 'Sending file data...'
+          this.callbacks.onStateChange()
+
+          const acceptedMsg: TransferControlMessageV2 = {
+            v: 2,
+            type: 'accepted',
+            groupId: parsed.groupId,
+            transferId: parsed.transferId,
+            epoch: parsed.epoch,
+            requesterMembershipId: parsed.requesterMembershipId,
+            ownerMembershipId: session.localMembershipId,
+            fileId: parsed.fileId,
+            size: authorized.size,
+            sha256: authorized.sha256
+          }
+          channel.send(JSON.stringify(acceptedMsg))
+
+          void this.startStreamingUpload(session, channel, authorized.path)
           return
         }
 
-        session.fileName = sanitizeDestinationFileName(authorized.path.split(/[\\/]/).pop() || 'file')
-        session.size = authorized.size
-        session.sha256 = authorized.sha256
-        session.filePath = authorized.path
-        session.lastAckedBytes = 0
-        session.state = 'transferring'
-        session.message = 'Sending file data...'
-        this.callbacks.onStateChange()
-
-        const accepted: TransferControlMessage = {
-          v: 1,
-          type: 'accepted',
-          size: authorized.size,
-          sha256: authorized.sha256
+        if (parsed.type === 'ack') {
+          session.lastAckedBytes = parsed.receivedBytes
+          session.transferredBytes = parsed.receivedBytes
+          this.callbacks.onStateChange()
+          session.resumeStream?.()
+          return
         }
-        channel.send(Buffer.from(JSON.stringify(accepted), 'utf-8'))
 
-        void this.startStreamingUpload(session, channel, authorized.path)
-        return
-      }
-
-      if (parsed.type === 'ack') {
-        session.lastAckedBytes = parsed.receivedBytes
-        session.transferredBytes = parsed.receivedBytes
-        this.callbacks.onStateChange()
-        session.resumeStream?.()
-        return
-      }
-      if (parsed.type === 'verified') {
-        session.state = 'completed'
-        session.message = 'Transfer completed and verified by receiver.'
-        if (session.stallTimer) {
-          clearTimeout(session.stallTimer)
-          session.stallTimer = null
+        if (parsed.type === 'verified') {
+          session.state = 'completed'
+          session.message = 'Transfer completed and verified by receiver.'
+          if (session.stallTimer) {
+            clearTimeout(session.stallTimer)
+            session.stallTimer = null
+          }
+          this.archiveSession(session)
+          this.callbacks.onStateChange()
+          return
         }
-        this.archiveSession(session)
-        this.callbacks.onStateChange()
-        return
-      }
 
-      if (parsed.type === 'cancel') {
-        await this.cancelSession(session, false)
-        return
+        if (parsed.type === 'cancel') {
+          await this.cancelSession(session, false)
+          return
+        }
+      } else if (isTransferControlMessage(parsed)) {
+        if (parsed.type === 'request') {
+          if (session.state !== 'connecting') {
+            await this.failTransfer(session, 'Repeated request rejected')
+            return
+          }
+
+          session.fileId = parsed.fileId
+          const authContext: TransferAuthorizationContext = {
+            direction: 'upload',
+            groupKey: session.groupKey,
+            fileId: parsed.fileId,
+            epoch: session.epoch,
+            requesterPeerId: fromPeerId,
+            requesterSessionId: session.remoteSessionId,
+            requesterMembershipId: session.remoteMembershipId,
+            ownerPeerId: '',
+            ownerSessionId: '',
+            ownerMembershipId: session.localMembershipId
+          }
+          session.authContext = authContext
+
+          let authorized: { path: string; size: number; sha256: string }
+          try {
+            authorized = await this.callbacks.getAuthorizedFile(authContext)
+          } catch {
+            const err: TransferControlMessage = { v: 1, type: 'error', code: 'NOT_FOUND' }
+            try { channel.send(JSON.stringify(err)) } catch {}
+            await this.failTransfer(session, 'File not authorized or modified on disk')
+            return
+          }
+
+          if (authorized.size !== parsed.size || authorized.sha256 !== parsed.sha256) {
+            const err: TransferControlMessage = { v: 1, type: 'error', code: 'FILE_CHANGED' }
+            try { channel.send(JSON.stringify(err)) } catch {}
+            await this.failTransfer(session, 'File changed on disk')
+            return
+          }
+
+          session.fileName = sanitizeDestinationFileName(authorized.path.split(/[\\/]/).pop() || 'file')
+          session.size = authorized.size
+          session.sha256 = authorized.sha256
+          session.filePath = authorized.path
+          session.lastAckedBytes = 0
+          session.state = 'transferring'
+          session.message = 'Sending file data...'
+          this.callbacks.onStateChange()
+
+          const accepted: TransferControlMessage = {
+            v: 1,
+            type: 'accepted',
+            size: authorized.size,
+            sha256: authorized.sha256
+          }
+          channel.send(JSON.stringify(accepted))
+
+          void this.startStreamingUpload(session, channel, authorized.path)
+          return
+        }
+
+        if (parsed.type === 'ack') {
+          session.lastAckedBytes = parsed.receivedBytes
+          session.transferredBytes = parsed.receivedBytes
+          this.callbacks.onStateChange()
+          session.resumeStream?.()
+          return
+        }
+
+        if (parsed.type === 'verified') {
+          session.state = 'completed'
+          session.message = 'Transfer completed and verified by receiver.'
+          if (session.stallTimer) {
+            clearTimeout(session.stallTimer)
+            session.stallTimer = null
+          }
+          this.archiveSession(session)
+          this.callbacks.onStateChange()
+          return
+        }
+
+        if (parsed.type === 'cancel') {
+          await this.cancelSession(session, false)
+          return
+        }
       }
     }
 
@@ -504,22 +860,37 @@ export class TransferManager {
   ): Promise<void> {
     if (session.size === 0) {
       // Zero-byte file: send end immediately
-      const endMsg: TransferControlMessage = {
-        v: 1,
-        type: 'end',
-        size: 0,
-        sha256: session.sha256
-      }
-      channel.send(Buffer.from(JSON.stringify(endMsg), 'utf-8'))
+      const endMsg: TransferControlMessageV2 | TransferControlMessage = session.groupId
+        ? {
+            v: 2,
+            type: 'end',
+            groupId: session.groupId,
+            transferId: session.id,
+            size: 0,
+            sha256: session.sha256
+          }
+        : {
+            v: 1,
+            type: 'end',
+            size: 0,
+            sha256: session.sha256
+          }
+      channel.send(JSON.stringify(endMsg))
       return
     }
 
     let offset = 0
     channel.bufferedAmountLowThreshold = LOW_WATER_BUFFER
     const stream = createReadStream(filePath, { highWaterMark: CHUNK_SIZE })
+    session.readStream = stream
 
     const resumeIfNeeded = (): void => {
       if (!stream.isPaused()) return
+      if (session.authContext && session.groupKey && !this.callbacks.isAuthorized(session.authContext)) {
+        stream.destroy()
+        void this.failTransfer(session, 'Transfer authorization revoked')
+        return
+      }
       const curUnacked = offset - (session.lastAckedBytes || 0)
       if (channel.bufferedAmount <= LOW_WATER_BUFFER && curUnacked < MAX_UNACK_BYTES) {
         stream.resume()
@@ -535,6 +906,13 @@ export class TransferManager {
       const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk)
       if (session.state !== 'transferring' || channel.readyState !== 'open') {
         stream.destroy()
+        return
+      }
+
+      // Recheck authorization before each upload frame
+      if (session.authContext && session.groupKey && !this.callbacks.isAuthorized(session.authContext)) {
+        stream.destroy()
+        void this.failTransfer(session, 'Transfer authorization revoked')
         return
       }
 
@@ -555,13 +933,22 @@ export class TransferManager {
 
     stream.on('end', () => {
       if (session.state === 'transferring' && channel.readyState === 'open') {
-        const endMsg: TransferControlMessage = {
-          v: 1,
-          type: 'end',
-          size: session.size,
-          sha256: session.sha256
-        }
-        channel.send(Buffer.from(JSON.stringify(endMsg), 'utf-8'))
+        const endMsg: TransferControlMessageV2 | TransferControlMessage = session.groupId
+          ? {
+              v: 2,
+              type: 'end',
+              groupId: session.groupId,
+              transferId: session.id,
+              size: session.size,
+              sha256: session.sha256
+            }
+          : {
+              v: 1,
+              type: 'end',
+              size: session.size,
+              sha256: session.sha256
+            }
+        channel.send(JSON.stringify(endMsg))
       }
     })
 
@@ -577,7 +964,32 @@ export class TransferManager {
     }
   }
 
+  cancelGroup(groupKey: string): void {
+    for (const session of this.transfers.values()) {
+      if (session.groupKey === groupKey) {
+        void this.cancelSession(session, true)
+      }
+    }
+  }
+
+  cancelFileGrant(groupKey: string, fileId: string): void {
+    for (const session of this.transfers.values()) {
+      if (session.groupKey === groupKey && session.fileId === fileId) {
+        void this.cancelSession(session, true)
+      }
+    }
+  }
+
+  cancelPeerSessions(peerId: string): void {
+    for (const session of this.transfers.values()) {
+      if (session.peerId === peerId) {
+        void this.cancelSession(session, true)
+      }
+    }
+  }
+
   private async cancelSession(session: TransferSession, notifyRemote: boolean): Promise<void> {
+    if (session.state === 'cancelled') return
     session.state = 'cancelled'
     session.message = 'Transfer cancelled.'
     if (session.stallTimer) {
@@ -585,11 +997,25 @@ export class TransferManager {
       session.stallTimer = null
     }
 
+    if (session.readStream) {
+      try {
+        session.readStream.destroy()
+      } catch {}
+      session.readStream = undefined
+    }
+
     if (session.channel && session.channel.readyState === 'open') {
       if (notifyRemote) {
         try {
-          const cancelMsg: TransferControlMessage = { v: 1, type: 'cancel' }
-          session.channel.send(Buffer.from(JSON.stringify(cancelMsg), 'utf-8'))
+          const cancelMsg: TransferControlMessageV2 | TransferControlMessage = session.groupId
+            ? {
+                v: 2,
+                type: 'cancel',
+                groupId: session.groupId,
+                transferId: session.id
+              }
+            : { v: 1, type: 'cancel' }
+          session.channel.send(JSON.stringify(cancelMsg))
         } catch {
           // ignore
         }
@@ -615,8 +1041,7 @@ export class TransferManager {
   }
 
   private async failTransfer(session: TransferSession, reason: string): Promise<void> {
-    if (session.state === 'completed' || session.state === 'cancelled') return
-
+    if (session.state === 'completed' || session.state === 'cancelled' || session.state === 'failed') return
     session.state = 'failed'
     session.message = reason
     if (session.stallTimer) {
@@ -624,10 +1049,25 @@ export class TransferManager {
       session.stallTimer = null
     }
 
+    if (session.readStream) {
+      try {
+        session.readStream.destroy()
+      } catch {}
+      session.readStream = undefined
+    }
+
     if (session.channel && session.channel.readyState === 'open') {
       try {
-        const errMsg: TransferControlMessage = { v: 1, type: 'error', code: reason }
-        session.channel.send(Buffer.from(JSON.stringify(errMsg), 'utf-8'))
+        const errMsg: TransferControlMessageV2 | TransferControlMessage = session.groupId
+          ? {
+              v: 2,
+              type: 'error',
+              groupId: session.groupId,
+              transferId: session.id,
+              code: reason
+            }
+          : { v: 1, type: 'error', code: reason }
+        session.channel.send(JSON.stringify(errMsg))
       } catch {
         // ignore
       }

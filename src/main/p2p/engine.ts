@@ -47,7 +47,7 @@ import {
 } from '../../shared/p2p-wire.ts'
 import { LibraryManager } from './library.ts'
 import { SupernodeIndexManager, SearchResultsTracker } from './search-index.ts'
-import { TransferManager } from './transfers.ts'
+import { TransferManager, type TransferAuthorizationContext } from './transfers.ts'
 import {
   createMultiGroupPeerStore,
   type MultiGroupPeerStore,
@@ -156,11 +156,58 @@ export async function createPeerEngine(
   const endpointTransports = new Map<string, TransportManager>()
 
   // Load stored shared files into library
-  await library.loadStoredFiles(persisted.sharedFiles.map((f) => ({ fileId: f.fileId, path: f.path })))
+  await library.loadStoredFiles(persisted.sharedFiles.map((f) => ({ fileId: f.fileId, path: f.path, groupKeys: f.groupKeys })))
+
+  const isTransferAuthorized = (context: TransferAuthorizationContext): boolean => {
+    if (!context.groupKey) {
+      return true
+    }
+    const runtime = groups.get(context.groupKey)
+    if (!runtime || !runtime.isJoined) return false
+    if (context.epoch && runtime.epoch && runtime.epoch !== context.epoch) return false
+
+    if (context.direction === 'upload') {
+      if (context.ownerMembershipId && runtime.membershipId && context.ownerMembershipId !== runtime.membershipId) {
+        return false
+      }
+      if (context.requesterPeerId) {
+        const isMember = runtime.members.some(
+          (m) =>
+            m.peerId === context.requesterPeerId &&
+            (!context.requesterMembershipId || m.membershipId === context.requesterMembershipId)
+        )
+        if (!isMember) return false
+      }
+      const sf = store.get().sharedFiles.find((f) => f.fileId === context.fileId)
+      if (!sf || !sf.groupKeys.includes(context.groupKey)) {
+        return false
+      }
+      return true
+    } else {
+      if (context.requesterMembershipId && runtime.membershipId && context.requesterMembershipId !== runtime.membershipId) {
+        return false
+      }
+      if (context.ownerPeerId) {
+        const isMember = runtime.members.some(
+          (m) =>
+            m.peerId === context.ownerPeerId &&
+            (!context.ownerMembershipId || m.membershipId === context.ownerMembershipId)
+        )
+        if (!isMember) return false
+      }
+      return true
+    }
+  }
 
   const transfers = new TransferManager({
     onStateChange: () => publishState(),
-    getAuthorizedFile: (fileId) => library.getAuthorizedFile(fileId),
+    isAuthorized: (context) => isTransferAuthorized(context),
+    getAuthorizedFile: async (context) => {
+      if (!isTransferAuthorized(context)) {
+        throw new Error('NOT_FOUND')
+      }
+      return library.getAuthorizedFile(context.groupKey, context.fileId)
+    },
     getPeerPath: (peerId) => {
       for (const t of endpointTransports.values()) {
         const link = t.getLinkState(peerId)
@@ -272,7 +319,19 @@ export async function createPeerEngine(
         handleControlMessage(signalingUrl, fromPeerId, msg)
       },
       onFileChannel: (groupId, fromPeerId, fromSessionId, transferId, channel) => {
-        void transfers.handleIncomingChannel(fromPeerId, transferId, channel)
+        const key = makeGroupKey(signalingUrl, groupId)
+        const runtime = groups.get(key)
+        const channelGroupContext = runtime
+          ? {
+              groupKey: key,
+              groupId,
+              epoch: runtime.epoch || '',
+              localMembershipId: runtime.membershipId || '',
+              remoteSessionId: fromSessionId,
+              remoteMembershipId: runtime.members.find((m) => m.peerId === fromPeerId)?.membershipId || ''
+            }
+          : undefined
+        void transfers.handleIncomingChannel(fromPeerId, transferId, channel, channelGroupContext)
       },
       onLinkStateChange: (peerId, state, path) => {
         handleLinkStateChange(signalingUrl, peerId, state, path)
@@ -514,7 +573,6 @@ export async function createPeerEngine(
       const key = makeGroupKey(signalingUrl, v2.groupId)
       const runtime = groups.get(key)
       if (!runtime || !runtime.isJoined) return
-
       switch (v2.type) {
         case 'ping': {
           const pong: OverlayControlMessageV2 = {
@@ -536,8 +594,8 @@ export async function createPeerEngine(
 
         case 'catalog-begin': {
           if (runtime.role === 'supernode') {
-            const senderSession = runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || ''
-            const instantAck = runtime.supernodeIndex.handleCatalogBegin(fromPeerId, senderSession, v2 as any)
+            const senderSession = v2.senderMembershipId || runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || fromPeerId
+            const instantAck = runtime.supernodeIndex.handleCatalogBegin(fromPeerId, senderSession, v2 as any, v2.senderMembershipId)
             if (instantAck) {
               const ack: OverlayCatalogAckMessageV2 = {
                 v: 2,
@@ -573,15 +631,16 @@ export async function createPeerEngine(
 
         case 'catalog-batch': {
           if (runtime.role === 'supernode') {
-            runtime.supernodeIndex.handleCatalogBatch(fromPeerId, v2 as any)
+            const senderSession = v2.senderMembershipId || runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || fromPeerId
+            runtime.supernodeIndex.handleCatalogBatch(fromPeerId, senderSession, v2 as any)
           }
           break
         }
 
         case 'catalog-end': {
           if (runtime.role === 'supernode') {
-            const senderSession = runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || ''
-            const swapped = runtime.supernodeIndex.handleCatalogEnd(fromPeerId, senderSession, v2 as any)
+            const senderSession = v2.senderMembershipId || runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || fromPeerId
+            const swapped = runtime.supernodeIndex.handleCatalogEnd(fromPeerId, senderSession, v2 as any, v2.senderMembershipId)
             if (swapped) {
               const ack: OverlayCatalogAckMessageV2 = {
                 v: 2,
@@ -1279,11 +1338,27 @@ export async function createPeerEngine(
 
       const added = await library.addFiles(paths)
       for (const item of added) {
-        await store.addSharedFile({
-          fileId: item.fileId,
-          path: item.path,
-          groupKeys: groupKey ? [groupKey] : []
-        })
+        const targetKeys = groupKey ? [groupKey] : []
+        const existing = store.get().sharedFiles.find((f) => f.fileId === item.fileId)
+        if (existing) {
+          const merged = groupKey && !existing.groupKeys.includes(groupKey)
+            ? [...existing.groupKeys, groupKey]
+            : existing.groupKeys
+          await store.setFileGroups(item.fileId, merged)
+          library.setFileGroups(item.fileId, merged)
+        } else {
+          try {
+            await store.addSharedFile({
+              fileId: item.fileId,
+              path: item.path,
+              groupKeys: targetKeys
+            })
+            library.setFileGroups(item.fileId, targetKeys)
+          } catch (err) {
+            library.removeFile(item.fileId)
+            throw err
+          }
+        }
       }
 
       scheduleAnnounceAll()
@@ -1359,7 +1434,6 @@ export async function createPeerEngine(
           const m = runtime.members.find((x) => x.peerId === id)
           return m ? m.displayName : `Peer-${id.slice(0, 6)}`
         })
-
         const otherSupernode = runtime.activeElectedSupernodes.find((id) => id !== store.get().peerId)
         if (otherSupernode) {
           transport?.sendControl(runtime.groupId, otherSupernode, {
@@ -1431,6 +1505,16 @@ export async function createPeerEngine(
       const transferId = randomUUID()
       await transfers.startDownload({
         transferId,
+        groupKey: runtime.groupKey,
+        groupId: runtime.groupId,
+        epoch: runtime.epoch || '',
+        remoteSessionId: result.ownerSessionId,
+        localMembershipId: runtime.membershipId || '',
+        remoteMembershipId:
+          ('ownerMembershipId' in result && (result as any).ownerMembershipId) ||
+          runtime.members.find((m) => m.peerId === result.ownerPeerId)?.membershipId ||
+          result.ownerSessionId ||
+          '',
         fileId: result.file.fileId,
         fileName: result.file.name,
         size: result.file.size,

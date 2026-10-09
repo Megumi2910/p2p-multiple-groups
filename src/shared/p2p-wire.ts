@@ -985,7 +985,7 @@ export function isTransferControlMessageV2(val: unknown): val is TransferControl
       return (
         isUuid(r.epoch) &&
         isUuid(r.requesterMembershipId) &&
-        isUuid(r.ownerMembershipId) &&
+        (isUuid(r.ownerMembershipId) || r.ownerMembershipId === '') &&
         isUuid(r.fileId) &&
         isNonNegativeSafeInteger(r.size) &&
         isSha256(r.sha256)

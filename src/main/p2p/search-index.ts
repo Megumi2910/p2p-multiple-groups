@@ -55,7 +55,8 @@ export class SupernodeIndexManager {
   handleCatalogBegin(
     ownerPeerId: string,
     ownerSessionId: string,
-    msg: OverlayCatalogBeginMessage
+    msg: OverlayCatalogBeginMessage,
+    ownerMembershipId?: string
   ): boolean {
     const existing = this.staging.get(ownerPeerId)
     if (existing) {
@@ -88,12 +89,17 @@ export class SupernodeIndexManager {
     return false
   }
 
-  handleCatalogBatch(ownerPeerId: string, msg: OverlayCatalogBatchMessage): void {
+  handleCatalogBatch(
+    ownerPeerId: string,
+    arg2: string | OverlayCatalogBatchMessage,
+    arg3?: OverlayCatalogBatchMessage
+  ): void {
+    const msg = (typeof arg2 === 'string' ? arg3 : arg2) as OverlayCatalogBatchMessage
+    if (!msg) return
     const staged = this.staging.get(ownerPeerId)
     if (!staged || staged.generation !== msg.generation) {
       return
     }
-
     for (const entry of msg.entries) {
       if (staged.entries.length < staged.count) {
         staged.entries.push(entry)
@@ -104,7 +110,8 @@ export class SupernodeIndexManager {
   handleCatalogEnd(
     ownerPeerId: string,
     ownerSessionId: string,
-    msg: OverlayCatalogEndMessage
+    msg: OverlayCatalogEndMessage,
+    ownerMembershipId?: string
   ): boolean {
     const staged = this.staging.get(ownerPeerId)
     if (!staged || staged.generation !== msg.generation) {
@@ -271,13 +278,18 @@ export class SearchResultsTracker {
       if (!this.seenFiles.has(dedupKey)) {
         this.seenFiles.add(dedupKey)
         const resultId = randomUUID()
+        const ownerMembershipId =
+          'ownerMembershipId' in entry && typeof (entry as Record<string, unknown>).ownerMembershipId === 'string'
+            ? ((entry as Record<string, unknown>).ownerMembershipId as string)
+            : entry.ownerSessionId
         this.resultsMap.set(resultId, {
           resultId,
           ownerPeerId: entry.ownerPeerId,
           ownerSessionId: entry.ownerSessionId,
+          ownerMembershipId,
           ownerName: ownerNames(entry.ownerPeerId) || `Peer-${entry.ownerPeerId.slice(0, 6)}`,
           file: entry.file
-        })
+        } as unknown as P2pSearchResult)
         addedAny = true
       }
     }
@@ -289,10 +301,23 @@ export class SearchResultsTracker {
     return Array.from(this.resultsMap.values())
   }
 
-  resolveResult(resultId: string): P2pSearchResult | undefined {
-    return this.resultsMap.get(resultId)
+  resolveResult(resultId: string): (P2pSearchResult & { ownerMembershipId?: string }) | undefined {
+    return this.resultsMap.get(resultId) as (P2pSearchResult & { ownerMembershipId?: string }) | undefined
   }
 
+  pruneExpiredOwners(validIncarnations: Map<string, { sessionId: string; membershipId: string }>): boolean {
+    let pruned = false
+    for (const [resultId, result] of this.resultsMap.entries()) {
+      const valid = validIncarnations.get(result.ownerPeerId)
+      const resMembership = 'ownerMembershipId' in result ? (result as any).ownerMembershipId : result.ownerSessionId
+      if (!valid || valid.sessionId !== result.ownerSessionId || (valid.membershipId && resMembership && valid.membershipId !== resMembership)) {
+        this.resultsMap.delete(resultId)
+        this.seenFiles.delete(`${result.ownerSessionId}:${result.file.fileId}`)
+        pruned = true
+      }
+    }
+    return pruned
+  }
   clear(): void {
     this.activeQueryId = null
     this.activeQueryText = ''

@@ -34,6 +34,7 @@ export interface LocalFileEntry {
     dev?: number
   } | null
   generation: number
+  groupKeys: string[]
 }
 
 export function sanitizeBasename(rawName: string): string | null {
@@ -62,7 +63,7 @@ export class LibraryManager {
   private currentGeneration = 1
   private acknowledgedGeneration: number | null = null
   private readonly listeners = new Set<() => void>()
-  private readonly metadataListeners = new Set<() => void>()
+  private readonly metadataListeners = new Set<(fileIds: readonly string[]) => void>()
 
   private hashQueue: Array<() => Promise<void>> = []
   private activeHashers = 0
@@ -76,7 +77,7 @@ export class LibraryManager {
     }
   }
 
-  subscribeMetadata(listener: () => void): () => void {
+  subscribeMetadata(listener: (fileIds: readonly string[]) => void): () => void {
     this.metadataListeners.add(listener)
     return () => {
       this.metadataListeners.delete(listener)
@@ -93,10 +94,10 @@ export class LibraryManager {
     }
   }
 
-  private notifyMetadata(): void {
+  private notifyMetadata(fileIds: readonly string[] = []): void {
     for (const listener of this.metadataListeners) {
       try {
-        listener()
+        listener(fileIds)
       } catch {
         // ignore listener errors
       }
@@ -135,10 +136,13 @@ export class LibraryManager {
     }
   }
 
-  getSharedMetadata(): P2pFileMetadata[] {
+  getSharedMetadata(groupKey?: string): P2pFileMetadata[] {
     const result: P2pFileMetadata[] = []
     for (const f of this.files.values()) {
       if (f.status === 'shared' && f.size !== null && f.sha256 !== null) {
+        if (groupKey && !f.groupKeys.includes(groupKey)) {
+          continue
+        }
         const meta: P2pFileMetadata = {
           fileId: f.fileId,
           name: f.name,
@@ -153,8 +157,8 @@ export class LibraryManager {
     return result
   }
 
-  createBatches(): P2pFileMetadata[][] {
-    const all = this.getSharedMetadata()
+  createBatches(groupKey?: string): P2pFileMetadata[][] {
+    const all = this.getSharedMetadata(groupKey)
     if (all.length === 0) return []
 
     const batches: P2pFileMetadata[][] = []
@@ -183,8 +187,11 @@ export class LibraryManager {
     return batches
   }
 
-  async loadStoredFiles(stored: readonly PersistedSharedFile[]): Promise<void> {
+  async loadStoredFiles(
+    stored: readonly { fileId: string; path: string; groupKeys?: string[] }[] | readonly PersistedSharedFile[]
+  ): Promise<void> {
     for (const s of stored) {
+      const initialKeys = 'groupKeys' in s && Array.isArray(s.groupKeys) ? [...s.groupKeys] : []
       if (!this.files.has(s.fileId)) {
         const name = basename(s.path)
         const entry: LocalFileEntry = {
@@ -196,13 +203,29 @@ export class LibraryManager {
           status: 'hashing',
           message: 'Queued for verification...',
           statFingerprint: null,
-          generation: 1
+          generation: 1,
+          groupKeys: initialKeys
         }
         this.files.set(s.fileId, entry)
         this.pathToId.set(s.path, s.fileId)
         void this.scheduleFileScan(entry)
+      } else {
+        const existing = this.files.get(s.fileId)!
+        if ('groupKeys' in s && Array.isArray(s.groupKeys)) {
+          existing.groupKeys = [...s.groupKeys]
+        }
       }
     }
+  }
+
+  setFileGroups(fileId: string, groupKeys: readonly string[]): void {
+    const entry = this.files.get(fileId)
+    if (!entry) return
+    entry.groupKeys = Array.from(new Set(groupKeys))
+    this.currentGeneration++
+    this.acknowledgedGeneration = null
+    this.notifyMetadata([fileId])
+    this.notify()
   }
 
   async addFiles(paths: readonly string[]): Promise<Array<{ fileId: string; path: string }>> {
@@ -222,7 +245,9 @@ export class LibraryManager {
       }
 
       if (this.pathToId.has(canonical)) {
-        // Duplicate path rejected
+        // Already known canonical path: return existing entry ID without re-adding
+        const existingId = this.pathToId.get(canonical)!
+        added.push({ fileId: existingId, path: canonical })
         continue
       }
 
@@ -242,7 +267,8 @@ export class LibraryManager {
         status: 'hashing',
         message: 'Queued for hashing...',
         statFingerprint: null,
-        generation: this.currentGeneration
+        generation: this.currentGeneration,
+        groupKeys: [] // Starts unshared until explicit committed grant
       }
 
       this.files.set(fileId, entry)
@@ -266,7 +292,7 @@ export class LibraryManager {
     this.currentGeneration++
     this.acknowledgedGeneration = null
     if (wasShared) {
-      this.notifyMetadata()
+      this.notifyMetadata([fileId])
     }
     this.notify()
     return true
@@ -275,7 +301,7 @@ export class LibraryManager {
   async rescan(): Promise<void> {
     this.currentGeneration++
     this.acknowledgedGeneration = null
-    this.notifyMetadata()
+    this.notifyMetadata(Array.from(this.files.keys()))
 
     for (const entry of this.files.values()) {
       entry.status = 'hashing'
@@ -331,7 +357,7 @@ export class LibraryManager {
       if (wasShared) {
         this.currentGeneration++
         this.acknowledgedGeneration = null
-        this.notifyMetadata()
+        this.notifyMetadata([entry.fileId])
       }
     }
 
@@ -402,7 +428,7 @@ export class LibraryManager {
     }
     this.currentGeneration++
     this.acknowledgedGeneration = null
-    this.notifyMetadata()
+    this.notifyMetadata([entry.fileId])
   }
 
   private computeFileHash(filePath: string): Promise<string> {
@@ -417,9 +443,26 @@ export class LibraryManager {
     return promise
   }
 
-  async getAuthorizedFile(fileId: string): Promise<{ path: string; size: number; sha256: string }> {
+  async getAuthorizedFile(
+    arg1: string,
+    arg2?: string
+  ): Promise<{ path: string; size: number; sha256: string }> {
+    let groupKey: string | undefined
+    let fileId: string
+
+    if (arg2 !== undefined) {
+      groupKey = arg1
+      fileId = arg2
+    } else {
+      fileId = arg1
+    }
+
     const entry = this.files.get(fileId)
     if (!entry || entry.status !== 'shared' || entry.size === null || entry.sha256 === null) {
+      throw new Error('NOT_FOUND')
+    }
+
+    if (groupKey && !entry.groupKeys.includes(groupKey)) {
       throw new Error('NOT_FOUND')
     }
 
@@ -440,6 +483,11 @@ export class LibraryManager {
       entry.message = 'File changed on disk since indexed'
       this.notify()
       throw new Error('FILE_CHANGED')
+    }
+
+    // Recheck grant after awaited disk work
+    if (groupKey && !entry.groupKeys.includes(groupKey)) {
+      throw new Error('NOT_FOUND')
     }
 
     return {

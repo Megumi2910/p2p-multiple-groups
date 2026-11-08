@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>02. Supernode Election & Consistent Hashing — Theory — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item active"><a href="02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Distributed Theory</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>02. Supernode Election & Consistent Hashing</span>
+        </nav>
+
+        <h1>Theory: Supernode Election & Consistent Hashing</h1>
+        <p class="lead-paragraph">
+          This document details the deterministic election mechanics and Rendezvous (Highest Random Weight) consistent hashing algorithms implemented in <code>src/main/p2p/election.ts</code>.
+        </p>
+
+        <hr>
+
+        <section id="election-algorithm">
+          <h2>1. Supernode Election Algorithm</h2>
+          <p>Within every virtual group, nodes dynamically elect supernodes from the set of active group participants. The election algorithm is <strong>deterministic</strong>, <strong>stateless</strong>, and guarantees identical results across all peers without requiring Byzantine agreement rounds or distributed leader leases.</p>
+
+          <h3>Candidate Eligibility Predicate</h3>
+          <p>Let <span class="math-inline">R</span> be the current authoritative roster received from the signaling server for virtual group <span class="math-inline">G</span>:</p>
+          <div class="math-display">
+            C = { p ∈ R | p.supernodeEligible = true }
+          </div>
+          <p>Peers mark themselves eligible via the <code>supernodeEligible</code> boolean flag in their local network configuration.</p>
+
+          <h3>Strict Total Ordering</h3>
+          <p>To eliminate split-brain ambiguities and race conditions, candidate set <span class="math-inline">C</span> is sorted according to a strict total ordering relation <span class="math-inline">≺</span>:</p>
+          <div class="math-display">
+            a ≺ b ⟺ (a.joinOrder &lt; b.joinOrder) ∨ (a.joinOrder = b.joinOrder ∧ a.peerId &lt;_lex b.peerId)
+          </div>
+          <ul>
+            <li><code>joinOrder</code>: A monotonically increasing integer assigned by the authoritative signaling server when the peer handshakes into the group.</li>
+            <li><code>peerId</code>: Lexicographical tie-breaker using RFC 4122 UUID strings.</li>
+          </ul>
+
+          <h3>Top-k Selection</h3>
+          <p>Let <span class="math-inline">sort_≺(C) = [c_1, c_2, ..., c_m]</span>. The elected supernode set <span class="math-inline">S</span> is:</p>
+          <div class="math-display">
+            S = { c_i | i ≤ min(k, m) }
+          </div>
+          <p>In <code>p2p-multiple-groups</code>, <span class="math-inline">k = 2</span>:</p>
+          <ul>
+            <li>If <span class="math-inline">m ≥ 2</span>: The top 2 nodes are designated as elected supernodes.</li>
+            <li>If <span class="math-inline">m = 1</span>: Exactly 1 supernode is elected; standby is null.</li>
+            <li>If <span class="math-inline">m = 0</span>: No supernodes are available; the network operates in a fallback ad-hoc mode.</li>
+          </ul>
+
+          <pre><code class="language-typescript">// Verified implementation from src/main/p2p/election.ts
+export function electSupernodes(peers: readonly SignalingRosterPeer[]): ElectionResult {
+  const eligible = peers.filter((p) => p.supernodeEligible)
+  eligible.sort((a, b) => {
+    if (a.joinOrder !== b.joinOrder) {
+      return a.joinOrder - b.joinOrder
+    }
+    return a.peerId.localeCompare(b.peerId)
+  })
+
+  return {
+    electedSupernodes: eligible.slice(0, 2),
+    eligibleCandidates: eligible.slice(2)
+  }
+}</code></pre>
+        </section>
+
+        <hr>
+
+        <section id="hrw-hashing">
+          <h2>2. Rendezvous / Highest Random Weight (HRW) Hashing</h2>
+          <p>
+            Once supernodes <span class="math-inline">S</span> are elected, each ordinary peer <span class="math-inline">p ∈ R \ S</span> must establish a primary connection to one supernode for catalog indexing and a standby connection for redundancy.
+          </p>
+          <p>
+            Rather than assigning nodes randomly (which creates hot spots) or using modulo hashing (which causes cascading reassignments under churn), the system uses <strong>Rendezvous Hashing</strong> (Thaler & Ravishankar, 1998).
+          </p>
+
+          <h3>Hash Scoring Function</h3>
+          <p>For peer <span class="math-inline">p</span> and supernode <span class="math-inline">s ∈ S</span>, the affinity score is defined as:</p>
+          <div class="math-display">
+            Score(p, s) = SHA-256(p.peerId || ":" || s.peerId)
+          </div>
+          <p>where <span class="math-inline">SHA-256(·)</span> outputs a 256-bit hexadecimal string.</p>
+
+          <h3>Supernode Assignment</h3>
+          <p>The peer selects its primary supernode <span class="math-inline">s_1</span> and standby supernode <span class="math-inline">s_2</span> by maximizing the score:</p>
+          <div class="math-display">
+            s_1 = argmax_{s ∈ S} Score(p, s)
+          </div>
+          <div class="math-display">
+            s_2 = argmax_{s ∈ S \ {s_1}} Score(p, s)
+          </div>
+
+          <p>Ties in hash value are broken by reverse lexicographical comparison of the supernode IDs:</p>
+          <pre><code class="language-typescript">// Verified implementation from src/main/p2p/election.ts
+scored.sort((a, b) => {
+  if (a.hash !== b.hash) {
+    return b.hash.localeCompare(a.hash)
+  }
+  return b.supernode.peerId.localeCompare(a.supernode.peerId)
+})</code></pre>
+        </section>
+
+        <hr>
+
+        <section id="churn-proof">
+          <h2>3. Mathematical Proof of Churn Minimality</h2>
+          <p>A critical problem in distributed hashing is <strong>churn</strong>: nodes departing and joining must not trigger a global migration of state.</p>
+
+          <h3>Modulo Hashing Vulnerability</h3>
+          <p>Under classical modulo hashing:</p>
+          <div class="math-display">
+            h(p) = hash(p) mod |S|
+          </div>
+          <p>When <span class="math-inline">|S|</span> changes from <span class="math-inline">n</span> to <span class="math-inline">n - 1</span>, almost every peer's assigned supernode shifts:</p>
+          <div class="math-display">
+            P(reassignment) = (n - 1) / n
+          </div>
+          <p>As <span class="math-inline">n</span> grows, nearly 100% of peers are reassigned, flooding the remaining supernodes with re-indexing catalog traffic.</p>
+
+          <h3>Highest Random Weight Churn Bound</h3>
+          <p>In Rendezvous Hashing, the scores <span class="math-inline">{ Score(p, s) | s ∈ S }</span> are independent and identically distributed (i.i.d.) random variables across the hash space.</p>
+
+          <div class="callout callout-tip">
+            <div class="callout-icon">📐</div>
+            <div class="callout-content">
+              <div class="callout-title">Theorem (Minimal Churn)</div>
+              <p>When supernode <span class="math-inline">s*</span> departs from set <span class="math-inline">S</span> where <span class="math-inline">|S| = n</span>:</p>
+              <ol>
+                <li>A peer <span class="math-inline">p</span> requires reassignment if and only if <span class="math-inline">s*</span> was its assigned supernode:
+                  <div class="math-display">P(p was assigned to s*) = 1 / n</div>
+                </li>
+                <li>If <span class="math-inline">s*</span> was not assigned to <span class="math-inline">p</span>, <span class="math-inline">p</span>'s assignment remains unchanged:
+                  <div class="math-display">P(p retains its assignment) = 1 - 1/n = (n - 1)/n</div>
+                </li>
+                <li>When <span class="math-inline">s*</span> departs, only exactly <span class="math-inline">1/n</span> of the total peer population shifts to a new supernode. The remaining <span class="math-inline">(n - 1)/n</span> fraction experiences zero catalog re-transmission.</li>
+              </ol>
+              <div class="math-display">Reassignment Fraction = 1 / |S|  (Strictly Minimal)</div>
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="failure-recovery">
+          <h2>4. Standby Promotion & Failure Recovery</h2>
+          <p>The dual-supernode topology (<span class="math-inline">k = 2</span>) ensures that ordinary peers maintain warm failover readiness.</p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+stateDiagram-v2
+    [*] --> StandbyAssigned: Election & HRW Selection
+    StandbyAssigned --> PrimaryHealthy: WebRTC Link Open
+    PrimaryHealthy --> HeartbeatMissed: Ping Timeout (>4000ms)
+    HeartbeatMissed --> StandbyPromotion: Failover Triggered
+    StandbyPromotion --> PrimaryHealthy: Standby Promoted to Primary
+    StandbyPromotion --> ElectionPending: Re-evaluating Roster
+    ElectionPending --> StandbyAssigned: New Standby Elected
+            </div>
+          </div>
+
+          <h3>Failover State Transition</h3>
+          <ol>
+            <li><strong>Normal Operation</strong>:
+              <ul>
+                <li>Leaf publishes full catalog to Primary Supernode <span class="math-inline">s_1</span>.</li>
+                <li>Leaf maintains a pre-warmed signaling route or WebRTC control channel with Standby Supernode <span class="math-inline">s_2</span>.</li>
+              </ul>
+            </li>
+            <li><strong>Primary Supernode Failure</strong>:
+              <ul>
+                <li>If <span class="math-inline">s_1</span> disconnects or fails to acknowledge catalog queries within the lease timeout:</li>
+                <li>The engine logs a <code>P2pRecoveryEvent</code> of type <code>failover</code>.</li>
+                <li>The leaf node immediately promotes <span class="math-inline">s_2</span> to active query target.</li>
+                <li>The leaf transmits its batched catalog (&le; 32 entries) to <span class="math-inline">s_2</span>.</li>
+              </ul>
+            </li>
+            <li><strong>Standby Replacement</strong>:
+              <ul>
+                <li>The signaling server detects <span class="math-inline">s_1</span>'s socket close and issues an updated roster with an incremented <code>membershipRevision</code>.</li>
+                <li>All nodes rerun <code>electSupernodes</code> and <code>selectSupernodesForPeer</code>.</li>
+                <li>The former standby <span class="math-inline">s_2</span> is formally elected primary, and the next candidate in <span class="math-inline">C</span> becomes the new standby.</li>
+              </ul>
+            </li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="01-distributed-topology.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">01. Distributed Topology</span>
+          </a>
+          <a href="03-virtual-overlays-and-consensus.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">03. Overlays & Consensus</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#election-algorithm" class="toc-link">1. Election Algorithm</a></li>
+          <li><a href="#hrw-hashing" class="toc-link">2. HRW Hashing</a></li>
+          <li><a href="#churn-proof" class="toc-link">3. Churn Minimality Proof</a></li>
+          <li><a href="#failure-recovery" class="toc-link">4. Standby Promotion</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

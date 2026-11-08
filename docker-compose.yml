@@ -1,0 +1,11 @@
+services:
+  signaling:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: p2p-multiple-groups-signaling
+    env_file:
+      - .env
+    ports:
+      - "${P2P_MULTIPLE_GROUPS_SIGNAL_PORT:-8787}:8787"
+    restart: unless-stopped

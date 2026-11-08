@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>06. Signaling Operations — User Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          
+          <li class="nav-item"><a href="02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item active"><a href="06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>User Guide</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>06. Signaling Operations</span>
+        </nav>
+
+        <h1>User Guide: Signaling Server & Operations</h1>
+        <p class="lead-paragraph">
+          The signaling server coordinates peer discovery, SDP offer/answer exchange, dynamic Coturn TURN credentials, and authoritative membership leases for all virtual groups.
+        </p>
+
+        <hr>
+
+        <section id="quick-start">
+          <h2>1. Quick Start: Local Signaling Server</h2>
+          <p>To start the signaling server for local development or private testing:</p>
+
+          <pre><code class="language-bash"># Start signaling server on ws://127.0.0.1:8787/signal
+npm run signal:start</code></pre>
+
+          <p>By default, the server binds to <code>127.0.0.1:8787</code> and loads configuration from the local <code>.env</code> file (if present).</p>
+        </section>
+
+        <hr>
+
+        <section id="env-configuration">
+          <h2>2. Environment Configuration (<code>.env</code>)</h2>
+          <p>The signaling service is configured via environment variables. Create a <code>.env</code> file in the project root:</p>
+
+          <pre><code class="language-ini"># Host and Port Configuration
+P2P_MULTIPLE_GROUPS_SIGNAL_HOST=127.0.0.1
+P2P_MULTIPLE_GROUPS_SIGNAL_PORT=8787
+
+# Public URL advertised to peers in invitations (ws:// or wss://)
+P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL=ws://127.0.0.1:8787/signal
+
+# Multi-Group JSON Definition
+# Array of objects with unique groupId and secret token
+P2P_MULTIPLE_GROUPS_GROUPS_JSON=[{"groupId":"engineering-team","token":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},{"groupId":"research-docs","token":"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"}]
+
+# STUN Server (Optional, for NAT discovery)
+P2P_MULTIPLE_GROUPS_STUN_URL=stun:stun.l.google.com:19302
+
+# Dynamic Ephemeral TURN Relay (Optional, for Symmetric NAT bypass)
+P2P_MULTIPLE_GROUPS_TURN_HOST=turn.example.com:3478
+P2P_MULTIPLE_GROUPS_TURN_SECRET=your-shared-coturn-secret-here</code></pre>
+
+          <h3>Configuration Variables Reference</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Variable Name</th>
+                  <th>Required</th>
+                  <th>Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_SIGNAL_HOST</code></td>
+                  <td>No</td>
+                  <td><code>127.0.0.1</code></td>
+                  <td>Network interface to bind (<code>0.0.0.0</code> in production containers).</td>
+                </tr>
+                <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_SIGNAL_PORT</code></td>
+                  <td>No</td>
+                  <td><code>8787</code> (or <code>$PORT</code>)</td>
+                  <td>TCP port for HTTP and WebSocket listeners.</td>
+                </tr>
+                <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL</code></td>
+                  <td>For Invites</td>
+                  <td>—</td>
+                  <td>Canonical public WebSocket URL (e.g. <code>wss://signal.yourdomain.com/signal</code>).</td>
+                </tr>
+                <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_GROUPS_JSON</code></td>
+                  <td>Yes</td>
+                  <td>—</td>
+                  <td>JSON array containing <code>{ groupId, token }</code> records.</td>
+                </tr>
+                <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_STUN_URL</code></td>
+                  <td>No</td>
+                  <td>—</td>
+                  <td>STUN server URL formatted as <code>stun:&lt;host&gt;:&lt;port&gt;</code>.</td>
+                </tr>
+                <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_TURN_HOST</code></td>
+                  <td>No</td>
+                  <td>—</td>
+                  <td>FQDN or IP of Coturn TURN relay.</td>
+                </tr>
+                <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_TURN_SECRET</code></td>
+                  <td>If TURN host set</td>
+                  <td>—</td>
+                  <td>Shared static secret for RFC 5766 HMAC-SHA1 credential generation.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">ℹ️</div>
+            <div class="callout-content">
+              <div class="callout-title">Environment Loading</div>
+              <p>Configuration parameters are automatically loaded from the root <code>.env</code> file or runtime container environment variables via standard <code>P2P_MULTIPLE_GROUPS_*</code> keys.</p>
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="generating-invitations">
+          <h2>3. Generating Group Invitations</h2>
+          <p>Peers require an invitation JSON containing the public signaling URL, the group ID, and the cryptographic access token. Use the built-in CLI utility to generate invitations:</p>
+
+          <pre><code class="language-bash"># Specify the desired target group:
+npm run signal:invite -- --group-id=engineering-team</code></pre>
+
+          <p>The script outputs a formatted V2 invitation JSON:</p>
+          <pre><code class="language-json">{
+  "version": 2,
+  "signalingUrl": "ws://127.0.0.1:8787/signal",
+  "groupId": "engineering-team",
+  "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}</code></pre>
+
+          <p>Distribute this invitation string securely (via encrypted chat, email, or password manager) to authorized team members.</p>
+        </section>
+
+        <hr>
+
+        <section id="health-monitoring">
+          <h2>4. HTTP Health Monitoring (<code>GET /healthz</code>)</h2>
+          <p>The signaling server provides a dedicated HTTP endpoint for container orchestrators (Kubernetes, Docker Swarm), load balancers, and monitoring agents:</p>
+
+          <pre><code class="language-bash"># Check health status
+curl -i http://127.0.0.1:8787/healthz</code></pre>
+
+          <p><strong>Expected Response</strong>:</p>
+          <pre><code class="language-http">HTTP/1.1 200 OK
+Content-Type: application/json
+Date: Thu, 20 Feb 2026 12:00:00 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Content-Length: 11
+
+{"ok":true}</code></pre>
+
+          <p>Any HTTP request to other paths (e.g. <code>GET /</code>) returns <code>404 Not Found</code>. WebSocket upgrade handshakes must target <code>/signal</code>.</p>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="05-transfers-and-downloads.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">05. Transfers & Downloads</span>
+          </a>
+          <a href="07-troubleshooting-and-faq.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">07. Troubleshooting & FAQ</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#quick-start" class="toc-link">1. Quick Start</a></li>
+          <li><a href="#env-configuration" class="toc-link">2. Environment Config</a></li>
+          <li><a href="#generating-invitations" class="toc-link">3. Generating Invites</a></li>
+          <li><a href="#health-monitoring" class="toc-link">4. Health Monitoring</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

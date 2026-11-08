@@ -10,8 +10,10 @@ import {
 
 export interface SignalingClientCallbacks {
   onGroupJoined?: (msg: GroupJoinedMessage) => void
-  onRoster?: (groupId: string, epoch: string, revision: number, peers: SignalingRosterPeerV2[]) => void
+  onRoster?: (groupId: string, epoch: string, revision: number, peers: SignalingRosterPeerV2[], ownerPeerId?: string | null) => void
   onGroupLeft?: (groupId: string) => void
+  onGroupKicked?: (groupId: string, reason: string) => void
+  onInviteRotated?: (groupId: string, inviteCode: string) => void
   onSignal?: (msg: Extract<ServerSignalingMessageV2, { type: 'signal' }>) => void
   onError?: (groupId: string | undefined, code: string, message: string) => void
   onStatusChange?: (
@@ -31,6 +33,8 @@ export interface SignalingClientOptions {
 interface DesiredGroup {
   groupId: string
   token: string
+  ownerSecret?: string
+  isCreate?: boolean
   supernodeEligible: boolean
   status: 'joining' | 'joined' | 'auth_failed' | 'error'
   lastMembershipId: string | null
@@ -81,6 +85,8 @@ export class SignalingClient {
   private readonly desiredGroups = new Map<string, DesiredGroup>()
   private readonly pendingJoins = new Map<string, PendingJoin>()
   private readonly pendingLeaves = new Map<string, PendingLeave>()
+  private readonly pendingRotations = new Map<string, { resolve: (code: string) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>()
+  private readonly pendingRemovals = new Map<string, { resolve: () => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>()
 
   constructor(options: SignalingClientOptions) {
     this.signalingUrl = options.signalingUrl
@@ -151,23 +157,24 @@ export class SignalingClient {
     })
   }
 
-  async joinGroup(groupId: string, token: string, eligible: boolean): Promise<GroupJoinedMessage> {
+  async createGroup(groupId: string, ownerSecret: string, eligible: boolean): Promise<GroupJoinedMessage> {
     if (this.isDisposed) {
       throw new Error('Signaling client is disposed')
     }
 
     let group = this.desiredGroups.get(groupId)
     if (group) {
-      group.token = token
+      group.token = 'create-group'
+      group.ownerSecret = ownerSecret
+      group.isCreate = true
       group.supernodeEligible = eligible
-      if (group.status === 'auth_failed') {
-        group.status = 'joining'
-        this.triedUpgradeTokens.delete(token)
-      }
+      group.status = 'joining'
     } else {
       group = {
         groupId,
-        token,
+        token: 'create-group',
+        ownerSecret,
+        isCreate: true,
         supernodeEligible: eligible,
         status: 'joining',
         lastMembershipId: null,
@@ -178,19 +185,19 @@ export class SignalingClient {
       this.desiredGroups.set(groupId, group)
     }
 
-    // Cancel any pending join for this group
     const existingPending = this.pendingJoins.get(groupId)
     if (existingPending) {
       clearTimeout(existingPending.timer)
       this.pendingJoins.delete(groupId)
-      existingPending.reject(new Error('Superseded by new join request'))
+      existingPending.reject(new Error('Superseded by new create request'))
     }
 
     const { promise, resolve, reject } = Promise.withResolvers<GroupJoinedMessage>()
 
     const timer = setTimeout(() => {
       this.pendingJoins.delete(groupId)
-      reject(new Error(`Timeout (10s) waiting to join group "${groupId}"`))
+      this.desiredGroups.delete(groupId)
+      reject(new Error(`Timeout (10s) waiting to create group "${groupId}"`))
     }, 10000)
 
     this.pendingJoins.set(groupId, {
@@ -205,12 +212,154 @@ export class SignalingClient {
     } else if (this.isConnectedAndRegistered()) {
       this.enqueue({
         v: 2,
-        type: 'join-group',
+        type: 'create-group',
         groupId,
-        token: group.token,
-        supernodeEligible: group.supernodeEligible
+        ownerSecret,
+        supernodeEligible: eligible
       })
     }
+
+    return promise
+  }
+
+  async joinGroup(groupId: string, token: string, eligible: boolean, ownerSecret?: string): Promise<GroupJoinedMessage> {
+    if (this.isDisposed) {
+      throw new Error('Signaling client is disposed')
+    }
+
+    const isCodeOnly = groupId === ''
+    const lookupKey = isCodeOnly ? `__code__:${token}` : groupId
+
+    let group = this.desiredGroups.get(lookupKey)
+    if (group) {
+      group.token = token
+      group.ownerSecret = ownerSecret
+      group.supernodeEligible = eligible
+      if (group.status === 'auth_failed') {
+        group.status = 'joining'
+        this.triedUpgradeTokens.delete(token)
+      }
+    } else {
+      group = {
+        groupId,
+        token,
+        ownerSecret,
+        supernodeEligible: eligible,
+        status: 'joining',
+        lastMembershipId: null,
+        lastRoster: [],
+        lastEpoch: null,
+        lastRevision: 1
+      }
+      this.desiredGroups.set(lookupKey, group)
+    }
+
+    // Cancel any pending join for this key
+    const existingPending = this.pendingJoins.get(lookupKey)
+    if (existingPending) {
+      clearTimeout(existingPending.timer)
+      this.pendingJoins.delete(lookupKey)
+      existingPending.reject(new Error('Superseded by new join request'))
+    }
+
+    const { promise, resolve, reject } = Promise.withResolvers<GroupJoinedMessage>()
+
+    const timer = setTimeout(() => {
+      this.pendingJoins.delete(lookupKey)
+      if (isCodeOnly) {
+        this.desiredGroups.delete(lookupKey)
+      }
+      reject(new Error(`Timeout (10s) waiting to join group ${groupId ? `"${groupId}"` : 'with invite code'}`))
+    }, 10000)
+    this.pendingJoins.set(lookupKey, {
+      groupId,
+      resolve,
+      reject,
+      timer
+    })
+
+    if (!this.currentSocket || this.currentSocket.readyState === WebSocket.CLOSED) {
+      this.connect()
+    } else if (this.isConnectedAndRegistered()) {
+      if (isCodeOnly) {
+        this.enqueue({
+          v: 2,
+          type: 'join-group',
+          token,
+          supernodeEligible: group.supernodeEligible
+        })
+      } else {
+        this.enqueue({
+          v: 2,
+          type: 'join-group',
+          groupId,
+          token,
+          ownerSecret,
+          supernodeEligible: group.supernodeEligible
+        })
+      }
+    }
+
+    return promise
+  }
+
+  async rotateInvite(groupId: string, ownerSecret: string): Promise<string> {
+    if (this.isDisposed) throw new Error('Signaling client is disposed')
+    if (!this.isConnectedAndRegistered()) {
+      throw new Error('Not connected to signaling server')
+    }
+
+    const existing = this.pendingRotations.get(groupId)
+    if (existing) {
+      clearTimeout(existing.timer)
+      this.pendingRotations.delete(groupId)
+      existing.reject(new Error('Superseded by new rotate request'))
+    }
+
+    const { promise, resolve, reject } = Promise.withResolvers<string>()
+    const timer = setTimeout(() => {
+      this.pendingRotations.delete(groupId)
+      reject(new Error(`Timeout (10s) waiting to rotate invite for group "${groupId}"`))
+    }, 10000)
+    this.pendingRotations.set(groupId, { resolve, reject, timer })
+    this.enqueue({
+      v: 2,
+      type: 'rotate-invite',
+      groupId,
+      ownerSecret
+    })
+
+    return promise
+  }
+
+  async removeMember(groupId: string, targetPeerId: string, ownerSecret: string): Promise<void> {
+    if (this.isDisposed) throw new Error('Signaling client is disposed')
+    if (!this.isConnectedAndRegistered()) {
+      throw new Error('Not connected to signaling server')
+    }
+
+    const key = `${groupId}:${targetPeerId}`
+    const existing = this.pendingRemovals.get(key)
+    if (existing) {
+      clearTimeout(existing.timer)
+      this.pendingRemovals.delete(key)
+      existing.reject(new Error('Superseded by new remove request'))
+    }
+
+    const { promise, resolve, reject } = Promise.withResolvers<void>()
+    const timer = setTimeout(() => {
+      this.pendingRemovals.delete(key)
+      // Resolve after timeout to remain robust
+      resolve()
+    }, 2000)
+    this.pendingRemovals.set(key, { resolve, reject, timer })
+    this.enqueue({
+      v: 2,
+      type: 'remove-member',
+      groupId,
+      targetPeerId,
+      ownerSecret
+    })
 
     return promise
   }
@@ -400,31 +549,90 @@ export class SignalingClient {
         }
 
         // Rejoin all desired groups on this session
-        for (const group of this.desiredGroups.values()) {
+        for (const [key, group] of this.desiredGroups.entries()) {
           if (group.status !== 'auth_failed') {
-            this.enqueue({
-              v: 2,
-              type: 'join-group',
-              groupId: group.groupId,
-              token: group.token,
-              supernodeEligible: group.supernodeEligible
-            })
+            if (group.isCreate) {
+              this.enqueue({
+                v: 2,
+                type: 'create-group',
+                groupId: group.groupId,
+                ownerSecret: group.ownerSecret || '',
+                supernodeEligible: group.supernodeEligible
+              })
+            } else if (key.startsWith('__code__:')) {
+              this.enqueue({
+                v: 2,
+                type: 'join-group',
+                token: group.token,
+                supernodeEligible: group.supernodeEligible
+              })
+            } else {
+              this.enqueue({
+                v: 2,
+                type: 'join-group',
+                groupId: group.groupId,
+                token: group.token,
+                ownerSecret: group.ownerSecret,
+                supernodeEligible: group.supernodeEligible
+              })
+            }
           }
         }
         break
       }
 
       case 'group-joined': {
-        const group = this.desiredGroups.get(msg.groupId)
-        if (group) {
-          group.status = 'joined'
-          group.lastMembershipId = msg.membershipId
-          group.lastRoster = msg.peers
-          group.lastEpoch = msg.epoch
-          group.lastRevision = msg.revision
+        let pending = this.pendingJoins.get(msg.groupId)
+        let desired = this.desiredGroups.get(msg.groupId)
+
+        if (!pending) {
+          const codeKey = msg.inviteCode ? `__code__:${msg.inviteCode}` : ''
+          let foundKey = ''
+          if (codeKey && this.pendingJoins.has(codeKey)) {
+            foundKey = codeKey
+          } else {
+            for (const key of this.pendingJoins.keys()) {
+              if (key.startsWith('__code__:')) {
+                foundKey = key
+                break
+              }
+            }
+          }
+
+          if (foundKey) {
+            pending = this.pendingJoins.get(foundKey)
+            this.pendingJoins.delete(foundKey)
+            const codeGroup = this.desiredGroups.get(foundKey)
+            if (codeGroup) {
+              this.desiredGroups.delete(foundKey)
+              desired = {
+                groupId: msg.groupId,
+                token: msg.inviteCode || codeGroup.token,
+                ownerSecret: codeGroup.ownerSecret,
+                supernodeEligible: codeGroup.supernodeEligible,
+                status: 'joined',
+                lastMembershipId: msg.membershipId,
+                lastRoster: msg.peers,
+                lastEpoch: msg.epoch,
+                lastRevision: msg.revision
+              }
+              this.desiredGroups.set(msg.groupId, desired)
+            }
+          }
         }
 
-        const pending = this.pendingJoins.get(msg.groupId)
+        if (desired) {
+          desired.status = 'joined'
+          desired.isCreate = false
+          if (msg.inviteCode) {
+            desired.token = msg.inviteCode
+          }
+          desired.lastMembershipId = msg.membershipId
+          desired.lastRoster = msg.peers
+          desired.lastEpoch = msg.epoch
+          desired.lastRevision = msg.revision
+        }
+
         if (pending) {
           clearTimeout(pending.timer)
           this.pendingJoins.delete(msg.groupId)
@@ -443,7 +651,42 @@ export class SignalingClient {
           group.lastRevision = msg.revision
         }
 
-        this.callbacks.onRoster?.(msg.groupId, msg.epoch, msg.revision, msg.peers)
+        // Check if any pending removal was satisfied by this roster update
+        for (const [key, rem] of this.pendingRemovals.entries()) {
+          if (key.startsWith(`${msg.groupId}:`)) {
+            const targetPeerId = key.slice(`${msg.groupId}:`.length)
+            if (!msg.peers.some((p) => p.peerId === targetPeerId)) {
+              clearTimeout(rem.timer)
+              this.pendingRemovals.delete(key)
+              rem.resolve()
+            }
+          }
+        }
+
+        this.callbacks.onRoster?.(msg.groupId, msg.epoch, msg.revision, msg.peers, msg.ownerPeerId)
+        break
+      }
+
+      case 'invite-rotated': {
+        const group = this.desiredGroups.get(msg.groupId)
+        if (group) {
+          group.token = msg.inviteCode
+        }
+
+        const pendingRot = this.pendingRotations.get(msg.groupId)
+        if (pendingRot) {
+          clearTimeout(pendingRot.timer)
+          this.pendingRotations.delete(msg.groupId)
+          pendingRot.resolve(msg.inviteCode)
+        }
+
+        this.callbacks.onInviteRotated?.(msg.groupId, msg.inviteCode)
+        break
+      }
+
+      case 'group-kicked': {
+        this.desiredGroups.delete(msg.groupId)
+        this.callbacks.onGroupKicked?.(msg.groupId, msg.reason)
         break
       }
 
@@ -473,8 +716,12 @@ export class SignalingClient {
         if (msg.groupId) {
           const group = this.desiredGroups.get(msg.groupId)
           if (group) {
-            group.status = msg.code === 'AUTH_FAILED' ? 'auth_failed' : 'error'
-            group.lastError = `${msg.code}: ${msg.message}`
+            if (group.isCreate) {
+              this.desiredGroups.delete(msg.groupId)
+            } else {
+              group.status = msg.code === 'AUTH_FAILED' ? 'auth_failed' : 'error'
+              group.lastError = `${msg.code}: ${msg.message}`
+            }
           }
 
           const pending = this.pendingJoins.get(msg.groupId)
@@ -482,15 +729,45 @@ export class SignalingClient {
             clearTimeout(pending.timer)
             this.pendingJoins.delete(msg.groupId)
             pending.reject(new Error(`${msg.code}: ${msg.message}`))
+          } else {
+            // Also reject and clean up pending code-only join if any
+            for (const [key, p] of this.pendingJoins.entries()) {
+              if (key.startsWith('__code__:')) {
+                clearTimeout(p.timer)
+                this.pendingJoins.delete(key)
+                this.desiredGroups.delete(key)
+                p.reject(new Error(`${msg.code}: ${msg.message}`))
+                break
+              }
+            }
+          }
+          const pendingRot = this.pendingRotations.get(msg.groupId)
+          if (pendingRot) {
+            clearTimeout(pendingRot.timer)
+            this.pendingRotations.delete(msg.groupId)
+            pendingRot.reject(new Error(`${msg.code}: ${msg.message}`))
+          }
+
+          for (const [key, rem] of this.pendingRemovals.entries()) {
+            if (key.startsWith(`${msg.groupId}:`)) {
+              clearTimeout(rem.timer)
+              this.pendingRemovals.delete(key)
+              rem.reject(new Error(`${msg.code}: ${msg.message}`))
+            }
           }
         } else {
-          // Global error (e.g. duplicate peer ID on register)
-          if (msg.code === 'DUPLICATE_PEER_ID') {
-            for (const pending of this.pendingJoins.values()) {
+          // Global error (e.g. AUTH_FAILED on code-only join or DUPLICATE_PEER_ID)
+          for (const [key, pending] of this.pendingJoins.entries()) {
+            if (key.startsWith('__code__:')) {
+              clearTimeout(pending.timer)
+              this.pendingJoins.delete(key)
+              this.desiredGroups.delete(key)
+              pending.reject(new Error(`${msg.code}: ${msg.message}`))
+            } else if (msg.code === 'DUPLICATE_PEER_ID') {
               clearTimeout(pending.timer)
               pending.reject(new Error(`${msg.code}: ${msg.message}`))
+              this.pendingJoins.delete(key)
             }
-            this.pendingJoins.clear()
           }
         }
 
@@ -619,6 +896,18 @@ export class SignalingClient {
       pending.resolve()
     }
     this.pendingLeaves.clear()
+
+    for (const pending of this.pendingRotations.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(new Error('Signaling client disposed'))
+    }
+    this.pendingRotations.clear()
+
+    for (const pending of this.pendingRemovals.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(new Error('Signaling client disposed'))
+    }
+    this.pendingRemovals.clear()
 
     this.closeSocket(this.currentSocket)
     this.currentSocket = null

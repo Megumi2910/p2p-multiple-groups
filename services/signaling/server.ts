@@ -1,39 +1,33 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { timingSafeEqual, randomUUID, createHmac } from 'node:crypto'
+import { timingSafeEqual, randomUUID, createHmac, randomBytes } from 'node:crypto'
 import type { Socket } from 'node:net'
 import { WebSocketServer, WebSocket } from 'ws'
 import {
   MAX_SIGNALING_MESSAGE_SIZE,
-  isClientSignalingMessage,
   isClientSignalingMessageV2,
-  type ClientSignalingMessage,
   type ClientSignalingMessageV2,
-  type ServerSignalingMessage,
   type ServerSignalingMessageV2,
   type SignalingIceConfig,
-  type SignalingRosterPeer,
-  type SignalingRosterPeerV2,
-  type GroupJoinedMessage
+  type SignalingRosterPeerV2
 } from '../../src/shared/p2p-wire.ts'
 import {
   validateDisplayName,
   validateGroupId,
-  validateRoomId,
-  validateToken
+  validateInviteCode
 } from '../../src/shared/p2p.ts'
 
 export interface SignalingGroupConfig {
   groupId: string
   token: string
   name?: string
+  ownerPeerId?: string | null
+  ownerSecret?: string | null
 }
 
 export interface SignalingOptions {
   host: string
   port: number
   groups?: SignalingGroupConfig[]
-  roomId?: string
-  token?: string
   turnHost?: string
   turnSecret?: string
   stunUrl?: string
@@ -48,6 +42,7 @@ export interface SignalingServerInstance {
 }
 
 const upgradeGroupIdMap = new WeakMap<WebSocket, string>()
+const socketSessions = new WeakMap<WebSocket, SocketSession>()
 
 interface SocketSession {
   peerId: string | null
@@ -58,7 +53,6 @@ interface SocketSession {
   tokens: number
   lastTokenUpdate: number
   joinedGroupIds: Set<string>
-  v1RoomId: string | null
   upgradeGroupId: string
 }
 
@@ -76,10 +70,16 @@ interface GroupRuntimeState {
   groupId: string
   token: string
   tokenBuffer: Buffer
+  ownerPeerId: string | null
+  ownerSecretBuffer: Buffer | null
   epoch: string
   revision: number
   nextJoinOrder: number
   members: Map<string, GroupMember> // peerId -> GroupMember
+}
+
+function safeTimingEqual(a: Buffer, b: Buffer): boolean {
+  return a.byteLength === b.byteLength && timingSafeEqual(a, b)
 }
 
 export async function createSignalingServer(options: SignalingOptions): Promise<SignalingServerInstance> {
@@ -96,7 +96,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       if (!groupCheck.valid) {
         throw new Error(`Invalid groupId at index ${i}: ${groupCheck.error}`)
       }
-      const tokenCheck = validateToken(g.token)
+      const tokenCheck = validateInviteCode(g.token)
       if (!tokenCheck.valid) {
         throw new Error(`Invalid token for group "${g.groupId}": ${tokenCheck.error}`)
       }
@@ -108,20 +108,14 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       }
       seenIds.add(groupCheck.value)
       seenTokens.add(tokenCheck.value)
-      groupDefinitions.push({ groupId: groupCheck.value, token: tokenCheck.value })
+      groupDefinitions.push({
+        groupId: groupCheck.value,
+        token: tokenCheck.value,
+        name: g.name,
+        ownerPeerId: g.ownerPeerId ?? null,
+        ownerSecret: g.ownerSecret ?? null
+      })
     }
-  } else if (options.roomId && options.token) {
-    const roomCheck = validateRoomId(options.roomId)
-    if (!roomCheck.valid) {
-      throw new Error(`Invalid roomId: ${roomCheck.error}`)
-    }
-    const tokenCheck = validateToken(options.token)
-    if (!tokenCheck.valid) {
-      throw new Error(`Invalid token: ${tokenCheck.error}`)
-    }
-    groupDefinitions.push({ groupId: roomCheck.value, token: tokenCheck.value })
-  } else {
-    throw new Error('Signaling server requires at least one group configuration')
   }
 
   // Group runtime map
@@ -129,10 +123,13 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
 
   for (const g of groupDefinitions) {
     const tokenBuffer = Buffer.from(g.token, 'utf-8')
+    const ownerSecretBuffer = g.ownerSecret ? Buffer.from(g.ownerSecret, 'utf-8') : null
     groupMap.set(g.groupId, {
       groupId: g.groupId,
       token: g.token,
       tokenBuffer,
+      ownerPeerId: g.ownerPeerId ?? null,
+      ownerSecretBuffer,
       epoch: randomUUID(),
       revision: 1,
       nextJoinOrder: 1,
@@ -144,6 +141,21 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
   const activeSocketsByPeerId = new Map<string, WebSocket>() // peerId -> WebSocket
   const sockets = new Set<WebSocket>()
   let isClosing = false
+
+  function generateUniqueInviteCode(): string {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const code = randomBytes(16).toString('base64url') // 22 chars
+      let exists = false
+      for (const g of groupMap.values()) {
+        if (g.token === code) {
+          exists = true
+          break
+        }
+      }
+      if (!exists) return code
+    }
+    throw new Error('Failed to generate unique invite code')
+  }
 
   function generateIceConfig(sessionId: string): SignalingIceConfig {
     if (options.turnHost && options.turnSecret) {
@@ -157,24 +169,36 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
         expiresAt: expirySec * 1000,
         servers: [
           { urls: `stun:${options.turnHost}:3478` },
-          { urls: `turns:${options.turnHost}:5349?transport=tcp`, username, credential }
-        ]
-      }
-    }
-    if (options.turnUrl && options.turnUsername && options.turnCredential) {
-      const stunUrl = options.stunUrl || 'stun:stun.relay.metered.ca:80'
-      return {
-        expiresAt: Date.now() + 3600000,
-        servers: [
-          { urls: stunUrl },
           {
-            urls: options.turnUrl,
-            username: options.turnUsername,
-            credential: options.turnCredential
+            urls: `turn:${options.turnHost}:3478?transport=udp`,
+            username,
+            credential
+          },
+          {
+            urls: `turn:${options.turnHost}:3478?transport=tcp`,
+            username,
+            credential
           }
         ]
       }
     }
+
+    if (options.turnUrl && options.turnUsername && options.turnCredential) {
+      const servers = []
+      if (options.stunUrl) {
+        servers.push({ urls: options.stunUrl })
+      }
+      servers.push({
+        urls: options.turnUrl,
+        username: options.turnUsername,
+        credential: options.turnCredential
+      })
+      return {
+        expiresAt: Date.now() + 3600000,
+        servers
+      }
+    }
+
     if (options.stunUrl) {
       return {
         expiresAt: Date.now() + 3600000,
@@ -198,16 +222,6 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     }))
   }
 
-  function getRosterV1(group: GroupRuntimeState): SignalingRosterPeer[] {
-    return Array.from(group.members.values()).map((m) => ({
-      peerId: m.peerId,
-      sessionId: m.sessionId,
-      joinOrder: m.joinOrder,
-      displayName: m.displayName,
-      supernodeEligible: m.supernodeEligible
-    }))
-  }
-
   function broadcastGroupRosterV2(group: GroupRuntimeState, exceptPeerId?: string): void {
     const msg: ServerSignalingMessageV2 = {
       v: 2,
@@ -215,7 +229,8 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       groupId: group.groupId,
       epoch: group.epoch,
       revision: group.revision,
-      peers: getRosterV2(group)
+      peers: getRosterV2(group),
+      ownerPeerId: group.ownerPeerId
     }
     const data = Buffer.from(JSON.stringify(msg), 'utf-8')
     for (const [peerId, member] of group.members.entries()) {
@@ -229,27 +244,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     }
   }
 
-  function broadcastGroupRosterV1(group: GroupRuntimeState, exceptPeerId?: string): void {
-    const msg: ServerSignalingMessage = {
-      v: 1,
-      type: 'roster',
-      epoch: group.epoch,
-      revision: group.revision,
-      peers: getRosterV1(group)
-    }
-    const data = Buffer.from(JSON.stringify(msg), 'utf-8')
-    for (const [peerId, member] of group.members.entries()) {
-      if (peerId !== exceptPeerId && member.ws.readyState === WebSocket.OPEN) {
-        if (member.ws.bufferedAmount < 1048576) {
-          member.ws.send(data)
-        } else {
-          member.ws.close(1008, 'Backlog exceeded')
-        }
-      }
-    }
-  }
-
-  function sendToWs(ws: WebSocket, msg: ServerSignalingMessageV2 | ServerSignalingMessage): void {
+  function sendToWs(ws: WebSocket, msg: ServerSignalingMessageV2): void {
     if (ws.readyState === WebSocket.OPEN) {
       if (ws.bufferedAmount < 1048576) {
         ws.send(Buffer.from(JSON.stringify(msg), 'utf-8'))
@@ -279,19 +274,6 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       }
     }
     session.joinedGroupIds.clear()
-
-    if (session.v1RoomId) {
-      const group = groupMap.get(session.v1RoomId)
-      if (group) {
-        const member = group.members.get(peerId)
-        if (member && member.ws === session.ws) {
-          group.members.delete(peerId)
-          group.revision++
-          broadcastGroupRosterV1(group)
-        }
-      }
-      session.v1RoomId = null
-    }
   }
 
   const httpServer: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -336,22 +318,32 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     const providedToken = authHeader.slice('Bearer '.length).trim()
     const providedBuffer = Buffer.from(providedToken, 'utf-8')
 
-    // Verify token matches at least one configured group token using timingSafeEqual
     let matchedGroupId: string | null = null
-    for (const group of groupMap.values()) {
-      if (
-        providedBuffer.length === group.tokenBuffer.length &&
-        timingSafeEqual(providedBuffer, group.tokenBuffer)
-      ) {
-        matchedGroupId = group.groupId
-        break
+    if (providedToken === 'create-group') {
+      matchedGroupId = '__multiplex__'
+    } else {
+      const codeCheck = validateInviteCode(providedToken)
+      if (!codeCheck.valid) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
+        socket.destroy()
+        return
       }
-    }
 
-    if (!matchedGroupId) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
-      socket.destroy()
-      return
+      for (const group of groupMap.values()) {
+        if (
+          safeTimingEqual(providedBuffer, group.tokenBuffer) ||
+          (group.ownerSecretBuffer && safeTimingEqual(providedBuffer, group.ownerSecretBuffer))
+        ) {
+          matchedGroupId = group.groupId
+          break
+        }
+      }
+
+      if (!matchedGroupId) {
+        // Valid invite code format: allow upgrade as multiplexed connection so peers
+        // can join newly created or dynamically re-seeded groups
+        matchedGroupId = '__multiplex__'
+      }
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
@@ -379,9 +371,9 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       tokens: 40,
       lastTokenUpdate: Date.now(),
       joinedGroupIds: new Set(),
-      v1RoomId: null,
       upgradeGroupId
     }
+    socketSessions.set(ws, session)
 
     // Initial message deadline: 5 seconds
     const joinTimer = setTimeout(() => {
@@ -426,15 +418,8 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
         return
       }
 
-      // Check for V2 message format
       if (isClientSignalingMessageV2(parsed)) {
         handleClientMessageV2(session, parsed)
-        return
-      }
-
-      // Temporary V1 message support for existing engine during Phase 2
-      if (isClientSignalingMessage(parsed)) {
-        handleClientMessageV1(session, parsed)
         return
       }
 
@@ -488,30 +473,37 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       const sessionId = sess.sessionId!
 
       switch (msg.type) {
-        case 'join-group': {
-          const group = groupMap.get(msg.groupId)
-          if (!group) {
+        case 'create-group': {
+          const groupCheck = validateGroupId(msg.groupId)
+          if (!groupCheck.valid) {
             sendToWs(ws, {
               v: 2,
               type: 'error',
               groupId: msg.groupId,
-              code: 'NOT_FOUND',
-              message: 'Group not found'
+              code: 'INVALID_INPUT',
+              message: groupCheck.error
+            })
+            return
+          }
+          const secretCheck = validateInviteCode(msg.ownerSecret)
+          if (!secretCheck.valid) {
+            sendToWs(ws, {
+              v: 2,
+              type: 'error',
+              groupId: msg.groupId,
+              code: 'INVALID_INPUT',
+              message: 'Invalid ownerSecret'
             })
             return
           }
 
-          const providedTokenBuffer = Buffer.from(msg.token, 'utf-8')
-          if (
-            providedTokenBuffer.length !== group.tokenBuffer.length ||
-            !timingSafeEqual(providedTokenBuffer, group.tokenBuffer)
-          ) {
+          if (groupMap.has(msg.groupId)) {
             sendToWs(ws, {
               v: 2,
               type: 'error',
               groupId: msg.groupId,
-              code: 'AUTH_FAILED',
-              message: 'Invalid group token'
+              code: 'GROUP_EXISTS',
+              message: 'Group ID already exists'
             })
             return
           }
@@ -527,6 +519,158 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
             return
           }
 
+          const inviteCode = generateUniqueInviteCode()
+          const tokenBuffer = Buffer.from(inviteCode, 'utf-8')
+          const ownerSecretBuffer = Buffer.from(msg.ownerSecret, 'utf-8')
+
+          const newGroup: GroupRuntimeState = {
+            groupId: msg.groupId,
+            token: inviteCode,
+            tokenBuffer,
+            ownerPeerId: peerId,
+            ownerSecretBuffer,
+            epoch: randomUUID(),
+            revision: 1,
+            nextJoinOrder: 1,
+            members: new Map()
+          }
+          groupMap.set(msg.groupId, newGroup)
+
+          const membershipId = randomUUID()
+          const joinOrder = newGroup.nextJoinOrder++
+          const member: GroupMember = {
+            membershipId,
+            peerId,
+            sessionId,
+            joinOrder,
+            displayName: sess.displayName,
+            supernodeEligible: Boolean(msg.supernodeEligible),
+            ws
+          }
+          newGroup.members.set(peerId, member)
+          sess.joinedGroupIds.add(msg.groupId)
+          newGroup.revision++
+
+          sendToWs(ws, {
+            v: 2,
+            type: 'group-joined',
+            groupId: newGroup.groupId,
+            membershipId,
+            epoch: newGroup.epoch,
+            revision: newGroup.revision,
+            peers: getRosterV2(newGroup),
+            ownerPeerId: peerId,
+            inviteCode
+          })
+          return
+        }
+
+        case 'join-group': {
+          let group: GroupRuntimeState | undefined
+          const providedTokenBuffer = Buffer.from(msg.token, 'utf-8')
+
+          if (sess.joinedGroupIds.size >= 32) {
+            sendToWs(ws, {
+              v: 2,
+              type: 'error',
+              groupId: msg.groupId,
+              code: 'LIMIT_EXCEEDED',
+              message: 'Maximum 32 group memberships per connection'
+            })
+            return
+          }
+
+          if (msg.groupId && msg.groupId.length > 0) {
+            group = groupMap.get(msg.groupId)
+            if (!group) {
+              // Check if owner is auto-reseeding the group across server restart
+              if (
+                msg.ownerSecret &&
+                validateGroupId(msg.groupId).valid &&
+                validateInviteCode(msg.token).valid &&
+                validateInviteCode(msg.ownerSecret).valid
+              ) {
+                let tokenCollision = false
+                for (const existingGroup of groupMap.values()) {
+                  if (safeTimingEqual(providedTokenBuffer, existingGroup.tokenBuffer)) {
+                    tokenCollision = true
+                    break
+                  }
+                }
+                if (!tokenCollision) {
+                  group = {
+                    groupId: msg.groupId,
+                    token: msg.token,
+                    tokenBuffer: Buffer.from(msg.token, 'utf-8'),
+                    ownerPeerId: peerId,
+                    ownerSecretBuffer: Buffer.from(msg.ownerSecret, 'utf-8'),
+                    epoch: randomUUID(),
+                    revision: 1,
+                    nextJoinOrder: 1,
+                    members: new Map()
+                  }
+                  groupMap.set(msg.groupId, group)
+                } else {
+                  sendToWs(ws, {
+                    v: 2,
+                    type: 'error',
+                    groupId: msg.groupId,
+                    code: 'AUTH_FAILED',
+                    message: 'Token already in use'
+                  })
+                  return
+                }
+              }
+
+              if (!group) {
+                sendToWs(ws, {
+                  v: 2,
+                  type: 'error',
+                  groupId: msg.groupId,
+                  code: 'NOT_FOUND',
+                  message: 'Group not found'
+                })
+                return
+              }
+            }
+
+            // Verify token match or owner secret match
+            const tokenMatch = safeTimingEqual(providedTokenBuffer, group.tokenBuffer)
+            const ownerMatch = Boolean(
+              msg.ownerSecret &&
+                group.ownerSecretBuffer &&
+                safeTimingEqual(Buffer.from(msg.ownerSecret, 'utf-8'), group.ownerSecretBuffer)
+            )
+
+            if (!tokenMatch && !ownerMatch) {
+              sendToWs(ws, {
+                v: 2,
+                type: 'error',
+                groupId: msg.groupId,
+                code: 'AUTH_FAILED',
+                message: 'Invalid group token'
+              })
+              return
+            }
+          } else {
+            // Code-only join: find group matching tokenBuffer
+            for (const g of groupMap.values()) {
+              if (safeTimingEqual(providedTokenBuffer, g.tokenBuffer)) {
+                group = g
+                break
+              }
+            }
+
+            if (!group) {
+              sendToWs(ws, {
+                v: 2,
+                type: 'error',
+                code: 'AUTH_FAILED',
+                message: 'Invalid invite code'
+              })
+              return
+            }
+          }
           // Idempotent duplicate join
           const existing = group.members.get(peerId)
           if (existing && existing.ws === ws) {
@@ -537,7 +681,9 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
               membershipId: existing.membershipId,
               epoch: group.epoch,
               revision: group.revision,
-              peers: getRosterV2(group)
+              peers: getRosterV2(group),
+              ownerPeerId: group.ownerPeerId,
+              inviteCode: group.token
             })
             return
           }
@@ -553,6 +699,15 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
             return
           }
 
+          // If owner joins with ownerSecret, update ownerPeerId once capacity verified
+          if (
+            msg.ownerSecret &&
+            group.ownerSecretBuffer &&
+            safeTimingEqual(Buffer.from(msg.ownerSecret, 'utf-8'), group.ownerSecretBuffer)
+          ) {
+            group.ownerPeerId = peerId
+          }
+
           const membershipId = randomUUID()
           const joinOrder = group.nextJoinOrder++
           const member: GroupMember = {
@@ -566,7 +721,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
           }
 
           group.members.set(peerId, member)
-          sess.joinedGroupIds.add(msg.groupId)
+          sess.joinedGroupIds.add(group.groupId)
           group.revision++
 
           sendToWs(ws, {
@@ -576,10 +731,107 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
             membershipId,
             epoch: group.epoch,
             revision: group.revision,
-            peers: getRosterV2(group)
+            peers: getRosterV2(group),
+            ownerPeerId: group.ownerPeerId,
+            inviteCode: group.token
           })
 
           broadcastGroupRosterV2(group, peerId)
+          return
+        }
+
+        case 'rotate-invite': {
+          const group = groupMap.get(msg.groupId)
+          if (!group) {
+            sendToWs(ws, {
+              v: 2,
+              type: 'error',
+              groupId: msg.groupId,
+              code: 'NOT_FOUND',
+              message: 'Group not found'
+            })
+            return
+          }
+
+          if (
+            group.ownerPeerId !== peerId ||
+            !group.ownerSecretBuffer ||
+            !safeTimingEqual(Buffer.from(msg.ownerSecret, 'utf-8'), group.ownerSecretBuffer)
+          ) {
+            sendToWs(ws, {
+              v: 2,
+              type: 'error',
+              groupId: msg.groupId,
+              code: 'FORBIDDEN',
+              message: 'Only the group owner can rotate the invite code'
+            })
+            return
+          }
+
+          const newCode = generateUniqueInviteCode()
+          group.token = newCode
+          group.tokenBuffer = Buffer.from(newCode, 'utf-8')
+
+          const rotatedMsg: ServerSignalingMessageV2 = {
+            v: 2,
+            type: 'invite-rotated',
+            groupId: group.groupId,
+            inviteCode: newCode
+          }
+          const rotatedData = Buffer.from(JSON.stringify(rotatedMsg), 'utf-8')
+          for (const m of group.members.values()) {
+            if (m.ws.readyState === WebSocket.OPEN) {
+              m.ws.send(rotatedData)
+            }
+          }
+          return
+        }
+
+        case 'remove-member': {
+          const group = groupMap.get(msg.groupId)
+          if (!group) {
+            sendToWs(ws, {
+              v: 2,
+              type: 'error',
+              groupId: msg.groupId,
+              code: 'NOT_FOUND',
+              message: 'Group not found'
+            })
+            return
+          }
+
+          if (
+            group.ownerPeerId !== peerId ||
+            !group.ownerSecretBuffer ||
+            !safeTimingEqual(Buffer.from(msg.ownerSecret, 'utf-8'), group.ownerSecretBuffer) ||
+            msg.targetPeerId === peerId
+          ) {
+            sendToWs(ws, {
+              v: 2,
+              type: 'error',
+              groupId: msg.groupId,
+              code: 'FORBIDDEN',
+              message: 'Not authorized to remove member'
+            })
+            return
+          }
+
+          const targetMember = group.members.get(msg.targetPeerId)
+          if (targetMember) {
+            group.members.delete(msg.targetPeerId)
+            const targetSession = socketSessions.get(targetMember.ws)
+            if (targetSession) {
+              targetSession.joinedGroupIds.delete(group.groupId)
+            }
+            sendToWs(targetMember.ws, {
+              v: 2,
+              type: 'group-kicked',
+              groupId: group.groupId,
+              reason: 'Removed by group owner'
+            })
+            group.revision++
+            broadcastGroupRosterV2(group)
+          }
           return
         }
 
@@ -665,146 +917,6 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       }
     }
 
-    function handleClientMessageV1(sess: SocketSession, msg: ClientSignalingMessage): void {
-      if (!sess.peerId) {
-        if (msg.type !== 'join') {
-          ws.close(1008, 'Must join first')
-          return
-        }
-
-        const group = groupMap.get(msg.roomId)
-        if (!group) {
-          sendToWs(ws, {
-            v: 1,
-            type: 'error',
-            code: 'ROOM_MISMATCH',
-            message: 'Room ID mismatch'
-          } as ServerSignalingMessage)
-          ws.close(1008, 'Room mismatch')
-          return
-        }
-
-        if (group.groupId !== sess.upgradeGroupId) {
-          sendToWs(ws, {
-            v: 1,
-            type: 'error',
-            code: 'AUTH_FAILED',
-            message: 'Token not authorized for requested room'
-          } as ServerSignalingMessage)
-          ws.close(1008, 'Auth failed')
-          return
-        }
-
-        if (activeSocketsByPeerId.has(msg.peerId)) {
-          sendToWs(ws, {
-            v: 1,
-            type: 'error',
-            code: 'DUPLICATE_PEER_ID',
-            message: 'Peer ID is already active in room'
-          } as ServerSignalingMessage)
-          ws.close(1008, 'Duplicate peer ID')
-          return
-        }
-
-        if (group.members.size >= 16) {
-          sendToWs(ws, {
-            v: 1,
-            type: 'error',
-            code: 'ROOM_FULL',
-            message: 'Room capacity reached (16 peers max)'
-          } as ServerSignalingMessage)
-          ws.close(1008, 'Room full')
-          return
-        }
-
-        const nameCheck = validateDisplayName(msg.displayName)
-        if (!nameCheck.valid) {
-          ws.close(1008, 'Invalid display name')
-          return
-        }
-
-        clearTimeout(joinTimer)
-        const sessionId = randomUUID()
-        sess.peerId = msg.peerId
-        sess.sessionId = sessionId
-        sess.displayName = nameCheck.value
-        sess.v1RoomId = group.groupId
-
-        activeSocketsByPeerId.set(msg.peerId, ws)
-
-        const member: GroupMember = {
-          membershipId: randomUUID(),
-          peerId: msg.peerId,
-          sessionId,
-          joinOrder: group.nextJoinOrder++,
-          displayName: nameCheck.value,
-          supernodeEligible: Boolean(msg.supernodeEligible),
-          ws
-        }
-        group.members.set(msg.peerId, member)
-
-        group.revision++
-        sendToWs(ws, {
-          v: 1,
-          type: 'welcome',
-          sessionId,
-          epoch: group.epoch,
-          iceConfig: generateIceConfig(sessionId)
-        } as ServerSignalingMessage)
-
-        broadcastGroupRosterV1(group)
-        return
-      }
-
-      // Already joined v1 session
-      const group = groupMap.get(sess.v1RoomId || '')
-      if (!group) return
-      const peerId = sess.peerId
-      const member = group.members.get(peerId)
-      if (!member) return
-
-      switch (msg.type) {
-        case 'eligibility': {
-          if (member.supernodeEligible !== msg.supernodeEligible) {
-            member.supernodeEligible = msg.supernodeEligible
-            group.revision++
-            broadcastGroupRosterV1(group)
-          }
-          break
-        }
-        case 'leave': {
-          group.members.delete(peerId)
-          group.revision++
-          broadcastGroupRosterV1(group)
-          ws.close(1000, 'Normal leave')
-          break
-        }
-        case 'ice-config': {
-          sendToWs(ws, {
-            v: 1,
-            type: 'ice-config',
-            iceConfig: generateIceConfig(sess.sessionId!)
-          } as ServerSignalingMessage)
-          break
-        }
-        case 'signal': {
-          const target = group.members.get(msg.targetPeerId)
-          if (target && target.sessionId === msg.targetSessionId) {
-            sendToWs(target.ws, {
-              v: 1,
-              type: 'signal',
-              fromPeerId: peerId,
-              fromSessionId: sess.sessionId!,
-              connectionId: msg.connectionId,
-              kind: msg.kind,
-              payload: msg.payload
-            } as ServerSignalingMessage)
-          }
-          break
-        }
-      }
-    }
-
     ws.on('pong', () => {
       session.lastPong = Date.now()
     })
@@ -823,7 +935,6 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
   // Heartbeat & roster freshness timer: run every 2s
   const heartbeatTimer = setInterval(() => {
     if (isClosing) return
-    const now = Date.now()
     for (const ws of sockets) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.ping()
@@ -833,7 +944,6 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     for (const group of groupMap.values()) {
       let expiredCount = 0
       for (const [peerId, member] of group.members.entries()) {
-        const socketSession = activeSocketsByPeerId.get(peerId)
         if (member.ws.readyState !== WebSocket.OPEN) {
           group.members.delete(peerId)
           expiredCount++
@@ -842,10 +952,8 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       if (expiredCount > 0) {
         group.revision++
         broadcastGroupRosterV2(group)
-        broadcastGroupRosterV1(group)
       } else if (group.members.size > 0) {
         broadcastGroupRosterV2(group)
-        broadcastGroupRosterV1(group)
       }
     }
   }, 2000)

@@ -15,8 +15,7 @@ import { TransportManager, type TransportEvents } from '../src/main/p2p/transpor
 import {
   makeGroupKey,
   type MultiGroupP2pState,
-  type P2pGroupState,
-  type P2pState
+  type P2pGroupState
 } from '../src/shared/p2p.ts'
 function platformDelay(ms: number): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>()
@@ -31,11 +30,11 @@ function findGroup(state: MultiGroupP2pState, groupKey: string): P2pGroupState |
 
 function waitForEngineState(
   engine: PeerEngine,
-  predicate: (state: MultiGroupP2pState & P2pState) => boolean,
+  predicate: (state: MultiGroupP2pState) => boolean,
   timeoutMs = 15000,
   label = 'state condition'
-): Promise<MultiGroupP2pState & P2pState> {
-  const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState & P2pState>()
+): Promise<MultiGroupP2pState> {
+  const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState>()
   let done = false
 
   const timer = setTimeout(() => {
@@ -47,7 +46,7 @@ function waitForEngineState(
   }, timeoutMs)
   timer.unref?.()
 
-  const check = (s: MultiGroupP2pState & P2pState) => {
+  const check = (s: MultiGroupP2pState) => {
     if (done) return
     if (predicate(s)) {
       done = true

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>01. Getting Started — User Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          
+          <li class="nav-item"><a href="02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>User Guide</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>01. Getting Started</span>
+        </nav>
+
+        <h1>User Guide: Getting Started</h1>
+        <p class="lead-paragraph">
+          This guide walks you through setting up and launching the <strong><code>p2p-multiple-groups</code></strong> desktop application, navigating its interface, and using global productivity shortcuts.
+        </p>
+
+        <hr>
+
+        <section id="system-requirements">
+          <h2>1. System Requirements</h2>
+          <p>Before running the application, ensure your host environment satisfies the following minimum requirements:</p>
+
+          <ul>
+            <li><strong>Node.js</strong>: Version <code>&gt;=24.12.0</code> is strictly enforced via <code>package.json</code> engines. The runtime was verified against Node <code>v24.18.0</code>.</li>
+            <li><strong>Operating System</strong>:
+              <ul>
+                <li>Windows 10/11 (64-bit)</li>
+                <li>macOS 12 Monterey or newer (Intel & Apple Silicon)</li>
+                <li>Linux (Ubuntu 22.04 LTS+, Fedora 38+, or Debian 12+) with DBus and Secret Service installed for secure credential persistence.</li>
+              </ul>
+            </li>
+            <li><strong>Network Ports</strong>: Outbound WebSocket access to the configured signaling port (default <code>8787</code>) and UDP/TCP ports for WebRTC direct or relayed media/data channels.</li>
+          </ul>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">Runtime Note</div>
+              <p>Node.js 24 is required because the project leverages modern V8 features and the native <code>node:test</code> framework.</p>
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="installation-setup">
+          <h2>2. Installation & Setup</h2>
+
+          <h3>Step 1: Clone the Repository</h3>
+          <pre><code class="language-bash">git clone https://github.com/your-org/p2p-multiple-groups.git
+cd p2p-multiple-groups</code></pre>
+
+          <h3>Step 2: Install Dependencies</h3>
+          <pre><code class="language-bash">npm install</code></pre>
+
+          <h3>Step 3: Compile Application Bundles</h3>
+          <p>The project uses <code>electron-vite</code> with three compilation targets (<code>main</code>, <code>preload</code>, and <code>renderer</code>):</p>
+          <pre><code class="language-bash">npm run build</code></pre>
+          <p>This runs static TypeScript checks for Node and Web environments, compiling output assets to <code>./out/main/</code>, <code>./out/preload/</code>, and <code>./out/renderer/</code>.</p>
+
+          <h3>Step 4: Launch the Application</h3>
+          <ul>
+            <li><strong>Development Mode</strong> (with Hot Module Replacement):
+              <pre><code class="language-bash">npm run dev</code></pre>
+            </li>
+            <li><strong>Production Preview</strong>:
+              <pre><code class="language-bash">npm run start</code></pre>
+            </li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <section id="desktop-ui-structure">
+          <h2>3. Desktop UI Structure</h2>
+          <p>The desktop interface adheres to modern accessible desktop conventions. It is partitioned into two primary functional areas:</p>
+
+          <figure class="doc-image-figure">
+            <img src="../assets/home-view.png" alt="Home dashboard displaying system health, fast-path action rows, and global navigation rail">
+            <figcaption>Figure 1: Home dashboard displaying system health, fast-path action rows, and global navigation rail. (Click image to zoom)</figcaption>
+          </figure>
+
+          <h3>Navigation Rail (Left Sidebar)</h3>
+          <p>The left navigation rail provides instant access to the application's core views:</p>
+          <ul>
+            <li><strong>Home</strong>: Overview of network connectivity, quick-access triggers for search, sharing, groups, and command palette.</li>
+            <li><strong>Search</strong>: Scoped multi-group search engine to locate files across connected peers.</li>
+            <li><strong>Library</strong>: Local shared directory manager with background SHA-256 fingerprinting and group access grant controls.</li>
+            <li><strong>Transfers</strong>: Active transfer monitor tracking chunk streams, download speeds, and route types (Direct vs TURN relay).</li>
+            <li><strong>Network</strong>: Virtual group membership manager, connection status, peer rosters, and supernode assignment inspector.</li>
+            <li><strong>Appearance</strong>: Theme customization engine (System, Dark, Light).</li>
+          </ul>
+
+          <h3>Main Workspace (Center Viewport)</h3>
+          <p>
+            The active view renders dynamically within the central workspace <code>#workspace-main</code>. Upon switching views, focus is automatically transferred to the view's primary heading (<code>workspaceHeadingRef</code>), ensuring screen reader compatibility and accessible keyboard navigation.
+          </p>
+        </section>
+
+        <hr>
+
+        <section id="keyboard-shortcuts">
+          <h2>4. Keyboard Shortcuts & Command Palette</h2>
+          <p><code>p2p-multiple-groups</code> includes a full keyboard-driven navigation system.</p>
+
+          <h3>Command Palette (<code>Ctrl+K</code> / <code>Cmd+K</code>)</h3>
+          <p>Pressing <code>Ctrl+K</code> (Windows/Linux) or <code>Cmd+K</code> (macOS) opens the global command palette modal:</p>
+          <ul>
+            <li>Filter commands by typing keywords (e.g., <code>Search</code>, <code>Library</code>, <code>Theme</code>, <code>Network</code>).</li>
+            <li>Use <kbd>ArrowUp</kbd> and <kbd>ArrowDown</kbd> to navigate results.</li>
+            <li>Press <kbd>Enter</kbd> to execute the selected command.</li>
+            <li>Press <kbd>Escape</kbd> to dismiss the palette and return focus to your previous active element.</li>
+          </ul>
+
+          <h3>Default Keybindings</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Shortcut (Win / Linux)</th>
+                  <th>Shortcut (macOS)</th>
+                  <th>Action</th>
+                  <th>Target View / Event</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>Ctrl+K</code></td>
+                  <td><code>Cmd+K</code></td>
+                  <td>Toggle Command Palette</td>
+                  <td>Opens Command Palette dialog</td>
+                </tr>
+                <tr>
+                  <td><code>Ctrl+,</code></td>
+                  <td><code>Cmd+,</code></td>
+                  <td>Preferences</td>
+                  <td>Switches to Appearance view</td>
+                </tr>
+                <tr>
+                  <td><code>Escape</code></td>
+                  <td><code>Escape</code></td>
+                  <td>Dismiss Modal / Cancel</td>
+                  <td>Closes dialogs or active modals</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="next-steps">
+          <h2>5. Next Steps</h2>
+          <p>Now that your client is running, proceed to join a virtual group or set up your shared library:</p>
+          <ul>
+            <li><a href="02-network-and-groups.html">02. Network & Virtual Groups</a> — Learn how to join groups using cryptographic invitations.</li>
+            <li><a href="03-library-and-sharing.html">03. Library & File Grants</a> — Add local files and manage group permissions.</li>
+            <li><a href="06-signaling-and-ops.html">06. Signaling Server Operations</a> — Host your own local signaling server.</li>
+          </ul>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="00-js-ts-npm-fundamentals.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">00. JS, TS &amp; npm Guide</span>
+          </a>
+          <a href="02-network-and-groups.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">02. Network & Virtual Groups</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#system-requirements" class="toc-link">1. System Requirements</a></li>
+          <li><a href="#installation-setup" class="toc-link">2. Installation & Setup</a></li>
+          <li><a href="#desktop-ui-structure" class="toc-link">3. Desktop UI Structure</a></li>
+          <li><a href="#keyboard-shortcuts" class="toc-link">4. Keyboard Shortcuts</a></li>
+          <li><a href="#next-steps" class="toc-link">5. Next Steps</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

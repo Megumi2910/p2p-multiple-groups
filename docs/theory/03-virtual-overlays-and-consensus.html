@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>03. Virtual Overlays & Authoritative Consensus — Theory — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item active"><a href="03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Distributed Theory</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>03. Virtual Overlays & Consensus</span>
+        </nav>
+
+        <h1>Theory: Virtual Overlays & Authoritative Consensus</h1>
+        <p class="lead-paragraph">
+          This document details the multi-group multiplexing architecture, authoritative signaling lease mechanics, and inverted index query routing implemented in <code>src/main/p2p/engine.ts</code> and <code>src/main/p2p/search-index.ts</code>.
+        </p>
+
+        <hr>
+
+        <section id="multi-group-multiplexing">
+          <h2>1. Multi-Group Multiplexing Theory</h2>
+          <p>
+            In standard P2P implementations, participating in <span class="math-inline">M</span> distinct networks requires establishing <span class="math-inline">M</span> disjoint transport sessions, leading to exponential connection overhead and socket exhaustion.
+          </p>
+
+          <h3>Mathematical Formulation</h3>
+          <p>Let a virtual group <span class="math-inline">G</span> be defined as a 2-tuple:</p>
+          <div class="math-display">
+            G = (groupId, K_auth)
+          </div>
+          <p>where <span class="math-inline">groupId ∈ Σ*</span> is a valid room identifier and <span class="math-inline">K_auth</span> is a secret authorization token.</p>
+
+          <p>
+            Let <span class="math-inline">P_A</span> and <span class="math-inline">P_B</span> be two peers participating in group sets <span class="math-inline">G_A</span> and <span class="math-inline">G_B</span> respectively. If <span class="math-inline">G_AB = G_A ∩ G_B ≠ ∅</span>, peers <span class="math-inline">A</span> and <span class="math-inline">B</span> share at least one mutual group.
+          </p>
+
+          <h3>Single-Association Transport Pooling</h3>
+          <p>
+            Instead of establishing <span class="math-inline">|G_AB|</span> independent WebRTC peer connections between <span class="math-inline">A</span> and <span class="math-inline">B</span>, the system pools all communication over a <strong>single physical WebRTC association</strong>:
+          </p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+flowchart TD
+    subgraph HostA["Peer Node A"]
+        G1_A["Group 1 Runtime\n(engineering-team)"]
+        G2_A["Group 2 Runtime\n(research-docs)"]
+        MUX["TransportManager Multiplexer\n(Demux by groupKey & fileId)"]
+        G1_A --> MUX
+        G2_A --> MUX
+    end
+
+    subgraph TransportPipe["Shared Transport Layer"]
+        PC["Single RTCPeerConnection\n(Werift DTLS 1.2 + SCTP)"]
+        DC_CTRL["Control Channel\n'p2p-multiple-groups-control-v2'"]
+        DC_FILE1["Data Channel G1\n'p2p-multiple-groups-file-v2:fileId:groupKey1'"]
+        DC_FILE2["Data Channel G2\n'p2p-multiple-groups-file-v2:fileId:groupKey2'"]
+        PC --- DC_CTRL
+        PC --- DC_FILE1
+        PC --- DC_FILE2
+    end
+
+    subgraph HostB["Peer Node B"]
+        DEMUX["TransportManager Demultiplexer"]
+        G1_B["Group 1 Runtime\n(engineering-team)"]
+        G2_B["Group 2 Runtime\n(research-docs)"]
+        DEMUX --> G1_B
+        DEMUX --> G2_B
+    end
+
+    MUX <==> PC
+    PC <==> DEMUX
+            </div>
+          </div>
+
+          <h3>Protocol Isolation Guarantees</h3>
+          <ol>
+            <li><strong>Control Multiplexing</strong>: Every control message across the shared <code>p2p-multiple-groups-control-v2</code> channel explicitly carries its destination <code>groupId</code> and <code>senderMembershipId</code>. The engine routes payloads strictly to the matching local <code>GroupRuntime</code>.</li>
+            <li><strong>Channel Label Scoping</strong>: File transfer data channels encode the group key directly into their protocol label:
+              <div class="math-display">Label = "p2p-multiple-groups-file-v2:" || fileId || ":" || groupKey</div>
+            </li>
+            <li><strong>Zero Cross-Contamination</strong>: If Peer <span class="math-inline">B</span> attempts to request a file using <span class="math-inline">G_1</span>'s data channel while authenticated only for <span class="math-inline">G_2</span>, the request is rejected with <code>FORBIDDEN</code> and the channel is torn down without affecting <span class="math-inline">G_2</span>'s active streams.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="authoritative-leases">
+          <h2>2. Authoritative Membership & Renewable Leases</h2>
+          <p>
+            Decentralized overlays are prone to split-brain states and ghost peers when members abruptly disconnect without graceful teardown. <code>p2p-multiple-groups</code> addresses this using an authoritative signaling state machine combined with <strong>Renewable Freshness Leases</strong>.
+          </p>
+
+          <h3>Sequence Numbers & Monotonic Revisions</h3>
+          <p>For each virtual group <span class="math-inline">G</span>, the signaling server maintains:</p>
+          <ul>
+            <li><span class="math-inline">epoch ∈ UUIDv4</span>: A unique identifier generated whenever the signaling server restarts.</li>
+            <li><span class="math-inline">membershipRevision ∈ ℕ</span>: A strictly monotonic integer counter incremented on every peer join or departure.</li>
+          </ul>
+
+          <p>When a client receives a <code>roster</code> message:</p>
+          <div class="math-display">
+            Reject ⟺ (roster.epoch ≠ local.epoch) ∨ (roster.rev ≤ local.rev)
+          </div>
+          <p>This prevents out-of-order UDP or WebSocket deliveries from rolling back membership state.</p>
+
+          <h3>The Freshness Lease Invariant</h3>
+          <p>To prevent peers from operating on obsolete or revoked authority, membership is bound to a strict time-based lease:</p>
+
+          <div class="math-display">
+            τ_lease = 6000 ms  (ROSTER_FRESHNESS_LEASE_MS)
+          </div>
+          <div class="math-display">
+            τ_hb = 2000 ms  (Heartbeat interval)
+          </div>
+
+          <p>Let <span class="math-inline">t_last_roster</span> be the timestamp of the last valid roster message received from the signaling server. At any instant <span class="math-inline">t_now</span>:</p>
+          <div class="math-display">
+            Group Authority Valid ⟺ t_now - t_last_roster ≤ τ_lease
+          </div>
+
+          <pre><code class="language-typescript">// Verified implementation from src/main/p2p/engine.ts
+function isGroupAuthorityValid(runtime: GroupRuntime): boolean {
+  if (runtime.lastRosterRenewedAt &lt;= 0) return false
+  return Date.now() - runtime.lastRosterRenewedAt &lt;= ROSTER_FRESHNESS_LEASE_MS
+}</code></pre>
+
+          <h3>Expiration Consequences</h3>
+          <p>If network connectivity to the signaling server is interrupted for &gt; 6000 ms:</p>
+          <ol>
+            <li>The local <code>GroupRuntime</code> transitions to status <code>recovering</code>.</li>
+            <li>All active uploads and downloads negotiated under this group's authority are immediately halted.</li>
+            <li>Supernodes cease answering search queries for that group.</li>
+            <li><strong>Fault Boundary</strong>: Other virtual groups on the same host with healthy signaling links continue normal operation without interruption.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="inverted-index-routing">
+          <h2>3. Inverted Search Indexing & Query Routing</h2>
+          <p>Supernodes maintain an in-memory inverted catalog index via <code>SupernodeIndexManager</code>.</p>
+
+          <h3>Catalog Publication Pipeline</h3>
+          <p>When an ordinary peer joins or updates its library:</p>
+          <ol>
+            <li>Dispatches <code>catalog-begin</code> with expected <code>count</code> and monotonic <code>generation</code>.</li>
+            <li>Staging buffer retains incoming batches (&le; 32 entries per message).</li>
+            <li>Dispatches <code>catalog-end</code>. Upon receipt, the supernode atomically commits the staged entries into <code>ownerCatalogues</code>, evicting the previous generation for that peer.</li>
+            <li>A staging timeout (<code>CATALOG_STAGING_TTL_MS = 5000 ms</code>) purges incomplete catalog streams.</li>
+          </ol>
+
+          <h3>Query Normalization & Token Matching</h3>
+          <p>Queries undergo deterministic canonicalization:</p>
+          <div class="math-display">
+            Tokens = split(normalize_NFKC(lowercase(query)))
+          </div>
+          <p>A file matches if and only if:</p>
+          <div class="math-display">
+            ∀ τ ∈ Tokens : τ ⊆ normalize_NFKC(lowercase(fileName))
+          </div>
+
+          <h3>Query Deduplication Cache</h3>
+          <p>To prevent routing loops when queries are forwarded between primary and standby supernodes, supernodes maintain an LRU query deduplication cache:</p>
+          <ul>
+            <li><strong>Cache Key</strong>: <span class="math-inline">originPeerId || ":" || queryId</span></li>
+            <li><strong>Maximum Cache Size</strong>: 256 entries (<code>MAX_CACHED_QUERIES</code>)</li>
+            <li><strong>Time-to-Live</strong>: 30 seconds (<code>QUERY_CACHE_TTL_MS</code>)</li>
+          </ul>
+          <p>If an incoming <code>search</code> or <code>search-forward</code> matches a valid cached entry, the message is dropped immediately, eliminating query echo loops.</p>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="02-election-and-consistent-hashing.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">02. HRW Election Math</span>
+          </a>
+          <a href="04-nat-traversal-and-webrtc.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">04. NAT & WebRTC</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#multi-group-multiplexing" class="toc-link">1. Multiplexing Theory</a></li>
+          <li><a href="#authoritative-leases" class="toc-link">2. Authoritative Leases</a></li>
+          <li><a href="#inverted-index-routing" class="toc-link">3. Inverted Search Index</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

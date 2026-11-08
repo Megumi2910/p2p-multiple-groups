@@ -153,26 +153,27 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
       assert.equal(pageTitle, 'p2p-multiple-groups')
 
       const bridgeCheck = await cdp.evaluate(`({
-        hasKazaa: Boolean(window.kazaa),
-        hasP2pGlobal: Boolean(window.p2p),
+        hasKazaa: typeof window.kazaa !== 'undefined',
+        hasP2pGlobal: typeof window.p2p !== 'undefined',
         isMac: typeof window.p2p?.isMac === 'boolean',
         hasGetTheme: typeof window.p2p?.getTheme === 'function',
         hasSetTheme: typeof window.p2p?.setTheme === 'function',
         hasOnCommand: typeof window.p2p?.onCommand === 'function',
         hasP2p: Boolean(window.p2p?.p2p),
         hasP2pGetState: typeof window.p2p?.p2p?.getState === 'function',
+        hasP2pCreateGroup: typeof window.p2p?.p2p?.createGroup === 'function',
         hasP2pJoinGroup: typeof window.p2p?.p2p?.joinGroup === 'function',
         hasP2pLeaveGroup: typeof window.p2p?.p2p?.leaveGroup === 'function',
+        hasP2pRotateGroupInvite: typeof window.p2p?.p2p?.rotateGroupInvite === 'function',
+        hasP2pRemoveGroupMember: typeof window.p2p?.p2p?.removeGroupMember === 'function',
         hasP2pSetFileGroups: typeof window.p2p?.p2p?.setFileGroups === 'function',
-        hasP2pConnect: typeof window.kazaa?.p2p?.connect === 'function',
-        hasP2pDisconnect: typeof window.kazaa?.p2p?.disconnect === 'function',
         hasP2pAddFiles: typeof window.p2p?.p2p?.addFiles === 'function',
         hasP2pSearch: typeof window.p2p?.p2p?.search === 'function',
         hasP2pDownload: typeof window.p2p?.p2p?.download === 'function'
       })`)
 
       assert.deepEqual(bridgeCheck, {
-        hasKazaa: true,
+        hasKazaa: false,
         hasP2pGlobal: true,
         isMac: true,
         hasGetTheme: true,
@@ -180,11 +181,12 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
         hasOnCommand: true,
         hasP2p: true,
         hasP2pGetState: true,
+        hasP2pCreateGroup: true,
         hasP2pJoinGroup: true,
         hasP2pLeaveGroup: true,
+        hasP2pRotateGroupInvite: true,
+        hasP2pRemoveGroupMember: true,
         hasP2pSetFileGroups: true,
-        hasP2pConnect: true,
-        hasP2pDisconnect: true,
         hasP2pAddFiles: true,
         hasP2pSearch: true,
         hasP2pDownload: true
@@ -229,13 +231,24 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
       await clickNavAndVerifyHeading('Library', 'library-heading')
       await clickNavAndVerifyHeading('Transfers', 'transfers-heading')
       await clickNavAndVerifyHeading('Network', 'network-heading')
+
+      // Verify Network UI invite code and create group inputs
+      const hasInviteCodeInput = await cdp.evaluate<boolean>('Boolean(document.getElementById("p2p-invite-code"))')
+      assert.equal(hasInviteCodeInput, true, '#p2p-invite-code must be present in Network join view')
+
+      await cdp.evaluate(`{
+        const createBtn = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').includes('Create a Group'));
+        createBtn?.click();
+      }`)
+      const hasCreateGroupIdInput = await cdp.evaluate<boolean>('Boolean(document.getElementById("p2p-create-group-id"))')
+      assert.equal(hasCreateGroupIdInput, true, '#p2p-create-group-id must be present in Create Group view')
+
       await clickNavAndVerifyHeading('Appearance', 'appearance-heading')
       await clickNavAndVerifyHeading('Home', 'home-heading')
 
       // 6. Test Command Palette interaction
-      // Click "Open commands" button
       await cdp.evaluate(`{
-        const btn = Array.from(document.querySelectorAll('.action-row-btn')).find(b => b.textContent.includes('Open commands'));
+        const btn = Array.from(document.querySelectorAll('.action-row-btn')).find(b => (b.textContent || '').includes('Command Palette'));
         btn?.click();
       }`)
 
@@ -339,23 +352,21 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
     const sandboxAppData = await mkdtemp(join(tmpdir(), 'e2e-sandbox-appdata-'))
     tempDirs.push(sandboxAppData)
 
-    // Seed legacy profile
-    const legacyDir = join(sandboxAppData, 'Kazaa')
-    await mkdir(legacyDir, { recursive: true })
+    // Seed existing profile
+    const targetDir = join(sandboxAppData, 'p2p-multiple-groups')
+    await mkdir(targetDir, { recursive: true })
     const legacyPeerId = randomUUID()
     const legacyStateContent = JSON.stringify({
-      version: 1,
+      version: 2,
       peerId: legacyPeerId,
       displayName: 'MigratedAlice',
-      supernodeEligible: true,
-      signalingUrl: 'ws://127.0.0.1:8787/signal',
-      roomId: 'room-1',
+      relayOnly: false,
+      groups: [],
       sharedFiles: []
     })
     const legacySettingsContent = JSON.stringify({ appearance: 'dark' })
-    await writeFile(join(legacyDir, 'peer-state.json'), legacyStateContent, 'utf-8')
-    await writeFile(join(legacyDir, 'settings.json'), legacySettingsContent, 'utf-8')
-
+    await writeFile(join(targetDir, 'peer-state.json'), legacyStateContent, 'utf-8')
+    await writeFile(join(targetDir, 'settings.json'), legacySettingsContent, 'utf-8')
     // Pre-seed active staging directory
     const activeStaging = join(sandboxAppData, '.staging-migration-active-seed')
     await mkdir(activeStaging, { recursive: true })
@@ -421,9 +432,6 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
       assert.equal(migratedState.displayName, 'MigratedAlice')
       assert.equal(migratedState.peerId, legacyPeerId)
 
-      // Legacy files remain untouched
-      assert.ok(existsSync(join(legacyDir, 'peer-state.json')))
-      assert.equal(await readFile(join(legacyDir, 'peer-state.json'), 'utf-8'), legacyStateContent)
 
       // 3. Second launch while winner is still alive does NOT touch staging directory
       const stagingSecond = join(sandboxAppData, '.staging-migration-second-seed')
@@ -610,8 +618,8 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
           const rows = Array.from(document.querySelectorAll('tbody tr'));
           for (const row of rows) {
             const cells = Array.from(row.querySelectorAll('td'));
-            if (cells.length >= 3) {
-              const groupBadge = cells[2].querySelector('.badge-connected');
+            if (cells.length >= 2) {
+              const groupBadge = cells[1].querySelector('.badge-group') || cells[1].querySelector('.badge');
               if (groupBadge && groupBadge.textContent) {
                 resolve(groupBadge.textContent.trim());
                 return;
@@ -620,7 +628,7 @@ describe('Electron Renderer & Desktop Bridge E2E', () => {
           }
           if (Date.now() - start > 15000) {
             const firstRow = document.querySelector('tbody tr');
-            resolve(firstRow?.querySelectorAll('td')[2]?.textContent?.trim() || '');
+            resolve(firstRow?.querySelectorAll('td')[1]?.textContent?.trim() || '');
             return;
           }
           setTimeout(check, 100);

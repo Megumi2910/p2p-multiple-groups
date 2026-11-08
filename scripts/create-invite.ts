@@ -1,5 +1,8 @@
+try {
+  process.loadEnvFile?.('.env')
+} catch {}
+
 import { loadSignalingOptions } from '../services/signaling/config.ts'
-import type { GroupInvitation } from '../src/shared/p2p.ts'
 
 function main(): void {
   let config
@@ -12,7 +15,7 @@ function main(): void {
 
   const publicUrl = config.publicSignalUrl
   if (!publicUrl) {
-    console.error('Public signaling URL is not configured (set P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL or KAZAA_PUBLIC_SIGNAL_URL)')
+    console.error('Public signaling URL is not configured (set P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL)')
     process.exit(1)
   }
 
@@ -22,8 +25,9 @@ function main(): void {
     process.exit(1)
   }
 
-  // Parse CLI arguments for --group-id
+  // Parse CLI arguments for --group-id and --code-only
   let requestedGroupId: string | null = null
+  let codeOnly = false
   for (let i = 2; i < process.argv.length; i++) {
     const arg = process.argv[i]
     if (arg.startsWith('--group-id=')) {
@@ -31,6 +35,8 @@ function main(): void {
     } else if (arg === '--group-id' && i + 1 < process.argv.length) {
       requestedGroupId = process.argv[i + 1].trim()
       i++
+    } else if (arg === '--code-only') {
+      codeOnly = true
     }
   }
 
@@ -56,14 +62,20 @@ function main(): void {
     }
   }
 
-  const invitation: GroupInvitation = {
+  if (codeOnly) {
+    console.log(selectedGroup.token)
+    return
+  }
+
+  const output = {
     version: 2,
     signalingUrl: publicUrl,
     groupId: selectedGroup.groupId,
-    token: selectedGroup.token
+    token: selectedGroup.token,
+    inviteCode: selectedGroup.token
   }
 
-  console.log(JSON.stringify(invitation, null, 2))
+  console.log(JSON.stringify(output, null, 2))
 }
 
 main()

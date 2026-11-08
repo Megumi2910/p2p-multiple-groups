@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>04. Search & Discovery — User Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          
+          <li class="nav-item"><a href="02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item active"><a href="04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>User Guide</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>04. Search & Discovery</span>
+        </nav>
+
+        <h1>User Guide: Search & Discovery</h1>
+        <p class="lead-paragraph">
+          The <strong>Search</strong> view allows peers to locate files distributed across the peer-to-peer overlay. By querying supernodes that maintain inverted index catalogs, search queries execute with low latency and without flooding the entire network.
+        </p>
+
+        <hr>
+
+        <section id="search-interface">
+          <h2>1. Search Interface</h2>
+          <p>The Search screen provides a scoped query interface with real-time result aggregation:</p>
+
+          <figure class="doc-image-figure">
+            <img src="../assets/search-view.png" alt="Search and Discovery view displaying group selector, query input, status banner, and results table">
+            <figcaption>Figure 1: Search & Discovery view displaying group selector, search input, status banner, and results table. (Click image to zoom)</figcaption>
+          </figure>
+
+          <h3>Key Components</h3>
+          <ul>
+            <li><strong>Group Selector Dropdown</strong>: Scopes the search operation to one specific joined group. Search queries are never broadcast across multiple groups simultaneously.</li>
+            <li><strong>Query Input Field</strong>: Accepts alphanumeric search strings.</li>
+            <li><strong>Search Button</strong>: Submits the query to the group's designated supernode.</li>
+            <li><strong>Results Table</strong>: Displays matching files, including file name, size, SHA-256 fingerprint, source peer count, and one-click download buttons.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <section id="search-workflow">
+          <h2>2. Search Workflow</h2>
+          <ol>
+            <li><strong>Select Target Group</strong>: Choose the group you wish to search from the group dropdown menu. You must be in the <code>connected</code> state within that group to issue queries.</li>
+            <li><strong>Enter Search Query</strong>: Type words or terms describing the file you want to locate (e.g., <code>spec</code>, <code>whitepaper</code>, <code>consensus</code>).</li>
+            <li><strong>Execute Query</strong>: Click <strong>Search</strong> or press <kbd>Enter</kbd>.</li>
+            <li><strong>Inspect Results</strong>: Results stream in asynchronously as supernodes return matching catalog records.</li>
+            <li><strong>Initiate Download</strong>: Click <strong>Download</strong> on any result row to begin transferring the file (see <a href="05-transfers-and-downloads.html">Transfers & Downloads</a>).</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="query-matching-semantics">
+          <h2>3. Query Matching Semantics</h2>
+          <p>The search engine implements deterministic, multi-term boolean matching:</p>
+
+          <h3>Tokenization & Normalization</h3>
+          <ol>
+            <li><strong>Unicode NFKC Normalization</strong>: Inputs undergo canonical unicode normalization to handle accented characters and distinct glyph forms consistently.</li>
+            <li><strong>Case Folding</strong>: All tokens are folded to lowercase.</li>
+            <li><strong>Whitespace Splitting</strong>: Queries containing multiple space-separated words are split into individual tokens.</li>
+          </ol>
+
+          <h3>Boolean AND Semantics</h3>
+          <p>For a file to match a multi-term query, <strong>all tokens</strong> in the query must match against either the file's name or its metadata attributes:</p>
+          <ul>
+            <li>Example: Searching <code>p2p spec</code> matches <code>p2p-webrtc-rfc-spec.md</code>.</li>
+            <li>Example: Searching <code>consensus paper</code> matches <code>cluster-consensus-raft-paper.pdf</code>.</li>
+            <li>Non-matching terms will exclude the file from the result list.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <section id="search-lifecycle-states">
+          <h2>4. Search Lifecycle States</h2>
+          <p>The query lifecycle transitions through four distinct operational states:</p>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>State</th>
+                  <th>Indicator</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>idle</code></td>
+                  <td><span class="badge badge-info">idle</span></td>
+                  <td>No active search query in progress.</td>
+                </tr>
+                <tr>
+                  <td><code>searching</code></td>
+                  <td><span class="badge badge-warning">searching</span></td>
+                  <td>Query has been dispatched to the primary supernode; awaiting index match responses.</td>
+                </tr>
+                <tr>
+                  <td><code>complete</code></td>
+                  <td><span class="badge badge-success">complete</span></td>
+                  <td>Primary supernode successfully executed the index lookup and returned all matching entries.</td>
+                </tr>
+                <tr>
+                  <td><code>partial</code></td>
+                  <td><span class="badge badge-warning">partial</span></td>
+                  <td>Primary supernode disconnected or timed out mid-query; standby supernode was consulted to retrieve surviving records.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Supernode Loss & Standby Recovery</h3>
+          <p>If the primary supernode becomes unresponsive while a search is active:</p>
+          <ol>
+            <li>The client detects the heartbeat or connection loss.</li>
+            <li>The query is automatically re-routed to the designated <strong>Standby Supernode</strong>.</li>
+            <li>Results already accumulated are preserved, and newly discovered sources from the standby supernode are appended without duplicate entries.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="result-aggregation-swarms">
+          <h2>5. Result Aggregation & Swarm Sources</h2>
+          <p>When multiple peers in the same virtual group share identical files (verified by having matching SHA-256 digests):</p>
+          <ul>
+            <li>The search results table automatically collapses duplicates into a single logical row.</li>
+            <li>The <strong>Sources</strong> column indicates the total number of distinct peer endpoints providing that file.</li>
+            <li>When you initiate a download, the client automatically balances the download or selects the peer with the lowest latency route.</li>
+          </ul>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="03-library-and-sharing.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">03. Library & File Sharing</span>
+          </a>
+          <a href="05-transfers-and-downloads.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">05. Transfers & Downloads</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#search-interface" class="toc-link">1. Search Interface</a></li>
+          <li><a href="#search-workflow" class="toc-link">2. Search Workflow</a></li>
+          <li><a href="#query-matching-semantics" class="toc-link">3. Query Semantics</a></li>
+          <li><a href="#search-lifecycle-states" class="toc-link">4. Lifecycle States</a></li>
+          <li><a href="#result-aggregation-swarms" class="toc-link">5. Swarm Sources</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

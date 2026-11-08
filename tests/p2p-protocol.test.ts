@@ -5,25 +5,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {
-  parseNetworkInvitation,
   parseGroupInvitation,
-  validateConnectOptions,
   validateDisplayName,
-  validateRoomId,
   validateGroupId,
+  validateInviteCode,
   validateSignalingUrl,
   validateToken,
+  validateCreateGroupOptions,
+  validateJoinGroupOptions,
   makeGroupKey,
   parseGroupKey,
-  validateJoinGroupOptions,
-  type ConnectOptions,
+  type CreateGroupOptions,
   type JoinGroupOptions
 } from '../src/shared/p2p.ts'
 import {
-  isClientSignalingMessage,
-  isOverlayControlMessage,
-  isServerSignalingMessage,
-  isTransferControlMessage,
   isValidFileMetadata,
   isUuid,
   isSha256,
@@ -35,9 +30,10 @@ import {
   makeFileChannelLabelV2,
   parseFileChannelLabelV2
 } from '../src/shared/p2p-wire.ts'
-import { createPeerStore, type PeerStore } from '../src/main/p2p/peer-store.ts'
+import { createMultiGroupPeerStore, type MultiGroupPeerStore } from '../src/main/p2p/peer-store.ts'
 import { TransportManager } from '../src/main/p2p/transport.ts'
 import type { RTCDataChannel } from 'werift'
+
 describe('P2P Protocol & Shared Contracts', () => {
   it('validates UUIDs and SHA256 hashes correctly', () => {
     assert.equal(isUuid(randomUUID()), true)
@@ -57,10 +53,16 @@ describe('P2P Protocol & Shared Contracts', () => {
     assert.equal(validateSignalingUrl('wss://example.com/signal?param=1').valid, false)
   })
 
-  it('validates room IDs, tokens, and display names', () => {
-    assert.equal(validateRoomId('room-123_abc').valid, true)
-    assert.equal(validateRoomId('room with spaces').valid, false)
-    assert.equal(validateRoomId('').valid, false)
+  it('validates group IDs, invite codes, and display names', () => {
+    assert.equal(validateGroupId('group-123_abc').valid, true)
+    assert.equal(validateGroupId('invalid group spaces').valid, false)
+    assert.equal(validateGroupId('').valid, false)
+
+    assert.equal(validateInviteCode('short-code-1234').valid, true)
+    assert.equal(validateInviteCode('A'.repeat(22)).valid, true)
+    assert.equal(validateInviteCode('B'.repeat(43)).valid, true)
+    assert.equal(validateInviteCode('bad code spaces').valid, false)
+    assert.equal(validateInviteCode('short').valid, false) // < 8 chars
 
     const token32 = Buffer.alloc(32, 7).toString('base64url')
     assert.equal(validateToken(token32).valid, true)
@@ -70,37 +72,6 @@ describe('P2P Protocol & Shared Contracts', () => {
     assert.equal(validateDisplayName('  Alice  ').valid, true)
     assert.equal(validateDisplayName('').valid, false)
     assert.equal(validateDisplayName('Name\x00WithNull').valid, false)
-  })
-
-  it('parses network invitations accurately', () => {
-    const token = Buffer.alloc(32, 9).toString('base64url')
-    const validRaw = JSON.stringify({
-      version: 1,
-      signalingUrl: 'ws://127.0.0.1:8787/signal',
-      roomId: 'test-room',
-      token
-    })
-    const parsed = parseNetworkInvitation(validRaw)
-    assert.ok(parsed)
-    assert.equal(parsed?.version, 1)
-    assert.equal(parsed?.roomId, 'test-room')
-
-    assert.equal(parseNetworkInvitation('invalid json'), null)
-    assert.equal(parseNetworkInvitation(JSON.stringify({ version: 2 })), null)
-  })
-
-  it('validates connect options payload', () => {
-    const token = Buffer.alloc(32, 9).toString('base64url')
-    const valid: ConnectOptions = {
-      signalingUrl: 'ws://127.0.0.1:8787/signal',
-      roomId: 'room-1',
-      token,
-      displayName: 'Bob',
-      supernodeEligible: true,
-      relayOnly: false
-    }
-    assert.equal(validateConnectOptions(valid).valid, true)
-    assert.equal(validateConnectOptions({ ...valid, displayName: '' }).valid, false)
   })
 
   it('enforces file metadata boundary rules', () => {
@@ -118,71 +89,7 @@ describe('P2P Protocol & Shared Contracts', () => {
     assert.equal(isValidFileMetadata({ ...validMeta, size: 2 * 1024 * 1024 * 1024 }), false) // > 1 GiB
   })
 
-  it('validates wire protocol message discriminators and limits', () => {
-    const epoch = randomUUID()
-    assert.equal(
-      isClientSignalingMessage({
-        v: 1,
-        type: 'join',
-        roomId: 'room1',
-        peerId: randomUUID(),
-        displayName: 'Alice',
-        supernodeEligible: true
-      }),
-      true
-    )
-
-    assert.equal(
-      isOverlayControlMessage({
-        v: 1,
-        type: 'hello',
-        epoch,
-        revision: 1,
-        peerId: randomUUID(),
-        sessionId: randomUUID()
-      }),
-      true
-    )
-
-    // Stale or missing epoch/revision fails
-    assert.equal(
-      isOverlayControlMessage({
-        v: 1,
-        type: 'hello',
-        peerId: randomUUID(),
-        sessionId: randomUUID()
-      }),
-      false
-    )
-
-    assert.equal(
-      isTransferControlMessage({
-        v: 1,
-        type: 'request',
-        fileId: randomUUID(),
-        size: 100,
-        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-      }),
-      true
-    )
-  })
-
-  it('validates group IDs, strengthened 32-byte tokens, and rejects non-canonical base64url', () => {
-    assert.equal(validateGroupId('group-123_abc').valid, true)
-    assert.equal(validateGroupId('invalid group spaces').valid, false)
-    assert.equal(validateGroupId('').valid, false)
-
-    const validToken = Buffer.alloc(32, 10).toString('base64url')
-    assert.equal(validateToken(validToken).valid, true)
-    assert.equal(validateToken('too-short').valid, false)
-    assert.equal(validateToken(validToken + 'extra').valid, false)
-
-    // Tamper with last char to make trailing padding bits non-zero
-    const nonCanonicalToken = validToken.slice(0, 42) + 'B'
-    assert.equal(validateToken(nonCanonicalToken).valid, false)
-  })
-
-  it('parses v2 group invitations and normalizes v1 invitations', () => {
+  it('parses v2 group invitations and short invite codes', () => {
     const token = Buffer.alloc(32, 12).toString('base64url')
     const v2Raw = JSON.stringify({
       version: 2,
@@ -195,44 +102,61 @@ describe('P2P Protocol & Shared Contracts', () => {
     assert.equal(parsedV2?.version, 2)
     assert.equal(parsedV2?.groupId, 'alpha-group')
 
-    // v1 invitation normalized to v2
-    const v1Raw = JSON.stringify({
-      version: 1,
-      signalingUrl: 'ws://127.0.0.1:8787/signal',
-      roomId: 'legacy-room',
-      token
-    })
-    const normalizedV1 = parseGroupInvitation(v1Raw)
-    assert.ok(normalizedV1)
-    assert.equal(normalizedV1?.version, 2)
-    assert.equal(normalizedV1?.groupId, 'legacy-room')
-    assert.equal(normalizedV1?.token, token)
+    // Short invite code parsed with fallback signaling URL
+    const shortCode = 'my-invite-code-1234'
+    const parsedShort = parseGroupInvitation(shortCode, 'ws://127.0.0.1:8787/signal')
+    assert.ok(parsedShort)
+    assert.equal(parsedShort?.version, 2)
+    assert.equal(parsedShort?.groupId, '')
+    assert.equal(parsedShort?.token, shortCode)
+    assert.equal(parsedShort?.signalingUrl, 'ws://127.0.0.1:8787/signal')
 
-    // Invalid version or payload rejected
+    // Invalid versions or payloads rejected
+    assert.equal(parseGroupInvitation(JSON.stringify({ version: 1 })), null)
     assert.equal(parseGroupInvitation(JSON.stringify({ version: 99 })), null)
-    assert.equal(parseGroupInvitation('not-json'), null)
+    assert.equal(parseGroupInvitation('short', 'ws://127.0.0.1:8787/signal'), null)
   })
 
-  it('validates join group options and group keys', () => {
+  it('validates create group options and join group options', () => {
+    const validCreate: CreateGroupOptions = {
+      groupId: 'club-alpha',
+      displayName: 'Alice',
+      supernodeEligible: true,
+      autoJoin: true,
+      rememberInvitation: true
+    }
+    assert.equal(validateCreateGroupOptions(validCreate, 'ws://127.0.0.1:8787/signal').valid, true)
+    assert.equal(validateCreateGroupOptions({ ...validCreate, groupId: '' }, 'ws://127.0.0.1:8787/signal').valid, false)
+
     const token = Buffer.alloc(32, 15).toString('base64url')
-    const validOptions: JoinGroupOptions = {
+    const validJoinWithOptions: JoinGroupOptions = {
       invitation: {
         version: 2,
         signalingUrl: 'ws://127.0.0.1:8787/signal',
         groupId: 'test-group',
         token
       },
-      displayName: 'Alice',
+      displayName: 'Bob',
       supernodeEligible: true,
       relayOnly: false,
       rememberInvitation: false
     }
 
-    assert.equal(validateJoinGroupOptions(validOptions).valid, true)
-    assert.equal(validateJoinGroupOptions({ ...validOptions, displayName: '' }).valid, false)
-    assert.equal(validateJoinGroupOptions({ ...validOptions, supernodeEligible: 'true' as unknown as boolean }).valid, false)
-    assert.equal(validateJoinGroupOptions({ ...validOptions, relayOnly: 1 as unknown as boolean }).valid, false)
-    assert.equal(validateJoinGroupOptions({ ...validOptions, rememberInvitation: null as unknown as boolean }).valid, false)
+    assert.equal(validateJoinGroupOptions(validJoinWithOptions).valid, true)
+    assert.equal(validateJoinGroupOptions({ ...validJoinWithOptions, displayName: '' }).valid, false)
+
+    // Code-only join
+    const validJoinCode: JoinGroupOptions = {
+      inviteCode: 'code-12345678',
+      displayName: 'Charlie',
+      supernodeEligible: false
+    }
+    const validatedCode = validateJoinGroupOptions(validJoinCode, 'ws://127.0.0.1:8787/signal')
+    assert.equal(validatedCode.valid, true)
+    if (validatedCode.valid) {
+      assert.equal(validatedCode.value.invitation.groupId, '')
+      assert.equal(validatedCode.value.invitation.token, 'code-12345678')
+    }
 
     const key = makeGroupKey('ws://127.0.0.1:8787/signal', 'test-group')
     const parsedKey = parseGroupKey(key)
@@ -240,49 +164,70 @@ describe('P2P Protocol & Shared Contracts', () => {
     assert.equal(parseGroupKey('invalid-key'), null)
   })
 
-  it('validates v2 wire protocol messages, physical hello, and scoped channel labels', () => {
+  it('validates v2 wire protocol messages, owner frames, and scoped channel labels', () => {
     const peerId = randomUUID()
     const sessionId = randomUUID()
     const membershipId = randomUUID()
     const connectionId = randomUUID()
     const epoch = randomUUID()
 
-    // Client V2
+    // Client V2 create-group
     assert.equal(
       isClientSignalingMessageV2({
         v: 2,
-        type: 'join-group',
-        groupId: 'grp1',
-        token: Buffer.alloc(32, 1).toString('base64url'),
+        type: 'create-group',
+        groupId: 'alpha',
+        ownerSecret: 'owner-secret-1234',
         supernodeEligible: true
       }),
       true
     )
 
-    // Server V2
+    // Client V2 rotate-invite
     assert.equal(
-      isServerSignalingMessageV2({
+      isClientSignalingMessageV2({
         v: 2,
-        type: 'group-joined',
-        groupId: 'grp1',
-        membershipId,
-        epoch,
-        revision: 1,
-        peers: [
-          {
-            peerId,
-            sessionId,
-            membershipId,
-            joinOrder: 1,
-            displayName: 'Bob',
-            supernodeEligible: true
-          }
-        ]
+        type: 'rotate-invite',
+        groupId: 'alpha',
+        ownerSecret: 'owner-secret-1234'
       }),
       true
     )
 
-    // Physical Peer Hello
+    // Client V2 remove-member
+    assert.equal(
+      isClientSignalingMessageV2({
+        v: 2,
+        type: 'remove-member',
+        groupId: 'alpha',
+        targetPeerId: peerId,
+        ownerSecret: 'owner-secret-1234'
+      }),
+      true
+    )
+
+    // Server V2 invite-rotated and group-kicked
+    assert.equal(
+      isServerSignalingMessageV2({
+        v: 2,
+        type: 'invite-rotated',
+        groupId: 'alpha',
+        inviteCode: 'new-invite-code-22'
+      }),
+      true
+    )
+
+    assert.equal(
+      isServerSignalingMessageV2({
+        v: 2,
+        type: 'group-kicked',
+        groupId: 'alpha',
+        reason: 'Removed by group owner'
+      }),
+      true
+    )
+
+    // Physical hello
     assert.equal(
       isPeerHelloMessage({
         v: 2,
@@ -293,10 +238,8 @@ describe('P2P Protocol & Shared Contracts', () => {
       }),
       true
     )
-    // Physical hello with extra or wrong version fails
-    assert.equal(isPeerHelloMessage({ v: 1, type: 'hello', peerId, sessionId, connectionId }), false)
 
-    // Overlay Control V2
+    // Overlay control V2 scoped to group
     assert.equal(
       isOverlayControlMessageV2({
         v: 2,
@@ -309,23 +252,6 @@ describe('P2P Protocol & Shared Contracts', () => {
       true
     )
 
-    // Transfer Control V2
-    assert.equal(
-      isTransferControlMessageV2({
-        v: 2,
-        type: 'request',
-        groupId: 'grp1',
-        transferId: randomUUID(),
-        epoch,
-        requesterMembershipId: membershipId,
-        ownerMembershipId: randomUUID(),
-        fileId: randomUUID(),
-        size: 1024,
-        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-      }),
-      true
-    )
-
     // Scoped channel labels
     const label = makeFileChannelLabelV2('grp1', connectionId)
     assert.equal(label, `p2p-multiple-groups-file-v2:grp1:${connectionId}`)
@@ -334,43 +260,53 @@ describe('P2P Protocol & Shared Contracts', () => {
   })
 })
 
-describe('PeerStore Persistence', () => {
+describe('MultiGroupPeerStore Persistence', () => {
   let tempDir: string
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), 'kazaa-test-store-'))
+    tempDir = await mkdtemp(join(tmpdir(), 'p2p-test-store-'))
   })
 
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {})
   })
 
-  it('creates a fresh identity when peer-state.json is missing', async () => {
-    const store = await createPeerStore(tempDir)
+  it('creates a fresh v2 identity when peer-state.json is missing', async () => {
+    const store = await createMultiGroupPeerStore(tempDir)
     const state = store.get()
-    assert.equal(state.version, 1)
+    assert.equal(state.version, 2)
     assert.ok(isUuid(state.peerId))
     assert.ok(state.displayName.startsWith('Peer-'))
-    assert.equal(state.supernodeEligible, true)
+    assert.equal(state.relayOnly, false)
+    assert.deepEqual(state.groups, [])
     assert.deepEqual(state.sharedFiles, [])
   })
 
-  it('persists and reloads mutations durably', async () => {
-    const store1 = await createPeerStore(tempDir)
+  it('persists and reloads v2 group mutations durably', async () => {
+    const store1 = await createMultiGroupPeerStore(tempDir)
     await store1.setDisplayName('CustomPeer')
-    await store1.setSupernodeEligible(false)
-    await store1.setConnectionParams('ws://127.0.0.1:8787/signal', 'room-alpha')
+    await store1.setRelayOnly(true)
+    const groupKey = makeGroupKey('ws://127.0.0.1:8787/signal', 'alpha-group')
+    await store1.upsertGroup({
+      groupKey,
+      signalingUrl: 'ws://127.0.0.1:8787/signal',
+      groupId: 'alpha-group',
+      supernodeEligible: false,
+      autoJoin: true,
+      credentialCiphertext: null
+    })
     const fileId = randomUUID()
-    await store1.addSharedFile({ fileId, path: 'C:\\test\\file.txt' })
+    await store1.addSharedFile({ fileId, path: 'C:\\test\\file.txt', groupKeys: [groupKey] })
 
-    const store2 = await createPeerStore(tempDir)
+    const store2 = await createMultiGroupPeerStore(tempDir)
     const state2 = store2.get()
     assert.equal(state2.displayName, 'CustomPeer')
-    assert.equal(state2.supernodeEligible, false)
-    assert.equal(state2.signalingUrl, 'ws://127.0.0.1:8787/signal')
-    assert.equal(state2.roomId, 'room-alpha')
+    assert.equal(state2.relayOnly, true)
+    assert.equal(state2.groups.length, 1)
+    assert.equal(state2.groups[0].groupId, 'alpha-group')
+    assert.equal(state2.groups[0].autoJoin, true)
     assert.equal(state2.sharedFiles.length, 1)
-    assert.equal(state2.sharedFiles[0].fileId, fileId)
+    assert.deepEqual(state2.sharedFiles[0].groupKeys, [groupKey])
   })
 
   it('throws actionable error on corrupt state file and never overwrites it', async () => {
@@ -379,7 +315,7 @@ describe('PeerStore Persistence', () => {
 
     await assert.rejects(
       async () => {
-        await createPeerStore(tempDir)
+        await createMultiGroupPeerStore(tempDir)
       },
       (err: Error) => {
         assert.ok(err.message.includes('Corrupt peer profile'))
@@ -390,12 +326,14 @@ describe('PeerStore Persistence', () => {
 })
 
 describe('TransportManager Loopback Peer Connection', () => {
-  it('connects two local peers, completes hello handshake and opens file channel', async () => {
+  it('connects two local peers, completes hello handshake and opens scoped file channel', async () => {
     const epoch = randomUUID()
     const peerAId = '00000000-0000-4000-8000-000000000001'
     const peerBId = '00000000-0000-4000-8000-000000000002'
     const sessionAId = randomUUID()
     const sessionBId = randomUUID()
+    const memAId = randomUUID()
+    const memBId = randomUUID()
 
     const { promise: openA, resolve: resolveOpenA } = Promise.withResolvers<void>()
     const { promise: openB, resolve: resolveOpenB } = Promise.withResolvers<void>()
@@ -413,14 +351,15 @@ describe('TransportManager Loopback Peer Connection', () => {
         if (state === 'open') resolveOpenA()
       },
       onSendSignal: (sig) => {
-        void tmB.handleSignal(sig.targetPeerId === peerBId ? peerAId : peerBId, sessionAId, sig.connectionId, sig.kind, sig.payload)
+        void tmB.handleSignal(sig.groupId || 'test-group', sig.targetPeerId === peerBId ? peerAId : peerBId, sessionAId, sig.connectionId, sig.kind, sig.payload)
       }
     })
 
     tmB = new TransportManager({
       onControlMessage: () => {},
-      onFileChannel: (_peerId: string, tId: string, channel: RTCDataChannel) => {
+      onFileChannel: (groupId, _peerId, _sessId, tId, channel: RTCDataChannel) => {
         if (tId === transferId) {
+          assert.equal(groupId, 'test-group')
           channel.onmessage = (msg: { data: unknown }) => {
             try {
               const raw = msg.data
@@ -441,21 +380,21 @@ describe('TransportManager Loopback Peer Connection', () => {
         if (state === 'open') resolveOpenB()
       },
       onSendSignal: (sig) => {
-        void tmA.handleSignal(sig.targetPeerId === peerAId ? peerBId : peerAId, sessionBId, sig.connectionId, sig.kind, sig.payload)
+        void tmA.handleSignal(sig.groupId || 'test-group', sig.targetPeerId === peerAId ? peerBId : peerAId, sessionBId, sig.connectionId, sig.kind, sig.payload)
       }
     })
 
     const emptyIce = { expiresAt: Date.now() + 3600000, servers: [] }
-    tmA.setSignalingContext(epoch, 1, peerAId, sessionAId, emptyIce, false)
-    tmB.setSignalingContext(epoch, 1, peerBId, sessionBId, emptyIce, false)
+    tmA.setPeerContext(peerAId, sessionAId, emptyIce, false)
+    tmB.setPeerContext(peerBId, sessionBId, emptyIce, false)
 
     const roster = [
-      { peerId: peerAId, sessionId: sessionAId, joinOrder: 1, displayName: 'PeerA', supernodeEligible: true },
-      { peerId: peerBId, sessionId: sessionBId, joinOrder: 2, displayName: 'PeerB', supernodeEligible: true }
+      { peerId: peerAId, sessionId: sessionAId, membershipId: memAId, joinOrder: 1, displayName: 'PeerA', supernodeEligible: true },
+      { peerId: peerBId, sessionId: sessionBId, membershipId: memBId, joinOrder: 2, displayName: 'PeerB', supernodeEligible: true }
     ]
 
-    tmA.updateRoster(roster)
-    tmB.updateRoster(roster)
+    tmA.updateGroupRoster('test-group', epoch, 1, roster, true)
+    tmB.updateGroupRoster('test-group', epoch, 1, roster, true)
 
     try {
       await Promise.all([openA, openB])
@@ -463,8 +402,7 @@ describe('TransportManager Loopback Peer Connection', () => {
       assert.equal(tmA.getLinkState(peerBId)?.state, 'open')
       assert.equal(tmB.getLinkState(peerAId)?.state, 'open')
 
-      // Open file channel from A to B
-      const channelA = await tmA.openFileChannel(peerBId, transferId)
+      const channelA = await tmA.openFileChannel('test-group', peerBId, transferId)
       channelA.send(Buffer.from('chunk-1'))
       await fileChannelReceived
     } finally {

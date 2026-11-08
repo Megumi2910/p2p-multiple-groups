@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>02. Testing Architecture & Verification — Operations — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item active"><a href="02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Operations & DevOps</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>02. Testing Architecture & Verification</span>
+        </nav>
+
+        <h1>Operations: Testing Architecture & Verification</h1>
+        <p class="lead-paragraph">
+          This document details the multi-tiered verification harness of <strong><code>p2p-multiple-groups</code></strong>, execution instructions across test tiers, and regression testing checklists.
+        </p>
+
+        <hr>
+
+        <section id="test-architecture-overview">
+          <h2>1. Test Architecture Overview</h2>
+          <p>
+            The verification harness uses Node.js native test runner (<code>node:test</code>) and the Chrome DevTools Protocol (CDP) to validate system invariants from micro-units up to end-to-end desktop execution.
+          </p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+graph TD
+    subgraph TestSuites["Automated Test Suites"]
+        UNIT["Tier 1: Unit & Codec Tests\n(npm run test:unit)"]
+        P2P["Tier 2: Multi-Peer Integration\n(npm run test:p2p)"]
+        E2E["Tier 3: CDP Electron Desktop E2E\n(npm run test:e2e)"]
+        VISUAL["Tier 4: Automated Docs Visuals\n(npm run docs:screenshots)"]
+    end
+
+    subgraph Targets["System Boundaries Tested"]
+        CORE["Stores, Migration, Wire Codecs, Election Math"]
+        DIST["Signaling State Machine, SCTP Flow Control, HRW Failover"]
+        UI["React 19 Workspace, Native Bridge, Node Isolation, CSP"]
+        ASSETS["Generated PNG UI Screenshots (1280x820)"]
+    end
+
+    UNIT --> CORE
+    P2P --> DIST
+    E2E --> UI
+    VISUAL --> ASSETS
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="execution-tiers">
+          <h2>2. Test Execution Tiers</h2>
+
+          <h3>Tier 1: Unit & Wire Protocol Suites</h3>
+          <p>Tests local storage invariants, schema migrations, wire protocol type guards, configuration parsing, and hardware credential store mocks:</p>
+          <pre><code class="language-bash">npm run test:unit</code></pre>
+
+          <p><strong>Coverage Breakdown</strong>:</p>
+          <ul>
+            <li><code>tests/theme-store.test.ts</code>: Theme persistence, fallback to system preference, JSON atomic write.</li>
+            <li><code>tests/credential-store.test.ts</code>: Queue serialization, <code>0o600</code> permissions, hardware keychain availability probe, in-memory fallback.</li>
+            <li><code>tests/peer-store-v2.test.ts</code>: V2 multi-group schema validation, concurrent writes, atomic rename, group revocation cascades.</li>
+            <li><code>tests/profile-migration.test.ts</code>: Idempotent V1 -> V2 profile migration, automatic backup creation (<code>peer-state.v1.backup.json</code>).</li>
+            <li><code>tests/signaling-config.test.ts</code>: Environment variable parsing, JSON group validation, STUN/TURN parameter checks.</li>
+            <li><code>tests/p2p-protocol.test.ts</code>: Wire protocol type guards, message boundary assertions, channel label formatting (<code>makeFileChannelLabelV2</code>).</li>
+          </ul>
+
+          <h3>Tier 2: Multi-Peer Integration & Security Suites</h3>
+          <p>Spawns in-memory signaling servers and multiple headless <code>PeerEngine</code> instances to test distributed systems logic over real WebSocket and WebRTC connections:</p>
+          <pre><code class="language-bash">npm run test:p2p</code></pre>
+
+          <p><strong>Coverage Breakdown</strong>:</p>
+          <ul>
+            <li><code>tests/signaling-server.test.ts</code>: Multi-group authentication, token verification in constant time, ephemeral HMAC-SHA1 TURN tokens, <code>GET /healthz</code>.</li>
+            <li><code>tests/signaling-client.test.ts</code>: Automatic reconnect, monotonic sequence checking (<code>epoch</code>, <code>revision</code>), roster lease renewal.</li>
+            <li><code>tests/p2p-integration.test.ts</code>: Supernode election, Highest Random Weight (HRW) assignment, ordinary leaf query routing.</li>
+            <li><code>tests/p2p-library-search.test.ts</code>: Background SHA-256 hashing pipeline, inverted catalog sync, boolean AND search.</li>
+            <li><code>tests/p2p-transfers.test.ts</code>: Chunked 16 KiB binary transfer, 256 KiB cumulative window ACKs, 512 KiB inflight window caps, buffer backpressure watermarks.</li>
+            <li><code>tests/p2p-transfers-survival.test.ts</code>: Transfer stall timeout recovery, atomic temporary file staging, mid-stream cancellation.</li>
+            <li><code>tests/p2p-multi-group.test.ts</code>: Multi-group multiplexing over pooled WebRTC SCTP associations.</li>
+            <li><code>tests/p2p-group-security.test.ts</code>: Zero cross-group leakage, dynamic grant revocation aborting active streams, constant-time token verification.</li>
+            <li><code>tests/p2p-engine-lifecycle.test.ts</code>: <code>policyQueue</code> concurrency serialization, <code>GroupRuntime</code> freshness lease expiration (<span class="math-inline">τ_lease = 6000 ms</span>).</li>
+          </ul>
+
+          <h3>Tier 3: Chrome DevTools Protocol (CDP) Desktop E2E</h3>
+          <p>Spawns the packaged Electron application binary, establishes a CDP WebSocket connection, and drives the real Chromium renderer window:</p>
+          <pre><code class="language-bash">npm run test:e2e</code></pre>
+
+          <p><strong>Coverage Breakdown</strong>:</p>
+          <ul>
+            <li>Verifies production Content Security Policy (<code>connect-src 'none'</code>).</li>
+            <li>Asserts strict Node.js isolation (<code>window.process</code>, <code>window.require</code>, and <code>window.Buffer</code> are <code>undefined</code>).</li>
+            <li>Verifies <code>window.p2p</code> and <code>window.kazaa</code> desktop bridge contracts.</li>
+            <li>Full keyboard navigation rail testing across all 6 views with focus verification.</li>
+            <li>Command palette interaction (<code>Ctrl+K</code> / <code>Cmd+K</code>).</li>
+            <li>Minimum viewport layout verification (760 &times; 520) confirming zero horizontal overflow.</li>
+            <li>Multi-process end-to-end download flow with group badge rendering in the Transfers history table.</li>
+          </ul>
+
+          <h3>Tier 4: Automated Documentation Visual Capture</h3>
+          <p>Launches Electron with a pre-seeded multi-group state and headless peer, navigating through views and capturing verified production PNG screenshots to <code>docs/assets/</code>:</p>
+          <pre><code class="language-bash">npm run docs:screenshots</code></pre>
+        </section>
+
+        <hr>
+
+        <section id="regression-checklist">
+          <h2>3. Comprehensive Regression Checklist</h2>
+          <p>Before submitting pull requests or cutting releases, execute the full validation pipeline:</p>
+
+          <pre><code class="language-bash"># 1. Typecheck Node and Web codebases
+npm run typecheck
+
+# 2. Build production assets
+npm run build
+
+# 3. Run complete automated test suite
+npm test
+
+# 4. Refresh and verify visual documentation screenshots
+npm run docs:screenshots</code></pre>
+
+          <h3>Verification Matrix</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Check</th>
+                  <th>Command</th>
+                  <th>Pass Criteria</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Node.js Typecheck</td>
+                  <td><code>npm run typecheck:node</code></td>
+                  <td>Exit code 0, 0 diagnostic errors</td>
+                </tr>
+                <tr>
+                  <td>Web React Typecheck</td>
+                  <td><code>npm run typecheck:web</code></td>
+                  <td>Exit code 0, 0 diagnostic errors</td>
+                </tr>
+                <tr>
+                  <td>Electron Vite Build</td>
+                  <td><code>npm run build</code></td>
+                  <td>All 3 targets (<code>main</code>, <code>preload</code>, <code>renderer</code>) compiled</td>
+                </tr>
+                <tr>
+                  <td>Unit Tests</td>
+                  <td><code>npm run test:unit</code></td>
+                  <td>All tests pass</td>
+                </tr>
+                <tr>
+                  <td>Integration Tests</td>
+                  <td><code>npm run test:p2p</code></td>
+                  <td>All tests pass</td>
+                </tr>
+                <tr>
+                  <td>Desktop E2E Tests</td>
+                  <td><code>npm run test:e2e</code></td>
+                  <td>All tests pass</td>
+                </tr>
+                <tr>
+                  <td>Documentation Visuals</td>
+                  <td><code>npm run docs:screenshots</code></td>
+                  <td>6 screenshots generated in <code>docs/assets/</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="01-cloud-deployment.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">01. Cloud & Coturn Setup</span>
+          </a>
+          <a href="../index.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Return to Portal →</span>
+            <span class="footer-nav-title">Documentation Hub</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#test-architecture-overview" class="toc-link">1. Architecture Overview</a></li>
+          <li><a href="#execution-tiers" class="toc-link">2. Test Execution Tiers</a></li>
+          <li><a href="#regression-checklist" class="toc-link">3. Regression Checklist</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

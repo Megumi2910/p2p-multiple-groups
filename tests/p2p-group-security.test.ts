@@ -8,15 +8,15 @@ import { RTCPeerConnection } from 'werift'
 import { TransportManager, type TransportEvents } from '../src/main/p2p/transport.ts'
 import { createSignalingServer } from '../services/signaling/server.ts'
 import { createPeerEngine, type PeerEngine } from '../src/main/p2p/engine.ts'
-import { makeGroupKey, type MultiGroupP2pState, type P2pState } from '../src/shared/p2p.ts'
+import { makeGroupKey, type MultiGroupP2pState } from '../src/shared/p2p.ts'
 function waitForEngineState(
   engine: PeerEngine,
-  predicate: (state: MultiGroupP2pState & P2pState) => boolean,
+  predicate: (state: MultiGroupP2pState) => boolean,
   timeoutMs = 25000,
-  rejectPredicate?: (state: MultiGroupP2pState & P2pState) => string | null,
+  rejectPredicate?: (state: MultiGroupP2pState) => string | null,
   label?: string
-): Promise<MultiGroupP2pState & P2pState> {
-  const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState & P2pState>()
+): Promise<MultiGroupP2pState> {
+  const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState>()
   let done = false
 
   const timer = setTimeout(() => {
@@ -27,7 +27,7 @@ function waitForEngineState(
     }
   }, timeoutMs)
 
-  const check = (s: MultiGroupP2pState & P2pState) => {
+  const check = (s: MultiGroupP2pState) => {
     if (done) return
     if (typeof rejectPredicate === 'function') {
       const err = rejectPredicate(s)
@@ -207,12 +207,9 @@ describe('P2P Multi-Group Authorization & Security Boundaries', () => {
       assert.equal(crossResolved, undefined, 'Must never resolve result from Group Alpha in Group Beta')
 
       // Even if downloader tries to download secretResult.resultId in betaKey directly:
-      await assert.rejects(
-        async () => {
-          await downloader!.download(betaKey, secretResult.resultId, attackDest)
-        },
-        (err: Error) => err.message.includes('NOT_FOUND')
-      )
+      const attackRes = await downloader!.download(betaKey, secretResult.resultId, attackDest)
+      assert.equal(attackRes.ok, false)
+      assert.equal(attackRes.code, 'NOT_FOUND')
 
       // Ensure no leaked file was written or published
       await assert.rejects(async () => stat(attackDest), (err: NodeJS.ErrnoException) => err.code === 'ENOENT')

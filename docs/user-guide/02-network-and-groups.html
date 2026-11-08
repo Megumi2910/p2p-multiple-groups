@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>02. Network & Virtual Groups — User Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          
+          <li class="nav-item active"><a href="02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>User Guide</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>02. Network & Virtual Groups</span>
+        </nav>
+
+        <h1>User Guide: Network & Virtual Groups</h1>
+        <p class="lead-paragraph">
+          The core architectural innovation of <strong><code>p2p-multiple-groups</code></strong> is the separation of physical WebRTC transport associations from logical <strong>Virtual Groups</strong>. A single node can participate in dozens of isolated swarms simultaneously without leaking catalogs, queries, or transfer traffic across group boundaries.
+        </p>
+
+        <hr>
+
+        <section id="core-concepts">
+          <h2>1. Core Concepts</h2>
+
+          <h3>Virtual Groups & Group Keys</h3>
+          <p>
+            A virtual group represents a cryptographically isolated cluster of peers coordinated by a signaling endpoint. Every group is uniquely identified by a canonical <strong>Group Key</strong>:
+          </p>
+
+          <div class="math-display">
+            GroupKey = signalingUrl || "#" || groupId
+          </div>
+
+          <p>For example:</p>
+          <pre><code class="language-text">ws://127.0.0.1:8787/signal#engineering-team</code></pre>
+
+          <p>
+            Two groups on the same signaling server with different <code>groupId</code>s are strictly disjoint. Conversely, two groups with identical <code>groupId</code>s hosted on different signaling servers are completely independent.
+          </p>
+
+          <h3>Two-Tier Roster Topology</h3>
+          <p>Peers in a group occupy one of two roles:</p>
+          <ol>
+            <li><strong>Supernodes</strong>: High-capacity nodes elected to aggregate inverted search catalogs from leaf nodes and route search queries.</li>
+            <li><strong>Ordinary Peers</strong>: Leaf nodes that maintain connections to primary and standby supernodes, conserving network overhead and CPU cycles.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="network-view-interface">
+          <h2>2. Network View Interface</h2>
+          <p>The <strong>Network & Groups</strong> view provides real-time visibility into all active memberships and local connection states:</p>
+
+          <figure class="doc-image-figure">
+            <img src="../assets/network-view.png" alt="Network and Groups view showing joined groups table, telemetry panel, and join form">
+            <figcaption>Figure 1: Network & Groups view showing the active groups table, selected group telemetry, and join form. (Click image to zoom)</figcaption>
+          </figure>
+
+          <p>The interface consists of three primary sections:</p>
+          <ul>
+            <li><strong>Joined Groups Table</strong>: Overview of all saved and active groups, showing group ID, connection status, node role, member count, auto-join toggle, supernode eligibility toggle, and actions (<code>Leave</code>, <code>Forget</code>).</li>
+            <li><strong>Active Group Details Panel</strong>: Detailed telemetry for the selected group, displaying connection health, assigned primary and standby supernodes, and the count of open WebRTC links.</li>
+            <li><strong>Join a Group Form</strong>: Form to submit cryptographic invitations and configure display name, supernode eligibility, auto-join, credential remembering, and privacy mode.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <section id="joining-a-virtual-group">
+          <h2>3. Joining a Virtual Group</h2>
+          <p>To join a group, you must obtain an invitation string from a signaling server operator or existing peer.</p>
+
+          <h3>Invitation Formats</h3>
+          <p>The client supports both V1 and V2 invitation payloads. Toggle between tabs below to inspect their structure:</p>
+
+          <!-- Interactive Tabs for Invitation Formats -->
+          <div class="tabs-container">
+            <div class="tab-nav">
+              <button class="tab-btn active" type="button">V2 Invitation (Standard)</button>
+              <button class="tab-btn" type="button">V1 Invitation (Legacy)</button>
+            </div>
+            <div class="tab-pane active">
+              <pre><code class="language-json">{
+  "version": 2,
+  "signalingUrl": "ws://127.0.0.1:8787/signal",
+  "groupId": "engineering-team",
+  "token": "a1b2c3d4...base64url-token..."
+}</code></pre>
+            </div>
+            <div class="tab-pane">
+              <pre><code class="language-json">{
+  "version": 1,
+  "signalingUrl": "ws://127.0.0.1:8787/signal",
+  "roomId": "engineering-team",
+  "token": "legacy-token..."
+}</code></pre>
+            </div>
+          </div>
+
+          <h3>Join Procedure</h3>
+          <ol>
+            <li>Navigate to the <strong>Network</strong> view.</li>
+            <li>Under <strong>Join a Group</strong>, enter your desired <strong>Display Name</strong> (1–32 characters).</li>
+            <li>Paste the invitation JSON string into the <strong>Invitation JSON</strong> field.</li>
+            <li>Configure optional settings:
+              <ul>
+                <li><strong>Supernode Eligible</strong>: Check this if your machine has stable bandwidth and open ports to assist in indexing and routing queries for the group.</li>
+                <li><strong>Auto-join on launch</strong>: Check this to automatically reconnect to this group whenever the desktop application starts.</li>
+                <li><strong>Remember invitation securely</strong>: Saves credentials encrypted on disk via OS keychain. If unchecked, credentials are held only in memory for the current process session.</li>
+                <li><strong>Privacy Mode (Relay Only)</strong>: Enforces TURN-only relay connections, concealing your public IP address from other peers.</li>
+              </ul>
+            </li>
+            <li>Click <strong>Join Group</strong>.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="credential-persistence-modes">
+          <h2>4. Credential Persistence Modes</h2>
+          <p>The application supports two distinct credential storage strategies:</p>
+
+          <ol>
+            <li><strong>Hardware-Backed Encryption (<code>SafeCredentialStore</code>)</strong>:
+              <ul>
+                <li>Enabled by checking <strong>Remember invitation securely</strong>.</li>
+                <li>Tokens are encrypted using Electron's <code>safeStorage</code> API:
+                  <ul>
+                    <li><strong>Windows</strong>: Data Protection API (DPAPI) tied to your user account.</li>
+                    <li><strong>macOS</strong>: Keychain Services.</li>
+                    <li><strong>Linux</strong>: Secret Service API via DBus (e.g., GNOME Keyring, KWallet).</li>
+                  </ul>
+                </li>
+                <li>Encrypted tokens are stored in <code>credentials.enc</code> under your application data directory with restrictive file permissions (<code>0o600</code>).</li>
+              </ul>
+            </li>
+            <li><strong>Session-Only Ephemeral Memory</strong>:
+              <ul>
+                <li>Used when <strong>Remember invitation securely</strong> is unchecked or when OS keychain services are unavailable.</li>
+                <li>Credentials exist strictly in heap memory during the active Electron session and are discarded upon exit.</li>
+              </ul>
+            </li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="network-lifecycle-states">
+          <h2>5. Network Lifecycle States</h2>
+          <p>The network connection for each virtual group transitions through distinct states:</p>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Badge</th>
+                  <th>Meaning</th>
+                  <th>Operational Behavior</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>disconnected</code></td>
+                  <td><span class="badge badge-info">Disconnected</span></td>
+                  <td>Node is idle or explicitly disconnected.</td>
+                  <td>No WebRTC connections or signaling sockets are open.</td>
+                </tr>
+                <tr>
+                  <td><code>connecting</code></td>
+                  <td><span class="badge badge-warning">Connecting</span></td>
+                  <td>Signaling handshake or ICE gathering in progress.</td>
+                  <td>Client is negotiating SDP offers/answers over WebSocket.</td>
+                </tr>
+                <tr>
+                  <td><code>connected</code></td>
+                  <td><span class="badge badge-success">Connected</span></td>
+                  <td>Signaling link and WebRTC mesh established.</td>
+                  <td>Full search, indexing, and direct file transfers enabled.</td>
+                </tr>
+                <tr>
+                  <td><code>degraded</code></td>
+                  <td><span class="badge badge-warning">Degraded</span></td>
+                  <td>Primary supernode unreachable; standby failover active.</td>
+                  <td>Read-only search available; catalog sync pending election.</td>
+                </tr>
+                <tr>
+                  <td><code>recovering</code></td>
+                  <td><span class="badge badge-warning">Recovering</span></td>
+                  <td>Signaling heartbeat interrupted; reconnect retry active.</td>
+                  <td>Monotonic sequence validation prevents stale state ingestion.</td>
+                </tr>
+                <tr>
+                  <td><code>error</code></td>
+                  <td><span class="badge badge-danger">Error</span></td>
+                  <td>Fatal authentication failure or invalid token.</td>
+                  <td>Sockets closed; action required (check credentials).</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="privacy-mode">
+          <h2>6. Privacy Mode (<code>relayOnly</code>)</h2>
+          <p>When <strong>Privacy Mode</strong> (<code>relayOnly</code>) is enabled:</p>
+          <ul>
+            <li>The WebRTC stack configures <code>iceTransportPolicy: 'relay'</code>.</li>
+            <li>All peer-to-peer data channels route exclusively through designated Coturn TURN relays.</li>
+            <li><strong>Security Invariant</strong>: Host and Server-Reflexive (STUN) candidates are completely suppressed, preventing peer nodes from discovering your physical or public IP address.</li>
+          </ul>
+
+          <div class="callout callout-warning">
+            <div class="callout-icon">⚠️</div>
+            <div class="callout-content">
+              <div class="callout-title">Configuration Constraint</div>
+              <p>Changing the <code>relayOnly</code> policy requires disconnecting all active groups first to ensure that no open direct SCTP associations remain active.</p>
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="leaving-and-forgetting-groups">
+          <h2>7. Leaving and Forgetting Groups</h2>
+          <p>The Joined Groups table provides two distinct actions for ending group participation:</p>
+
+          <ol>
+            <li><strong>Leave Group</strong>:
+              <ul>
+                <li>Sends a graceful <code>leave</code> message to the signaling server.</li>
+                <li>Tears down WebRTC data channels and SCTP associations tied to this group.</li>
+                <li>Retains the group configuration and credentials in your local store, allowing immediate one-click re-joining.</li>
+              </ul>
+            </li>
+            <li><strong>Forget Group</strong>:
+              <ul>
+                <li>Leaves the group if currently connected.</li>
+                <li>Permanently deletes the group from <code>peer-state.json</code>.</li>
+                <li>Removes encrypted credentials from <code>credentials.enc</code>.</li>
+                <li><strong>Atomic Grant Revocation</strong>: Automatically revokes access grants for this group across all shared files in your local library, ensuring zero leftover permissions.</li>
+              </ul>
+            </li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="01-getting-started.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">01. Getting Started Guide</span>
+          </a>
+          <a href="03-library-and-sharing.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">03. Library & File Sharing</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#core-concepts" class="toc-link">1. Core Concepts</a></li>
+          <li><a href="#network-view-interface" class="toc-link">2. Network View Interface</a></li>
+          <li><a href="#joining-a-virtual-group" class="toc-link">3. Joining a Virtual Group</a></li>
+          <li><a href="#credential-persistence-modes" class="toc-link">4. Credential Persistence</a></li>
+          <li><a href="#network-lifecycle-states" class="toc-link">5. Network Lifecycle</a></li>
+          <li><a href="#privacy-mode" class="toc-link">6. Privacy Mode</a></li>
+          <li><a href="#leaving-and-forgetting-groups" class="toc-link">7. Leaving & Forgetting</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>01. JS/TS &amp; React Syntax — Code Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item active"><a href="01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network &amp; Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library &amp; Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search &amp; Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers &amp; Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting &amp; FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays &amp; Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT &amp; WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control &amp; SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model &amp; Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture &amp; Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage &amp; Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations &amp; DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud &amp; Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Source Code &amp; Syntax</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>01. JS/TS &amp; React Syntax</span>
+        </nav>
+
+        <h1>Phần 1: Nền Tảng Cú Pháp JS, TS, Node.js &amp; React 19 Trong Mã Nguồn</h1>
+        <p class="lead-paragraph">
+          Hướng dẫn bóc tách chi tiết từng cấu trúc ngữ pháp JavaScript, TypeScript, Node.js và React 19 được áp dụng trực tiếp trong mã nguồn dự án <strong><code>p2p-multiple-groups</code></strong>, có trích dẫn số dòng và giải thích lý do thiết kế từ gốc rễ.
+        </p>
+
+        <div class="callout callout-note">
+          <div class="callout-icon">💡</div>
+          <div class="callout-content">
+            <div class="callout-title">Tôn chỉ tài liệu</div>
+            <p>
+              Tài liệu được viết bằng tiếng Việt dễ hiểu nhưng giữ nguyên toàn bộ từ khóa cú pháp tiếng Anh (như <code>interface</code>, <code>type</code>, <code>async/await</code>, <code>useEffect</code>) và định danh hàm/biến thực tế trong repository để bạn dễ dàng tra cứu và trả lời tự tin trong các buổi vấn đáp kỹ thuật.
+            </p>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 1 -->
+        <section id="cu-phap-js-cot-loi">
+          <h2>1. Cú pháp JavaScript cốt lõi</h2>
+          <p>
+            Toàn bộ logic của <code>p2p-multiple-groups</code> được vận hành trên nền tảng JavaScript hiện đại (ECMAScript 2022+). Dưới đây là những cơ chế cú pháp nền tảng xuất hiện xuyên suốt mọi file trong dự án.
+          </p>
+
+          <h3>1.1. Khai báo biến (<code>const</code> vs <code>let</code>) và phạm vi khối (Block Scope)</h3>
+          <p>
+            Trong codebase, từ khóa cổ điển <code>var</code> bị loại trừ hoàn toàn. Hai từ khóa sau đây phân chia ranh giới rõ ràng:
+          </p>
+          <ul>
+            <li><strong><code>const</code></strong>: Tạo một liên kết bất biến (immutable binding). Biến không thể bị gán lại bằng dấu <code>=</code>, nhưng các phần tử bên trong một <code>Map</code>, <code>Set</code> hay thuộc tính của Object vẫn có thể thay đổi được (mutable content).</li>
+            <li><strong><code>let</code></strong>: Dùng khi giá trị biến cần được gán lại trong tương lai (ví dụ: cờ trạng thái, con trỏ thời gian, hoặc hàng đợi Promise nối đuôi).</li>
+          </ul>
+
+          <pre><code class="language-typescript">// Trích xuất từ src/main/p2p/credential-store.ts
+export class SafeCredentialStore implements CredentialStore {
+  private readonly filePath: string                          // const field ở cấp class
+  private readonly memoryCache = new Map&lt;string, string&gt;()  // Map không thể bị gán đè, nhưng có thể gọi .set()
+  private isLoaded = false                                   // Cờ trạng thái cần gán lại
+  private queue: Promise&lt;void&gt; = Promise.resolve()           // Hàng đợi Promise được gán nối đuôi
+}</code></pre>
+
+          <p>
+            <strong>Phạm vi khối (Block Scope):</strong> Cả <code>const</code> và <code>let</code> đều bị giới hạn nghiêm ngặt bên trong cặp ngoặc nhọn <code>{ ... }</code> của lệnh <code>if</code>, vòng lặp <code>for</code> hay khối <code>try/catch</code>. Sau khi ra khỏi khối, biến sẽ tự động được giải phóng khỏi tầm vực.
+          </p>
+
+          <h3>1.2. So sánh nghiêm ngặt (<code>===</code>, <code>!==</code>) và chân trị (Truthiness/Falsiness)</h3>
+          <p>
+            Dự án tuyệt đối không dùng toán tử so sánh lỏng lẻo <code>==</code> và <code>!=</code> nhằm loại trừ hiện tượng ép kiểu ngầm định (Type Coercion Hazards) của JavaScript (chẳng hạn <code>0 == ''</code> trả về <code>true</code> nhưng <code>0 === ''</code> trả về <code>false</code>).
+          </p>
+          <ul>
+            <li><strong>Falsy values</strong> trong JavaScript bao gồm chính xác 6 giá trị: <code>false</code>, <code>0</code>, <code>-0</code>, <code>""</code> (chuỗi rỗng), <code>null</code>, <code>undefined</code>, và <code>NaN</code>.</li>
+            <li>Mọi giá trị khác, bao gồm mảng rỗng <code>[]</code> và đối tượng rỗng <code>{}</code>, đều là <strong>Truthy</strong>!</li>
+          </ul>
+
+          <pre><code class="language-typescript">// src/shared/p2p.ts
+export function validateDisplayName(name: string): ActionResult {
+  const trimmed = name.trim()
+  // Kiểm tra truthiness: trimmed rỗng ("") là falsy!
+  if (!trimmed) {
+    return { ok: false, code: 'INVALID_ARGUMENT', message: 'Display name cannot be empty' }
+  }
+  // So sánh nghiêm ngặt độ dài tối đa 32 ký tự
+  if (trimmed.length &gt; 32) {
+    return { ok: false, code: 'INVALID_ARGUMENT', message: 'Display name exceeds 32 characters' }
+  }
+  return { ok: true }
+}</code></pre>
+
+          <h3>1.3. Đoản mạch logic (<code>&amp;&amp;</code>, <code>||</code>), Nullish Coalescing (<code>??</code>) và Optional Chaining (<code>?.</code>)</h3>
+
+          <p>
+            <strong>Nullish Coalescing (<code>??</code>) vs Logic OR (<code>||</code>):</strong> Toán tử <code>??</code> chỉ kích hoạt giá trị dự phòng nếu toán tử bên trái là <code>null</code> hoặc <code>undefined</code>. Nếu toán tử bên trái là <code>0</code> hoặc <code>""</code>, <code>??</code> vẫn bảo tồn giá trị bên trái (không bị nhầm lẫn như <code>||</code>).
+          </p>
+          <pre><code class="language-typescript">// src/main/p2p/credential-store.ts:176
+async getCredential(groupKey: string): Promise&lt;string | null&gt; {
+  return this.queueOperation(async () =&gt; {
+    // Nếu memoryCache không có key, .get() trả về undefined. ?? null chuyển thành null.
+    return this.memoryCache.get(groupKey) ?? null
+  })
+}</code></pre>
+
+          <p>
+            <strong>Optional Chaining (<code>?.</code>) và Optional Call (<code>?.()</code>):</strong> Truy cập thuộc tính hoặc thực thi hàm an toàn mà không làm crash ứng dụng khi gặp <code>null</code> hoặc <code>undefined</code>.
+          </p>
+          <pre><code class="language-typescript">// 1. Gọi hàm tùy chọn (Optional function call) trong src/main/menu.ts:13
+// Nếu commandHandler là null, không làm gì cả, không báo lỗi "is not a function"
+commandHandler?.(command)
+
+// 2. Gọi callback từ React component props trong src/renderer/src/features/search/Search.tsx:60
+const handleGroupChange = (newGroupKey: string) =&gt; {
+  onSelectGroup?.(newGroupKey)
+}
+
+// 3. Đọc thuộc tính lồng nhau: grp.search có thể là undefined
+const defaultQuery = grp.search?.query ?? ''</code></pre>
+
+          <h3>1.4. Template Literals, Object Shorthand và Destructuring Assignment</h3>
+          <ul>
+            <li><strong>Template Literals (<code>`${...}`</code>)</strong>: Cho phép nội suy biểu thức linh hoạt:
+              <pre><code class="language-typescript">// src/main/theme-store.ts:41
+const tempPath = `${filePath}.${randomUUID()}.tmp`</code></pre>
+            </li>
+            <li><strong>Object Property Shorthand</strong>: Khi tên biến trùng với tên thuộc tính: <code>{ theme }</code> tương đương <code>{ theme: theme }</code>.</li>
+            <li><strong>Destructuring Assignment</strong>: Phân rã mảng và đối tượng:
+              <pre><code class="language-typescript">// Trích xuất mảng: lấy state và updater trong React
+const [queryInput, setQueryInput] = useState('')
+
+// Trích xuất đối tượng từ gói tin
+const { groupId, peerId, payload } = message</code></pre>
+            </li>
+          </ul>
+
+          <h3>1.5. Arrow Functions và các phương thức mảng bậc cao</h3>
+          <p>
+            Codebase áp dụng triệt để các hàm mảng bậc cao bất biến (Immutability), giúp mã nguồn ngắn gọn và trực quan:
+          </p>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Phương thức</th>
+                  <th>Ví dụ trong Codebase</th>
+                  <th>Mục đích sử dụng</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>.filter()</code></td>
+                  <td><code>peers.filter((p) =&gt; p.supernodeEligible)</code> (<code>election.ts:11</code>)</td>
+                  <td>Lọc ra danh sách các peer có bật cờ ứng cử viên Supernode.</td>
+                </tr>
+                <tr>
+                  <td><code>.sort()</code></td>
+                  <td><code>eligible.sort((a, b) =&gt; a.joinOrder - b.joinOrder || a.peerId.localeCompare(b.peerId))</code></td>
+                  <td>Sắp xếp ưu tiên thời điểm vào nhóm (joinOrder), hòa điểm thì so sánh từ điển <code>peerId</code>.</td>
+                </tr>
+                <tr>
+                  <td><code>.every()</code></td>
+                  <td><code>tokens.every((token) =&gt; normalizedName.includes(token))</code> (<code>search-index.ts:45</code>)</td>
+                  <td>Thực hiện phép VÀ logic (Boolean AND): tên file phải chứa toàn bộ từ khóa tìm kiếm.</td>
+                </tr>
+                <tr>
+                  <td><code>.some()</code></td>
+                  <td><code>transfers.some((t) =&gt; t.state === 'transferring')</code></td>
+                  <td>Kiểm tra xem có bất kỳ tiến trình tải file nào đang chạy hay không.</td>
+                </tr>
+                <tr>
+                  <td><code>.find()</code></td>
+                  <td><code>groups.find((g) =&gt; g.groupKey === newGroupKey)</code></td>
+                  <td>Tìm nhóm đầu tiên khớp với khóa <code>groupKey</code> đã chọn.</td>
+                </tr>
+                <tr>
+                  <td><code>.map()</code></td>
+                  <td><code>peers.map((p) =&gt; p.peerId)</code></td>
+                  <td>Trích xuất danh sách mã định danh <code>peerId</code> từ danh sách đối tượng peer.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <section id="es-modules-va-import">
+          <h2>2. ES Modules và Dynamic Imports</h2>
+
+          <h3>2.1. Named Exports, Default Exports và Type-Only Imports (<code>import type</code>)</h3>
+          <p>
+            Dự án đặt <code>"type": "module"</code> trong <code>package.json</code>. Mọi file nguồn đều là chuẩn ECMAScript Modules (ESM).
+          </p>
+          <ul>
+            <li><strong>Named Exports</strong> (<code>export function ...</code>): Giúp trình gom mã (Bundler) loại bỏ mã chết không dùng tới (Tree-shaking).</li>
+            <li><strong>Default Exports</strong> (<code>export default function App()</code>): Dành cho component chính của React.</li>
+            <li><strong>Type-Only Imports</strong> (<code>import type { SafeStorage } from 'electron'</code>): Yêu cầu bắt buộc bởi cờ <code>"erasableSyntaxOnly": true</code> trong <code>tsconfig.node.json</code>.</li>
+          </ul>
+
+          <div class="callout callout-warning">
+            <div class="callout-icon">⚡</div>
+            <div class="callout-content">
+              <div class="callout-title">Tại sao bắt buộc dùng `import type` trong Node.js 24?</div>
+              <p>
+                Node.js &gt;=24 có tính năng <strong>Native Type Stripping</strong> (chạy trực tiếp file <code>.ts</code> không qua bước build). Nó hoạt động bằng cách thay thế các khai báo kiểu TypeScript bằng khoảng trắng trong bộ nhớ RAM. Nếu bạn import một <code>interface</code> mà không có từ khóa <code>type</code>, Node.js sẽ nghĩ đó là một biến JavaScript thực tế và quẳng lỗi <code>SyntaxError / ReferenceError</code> lúc thực thi!
+              </p>
+            </div>
+          </div>
+
+          <h3>2.2. Dynamic Import với Top-Level Await trong môi trường lai</h3>
+          <p>
+            File <code>src/main/p2p/credential-store.ts</code> được chia sẻ giữa môi trường Electron Desktop thật (có module <code>electron.safeStorage</code>) và môi trường kiểm thử Node.js thuần (không có Electron binary). Kỹ thuật Dynamic Import trong khối <code>try/catch</code> giúp giải quyết triệt để vấn đề:
+          </p>
+          <pre><code class="language-typescript">// src/main/p2p/credential-store.ts:33-42
+let electronSafeStorage: SafeStorage | null = null
+
+try {
+  // Nạp động thư viện 'electron' khi module được load vào RAM
+  const electron = await import('electron')
+  if (electron && typeof electron === 'object' && 'safeStorage' in electron && electron.safeStorage) {
+    electronSafeStorage = electron.safeStorage as SafeStorage
+  }
+} catch {
+  // Trong Node.js test runner thuần, khối catch bắt lỗi êm đềm
+  // Hệ thống tự động chuyển sang fallback lưu trữ trên bộ nhớ RAM (memoryCache)!
+}</code></pre>
+        </section>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <section id="he-thong-kieu-typescript">
+          <h2>3. Hệ thống kiểu dữ liệu TypeScript trong Project</h2>
+
+          <h3>3.1. <code>interface</code> vs <code>type</code> aliases</h3>
+          <ul>
+            <li><code>interface</code>: Định nghĩa khuôn mẫu đối tượng (Object Shapes), hỗ trợ kế thừa qua <code>extends</code> (ví dụ: <code>GroupInvitation</code>, <code>GroupRuntime</code>).</li>
+            <li><code>type</code>: Dùng cho tập hợp hội (Union Types), kiểu nguyên thủy hoặc kết hợp phức tạp (ví dụ: <code>P2pErrorCode</code>, <code>ActionResult</code>).</li>
+          </ul>
+
+          <h3>3.2. Literal Types và Tagged / Discriminated Unions</h3>
+          <p>
+            <strong>Discriminated Unions (Tagged Unions)</strong> là mô hình kiến trúc cốt lõi để bảo đảm an toàn dữ liệu trên mạng WebRTC và IPC. Mọi thông điệp đều chứa một thuộc tính nhãn (Discriminant Tag như <code>ok</code> hoặc <code>type</code>):
+          </p>
+          <pre><code class="language-typescript">// src/shared/p2p.ts
+export type ActionResult&lt;T = void&gt; =
+  | { ok: true; data: T }
+  | { ok: false; code: P2pErrorCode; message: string }</code></pre>
+
+          <p>
+            Khi kiểm tra <code>if (!result.ok)</code>, trình biên dịch TypeScript tự động hiểu rằng tại nhánh đó biến <code>result</code> <strong>chắc chắn</strong> có chứa các trường <code>code</code> và <code>message</code>:
+          </p>
+          <pre><code class="language-typescript">const result = await window.p2p.joinGroup(options)
+if (!result.ok) {
+  // TypeScript tự động thu hẹp kiểu (Type Narrowing)
+  console.error(`Thao tác thất bại [${result.code}]: ${result.message}`)
+  return
+}
+// Tại đây TypeScript biết kết quả thành công và result.ok === true!</code></pre>
+
+          <h3>3.3. Intersection Types và <code>readonly</code> Modifiers</h3>
+          <p>
+            Toán tử <code>&amp;</code> cho phép gộp các kiểu dữ liệu lại với nhau: <code>MultiGroupP2pState &amp; P2pState</code>. Từ khóa <code>readonly</code> bảo vệ danh sách peer hoặc mảng cấu hình không bị đột biến vô ý:
+          </p>
+          <pre><code class="language-typescript">// src/main/p2p/election.ts:10
+export function electSupernodes(peers: readonly SignalingRosterPeer[]): ElectionResult {
+  // peers.push(...) -&gt; BÁO LỖI BIÊN DỊCH NGAY LẬP TỨC!
+}</code></pre>
+
+          <h3>3.4. Const Assertions (<code>as const</code>) và Indexed Access Types</h3>
+          <pre><code class="language-typescript">// src/renderer/src/features/commands/commands.ts
+export const COMMAND_DESCRIPTORS = [
+  { id: 'view:home', label: 'Go to Overview' },
+  { id: 'view:network', label: 'Go to Network' },
+  { id: 'view:library', label: 'Go to Library' },
+] as const
+
+// Tự động sinh kiểu Union: 'view:home' | 'view:network' | 'view:library'
+export type CommandDescriptor = (typeof COMMAND_DESCRIPTORS)[number]
+export type CommandId = CommandDescriptor['id']</code></pre>
+
+          <h3>3.5. Utility Types trong Codebase</h3>
+          <p>
+            Các tiện ích kiểu chuẩn của TypeScript được tận dụng tối đa:
+          </p>
+          <ul>
+            <li><code>Partial&lt;T&gt;</code>: Biến mọi trường thành tùy chọn (dùng trong <code>Partial&lt;ConnectOptions&gt;</code>).</li>
+            <li><code>Record&lt;K, V&gt;</code>: Bản đồ tra cứu từ điển (ví dụ <code>Record&lt;string, GroupRuntime&gt;</code>).</li>
+            <li><code>Extract&lt;T, U&gt;</code>: Trích xuất một nhánh cụ thể từ một Discriminated Union.</li>
+            <li><code>Parameters&lt;typeof readFile&gt;[0]</code>: Trích xuất chính xác kiểu đường dẫn tập tin (<code>PathLike</code>) của Node.js.</li>
+          </ul>
+
+          <h3>3.6. Generics (<code>&lt;T&gt;</code>) trong Hàng đợi Bất đồng bộ</h3>
+          <p>
+            Hàm <code>queueAction&lt;T&gt;</code> trong <code>src/main/p2p/engine.ts:1242</code> minh họa sức mạnh của Generic:
+          </p>
+          <pre><code class="language-typescript">function queueAction&lt;T&gt;(action: () =&gt; Promise&lt;T&gt;): Promise&lt;T&gt; {
+  const enqueued = policyQueue.then(() =&gt; {
+    if (isDisposed) {
+      return Promise.reject(new Error('Engine disposed'))
+    }
+    return action()
+  })
+  policyQueue = enqueued.then(
+    () =&gt; {},
+    () =&gt; {}
+  )
+  return enqueued
+}</code></pre>
+
+          <h3>3.7. <code>unknown</code> vs <code>any</code> và User-Defined Type Guards</h3>
+          <p>
+            Trong dự án, dữ liệu từ đĩa hoặc mạng luôn được gán kiểu <code>unknown</code> (an toàn) thay vì <code>any</code> (tắt kiểm tra kiểu). Để chuyển từ <code>unknown</code> sang kiểu dữ liệu cụ thể, ta dùng <strong>Type Guard Function</strong>:
+          </p>
+          <pre><code class="language-typescript">// src/shared/contracts.ts
+export function isThemePreference(value: unknown): value is ThemePreference {
+  return value === 'system' || value === 'light' || value === 'dark'
+}</code></pre>
+        </section>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <section id="bat-dong-bo-promise-async-await">
+          <h2>4. Bất đồng bộ, Promise và Concurrency Queues</h2>
+
+          <h3>4.1. Event Loop, Microtask Queue và Promise</h3>
+          <p>
+            JavaScript chạy đơn luồng (Single-threaded). Khi một <code>Promise</code> được giải quyết (resolved), callback của nó sẽ được đưa vào <strong>Microtask Queue</strong>. Hàng đợi Microtask luôn được dọn sạch trước khi Event Loop chuyển sang vẽ lại giao diện hoặc nhận sự kiện I/O tiếp theo (Macrotask).
+          </p>
+
+          <h3>4.2. Mẫu tuần tự hóa hàng đợi Promise (Promise Chain Serialization Pattern)</h3>
+          <p>
+            Để chống xung đột dữ liệu (Race Condition) khi nhiều thao tác mạng và đĩa diễn ra đồng thời, codebase dùng kỹ thuật nối đuôi Promise với <strong>2 hàm rỗng nuốt lỗi</strong>:
+          </p>
+          <pre><code class="language-typescript">// Mấu chốt kỹ thuật:
+policyQueue = enqueued.then(
+  () =&gt; {}, // Fulfillment handler rỗng
+  () =&gt; {}  // Rejection handler rỗng - NUỐT LỖI CHO ĐUÔI HÀNG ĐỢI!
+)</code></pre>
+
+          <div class="callout callout-warning">
+            <div class="callout-icon">⚡</div>
+            <div class="callout-content">
+              <div class="callout-title">Tại sao phải nuốt lỗi ở đuôi hàng đợi?</div>
+              <p>
+                Nếu tác vụ số 1 thất bại và ném ra Exception, đuôi hàng đợi sẽ rơi vào trạng thái <em>Rejected</em>. Nếu không có hàm bắt lỗi rỗng ở bước 2, tác vụ số 2 xếp sau sẽ <strong>bị hủy bỏ liên đới</strong> do Promise trước nó bị lỗi! Việc gắn <code>() =&gt; {}</code> giúp bảo đảm hàng đợi luôn kết thúc ở trạng thái <em>Fulfilled</em>, trong khi người gọi tác vụ 1 vẫn nhận đủ lỗi qua biến <code>enqueued</code>.
+              </p>
+            </div>
+          </div>
+
+          <h3>4.3. Quản lý bộ đếm thời gian (Timers) và Trailing Throttle 200ms</h3>
+          <p>
+            Hàm <code>dispatchStateToWindow</code> trong <code>src/main/index.ts:34-51</code> sử dụng kỹ thuật <strong>Trailing Throttle</strong>:
+          </p>
+          <pre><code class="language-typescript">let stateThrottleTimer: NodeJS.Timeout | null = null
+let pendingStateSnapshot: (MultiGroupP2pState &amp; P2pState) | null = null
+
+function dispatchStateToWindow(state: MultiGroupP2pState &amp; P2pState): void {
+  pendingStateSnapshot = state
+  if (!stateThrottleTimer) {
+    stateThrottleTimer = setTimeout(() =&gt; {
+      stateThrottleTimer = null
+      if (pendingStateSnapshot &amp;&amp; mainWindow &amp;&amp; !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.P2P_STATE_CHANGED, pendingStateSnapshot)
+        pendingStateSnapshot = null
+      }
+    }, 200) // Khóa nhịp 200ms chống nghẽn IPC
+  }
+}</code></pre>
+        </section>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <section id="cau-truc-du-lieu-va-node-api">
+          <h2>5. Cấu trúc dữ liệu và Node.js Built-in APIs</h2>
+
+          <h3>5.1. <code>Map</code>, <code>Set</code> và dọn rác tự động với <code>WeakMap</code></h3>
+          <p>
+            Trong <code>services/signaling/server.ts:50</code>:
+          </p>
+          <pre><code class="language-typescript">const upgradeGroupIdMap = new WeakMap&lt;WebSocket, string&gt;()</code></pre>
+          <p>
+            <code>WeakMap</code> chỉ giữ tham chiếu yếu (Weak Reference) tới đối tượng socket. Khi client ngắt kết nối và đóng socket, bộ gom rác (Garbage Collector) của Node.js sẽ <strong>tự động giải phóng socket khỏi RAM</strong> mà lập trình viên không cần gọi lệnh dọn dẹp thủ công, ngăn chặn 100% hiện tượng Memory Leak.
+          </p>
+
+          <h3>5.2. Nhị phân, Băm SHA-256, HMAC-SHA1 và So sánh hằng thời gian (<code>timingSafeEqual</code>)</h3>
+          <ul>
+            <li><strong>Streaming SHA-256</strong>: Dùng <code>createHash('sha256')</code> đọc từng chunk 16 KiB để xử lý file tới 1 GiB mà không tốn RAM.</li>
+            <li><strong>HMAC-SHA1</strong>: Sinh mật khẩu xác thực TURN tạm thời tuân thủ RFC 5766.</li>
+            <li><strong>Chống tấn công thời gian (Timing Attack)</strong>: Dùng <code>timingSafeEqual(providedBuf, group.tokenBuffer)</code> để kiểm tra token bí mật thay cho toán tử <code>===</code>, loại bỏ nguy cơ bị lộ khóa do đo thời gian nano-giây.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <section id="react-19-jsx-va-hooks">
+          <h2>6. React 19 &amp; JSX Mechanics</h2>
+
+          <h3>6.1. Cú pháp JSX và quy tắc render</h3>
+          <ul>
+            <li>Dùng <code>className</code> thay cho <code>class</code>.</li>
+            <li>Biểu thức động đặt trong <code>{ ... }</code>.</li>
+            <li>Render danh sách với <code>.map()</code> bắt buộc phải có thuộc tính <code>key</code> duy nhất (ví dụ: <code>key={peer.peerId}</code>).</li>
+            <li>Ngăn chặn reload trang mặc định bằng <code>e.preventDefault()</code> trong các form submit.</li>
+          </ul>
+
+          <h3>6.2. Bộ tứ React Hooks trong Codebase</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Hook</th>
+                  <th>Ví dụ trong Codebase</th>
+                  <th>Nguyên lý hoạt động</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>useState</code></td>
+                  <td><code>const [query, setQuery] = useState('')</code></td>
+                  <td>Lưu trữ trạng thái cục bộ của component và kích hoạt re-render khi giá trị thay đổi.</td>
+                </tr>
+                <tr>
+                  <td><code>useEffect</code></td>
+                  <td><code>usePeerState.ts:68-80</code></td>
+                  <td>Đăng ký lắng nghe sự kiện IPC từ Electron và <strong>bắt buộc trả về hàm dọn dẹp</strong> <code>return () =&gt; unsubscribe()</code> khi unmount.</td>
+                </tr>
+                <tr>
+                  <td><code>useCallback</code></td>
+                  <td><code>usePeerState.ts:135</code></td>
+                  <td>Ghi nhớ tham chiếu của hàm action (như <code>joinGroup</code>), tránh tạo hàm mới mỗi lần re-render gây giật lag.</td>
+                </tr>
+                <tr>
+                  <td><code>useRef</code></td>
+                  <td><code>dialogRef</code> trong <code>CommandPalette.tsx</code> &amp; <code>lastRevisionRef</code> trong <code>usePeerState.ts</code></td>
+                  <td>Trỏ trực tiếp vào thẻ HTML native (<code>&lt;dialog&gt;</code>) hoặc lưu trữ biến số đếm nội bộ <strong>mà không kích hoạt re-render</strong>.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="../user-guide/00-js-ts-npm-fundamentals.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">00. JS, TS &amp; npm Fundamentals</span>
+          </a>
+          <a href="02-shared-preload-and-signaling-code.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">02. Shared, Preload &amp; Signaling Code</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#cu-phap-js-cot-loi" class="toc-link">1. Cú pháp JS cốt lõi</a></li>
+          <li><a href="#es-modules-va-import" class="toc-link">2. ES Modules &amp; Import</a></li>
+          <li><a href="#he-thong-kieu-typescript" class="toc-link">3. Hệ thống kiểu TypeScript</a></li>
+          <li><a href="#bat-dong-bo-promise-async-await" class="toc-link">4. Bất đồng bộ &amp; Queues</a></li>
+          <li><a href="#cau-truc-du-lieu-va-node-api" class="toc-link">5. Data Structures &amp; Node APIs</a></li>
+          <li><a href="#react-19-jsx-va-hooks" class="toc-link">6. React 19 &amp; Hooks</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System &amp; Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

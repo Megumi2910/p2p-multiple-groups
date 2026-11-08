@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>04. NAT Traversal & WebRTC Architecture — Theory — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item active"><a href="04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Distributed Theory</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>04. NAT Traversal & WebRTC Architecture</span>
+        </nav>
+
+        <h1>Theory: NAT Traversal & WebRTC Architecture</h1>
+        <p class="lead-paragraph">
+          This document details the Network Address Translation (NAT) traversal mechanics, Interactive Connectivity Establishment (ICE / RFC 8445), dynamic HMAC-SHA1 TURN authentication, and the Werift user-space WebRTC stack.
+        </p>
+
+        <hr>
+
+        <section id="nat-behavior">
+          <h2>1. NAT Behavior & Traversal Fundamentals</h2>
+          <p>Most edge nodes reside in private IPv4 subnets behind Network Address Translators (NAT). NAT devices rewrite source IP addresses and UDP/TCP port numbers on outbound packets, establishing stateful translation bindings.</p>
+
+          <h3>RFC 4787 / 3489 NAT Classifications</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>NAT Type</th>
+                  <th>Mapping Behavior</th>
+                  <th>Filtering Behavior</th>
+                  <th>Direct P2P Hole Punching</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Full Cone</strong></td>
+                  <td>Same external <span class="math-inline">(IP_ext, Port_ext)</span> for all outbound destinations.</td>
+                  <td>Any external host can send packets to <span class="math-inline">(IP_ext, Port_ext)</span>.</td>
+                  <td><span class="badge badge-success">Trivial</span> STUN discovery suffices.</td>
+                </tr>
+                <tr>
+                  <td><strong>Address-Restricted</strong></td>
+                  <td>Same external <span class="math-inline">(IP_ext, Port_ext)</span> for all outbound destinations.</td>
+                  <td>External host can reply only if internal node previously sent packet to that host's IP.</td>
+                  <td><span class="badge badge-info">Feasible</span> Simultaneous UDP hole punch.</td>
+                </tr>
+                <tr>
+                  <td><strong>Port-Restricted</strong></td>
+                  <td>Same external <span class="math-inline">(IP_ext, Port_ext)</span> for all outbound destinations.</td>
+                  <td>External host can reply only if internal node previously sent packet to that host's <span class="math-inline">(IP, Port)</span>.</td>
+                  <td><span class="badge badge-info">Feasible</span> Coordinated hole punch.</td>
+                </tr>
+                <tr>
+                  <td><strong>Symmetric NAT</strong></td>
+                  <td>Allocates a <strong>different</strong> <span class="math-inline">(IP_ext, Port_ext)</span> for every distinct remote destination.</td>
+                  <td>Only the exact destination socket can reply.</td>
+                  <td><span class="badge badge-danger">Impossible</span> Requires Coturn TURN relay.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>The Symmetric NAT Dilemma</h3>
+          <p>
+            When Peer <span class="math-inline">A</span> behind a Symmetric NAT queries a public STUN server <span class="math-inline">S</span>, the NAT allocates mapping <span class="math-inline">M_1 = (IP_ext, Port_1)</span>. When Peer <span class="math-inline">A</span> subsequently attempts to send packets to Peer <span class="math-inline">B</span>, the NAT dynamically allocates a brand new mapping <span class="math-inline">M_2 = (IP_ext, Port_2)</span>.
+          </p>
+          <p>
+            Because <span class="math-inline">Port_2 ≠ Port_1</span> and port allocation algorithms vary (random, incremental, or hashed), Peer <span class="math-inline">B</span> cannot predict <span class="math-inline">Port_2</span>. If Peer <span class="math-inline">B</span> is also behind a Symmetric or Port-Restricted NAT, both firewalls drop all direct inbound hole-punch packets.
+          </p>
+        </section>
+
+        <hr>
+
+        <section id="ice-rfc8445">
+          <h2>2. Interactive Connectivity Establishment (ICE - RFC 8445)</h2>
+          <p><code>p2p-multiple-groups</code> employs ICE to discover and negotiate the optimal network path between peers.</p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant PeerA as Peer Node A
+    participant Sig as Signaling Server
+    participant Turn as Coturn Relay (TURN)
+    participant PeerB as Peer Node B
+
+    Note over PeerA,Turn: Phase 1: Candidate Gathering
+    PeerA->>Turn: STUN Binding Request (Host Candidate)
+    Turn-->>PeerA: STUN Binding Response (srflx: Public IP/Port)
+    PeerA->>Turn: TURN Allocate (HMAC-SHA1 Ephemeral Auth)
+    Turn-->>PeerA: Allocation Success (relay: Relayed IP/Port)
+
+    Note over PeerA,PeerB: Phase 2: SDP Offer/Answer Exchange
+    PeerA->>Sig: ClientSignalingMessageV2::signal (SDP Offer)
+    Sig->>PeerB: ServerSignalingMessageV2::signal (SDP Offer)
+    PeerB->>Sig: ClientSignalingMessageV2::signal (SDP Answer)
+    Sig->>PeerA: ServerSignalingMessageV2::signal (SDP Answer)
+
+    Note over PeerA,PeerB: Phase 3: Connectivity Checks
+    PeerA->>PeerB: STUN Ping (Host / srflx) - Fails (Symmetric NAT)
+    PeerA->>Turn: Relay ChannelData
+    Turn->>PeerB: Relayed UDP Delivery - Success!
+            </div>
+          </div>
+
+          <h3>ICE Candidate Types</h3>
+          <ol>
+            <li><strong>Host Candidates (<code>host</code>)</strong>: Direct local network interfaces (e.g. <code>192.168.1.105</code> or local IPv6).</li>
+            <li><strong>Server Reflexive Candidates (<code>srflx</code>)</strong>: External IP and port mapped by intermediate NATs, discovered via STUN.</li>
+            <li><strong>Relay Candidates (<code>relay</code>)</strong>: Relayed endpoints provisioned on an external TURN server. Guarantees 100% connectivity regardless of symmetric NAT barriers.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="ephemeral-turn-auth">
+          <h2>3. Ephemeral HMAC-SHA1 TURN Authentication (RFC 5766)</h2>
+          <p>
+            Static TURN credentials create severe security vulnerabilities if distributed to untrusted peers. Instead, the signaling server dynamically issues <strong>short-lived ephemeral TURN credentials</strong> conforming to the TURN REST API standard.
+          </p>
+
+          <h3>Algorithmic Formulation</h3>
+          <p>When a peer handshakes with the signaling server:</p>
+          <ol>
+            <li>The server sets an expiration timestamp:
+              <div class="math-display">t_expiry = floor(now / 1000) + 86400  (24 hours)</div>
+            </li>
+            <li>The username is derived from the expiration time and session ID:
+              <div class="math-display">Username = t_expiry || ":" || sessionId</div>
+            </li>
+            <li>The credential is computed via keyed HMAC-SHA1:
+              <div class="math-display">Credential = Base64(HMAC-SHA1(K_turn_secret, Username))</div>
+            </li>
+          </ol>
+
+          <pre><code class="language-typescript">// Verified implementation from services/signaling/server.ts
+const expirySec = Math.floor(Date.now() / 1000) + 86400
+const username = `${expirySec}:${sessionId}`
+const hmac = createHmac('sha1', options.turnSecret)
+hmac.update(username)
+const credential = hmac.digest('base64')</code></pre>
+
+          <p>
+            The Coturn relay verifies incoming packets using the identical shared secret <span class="math-inline">K_turn_secret</span> without maintaining a shared database or state table. Expired usernames are rejected automatically.
+          </p>
+        </section>
+
+        <hr>
+
+        <section id="werift-stack">
+          <h2>4. The Werift WebRTC Stack</h2>
+          <p>Unlike typical Electron applications that rely on Chromium's native C++ WebRTC bindings (which expose limited low-level control and introduce unpredictable native crashes), <code>p2p-multiple-groups</code> utilizes <strong>Werift</strong>:</p>
+          <ul>
+            <li><strong>Pure TypeScript / Node.js Runtime</strong>: Implements WebRTC protocols entirely in managed code.</li>
+            <li><strong>Protocol Subsystems</strong>:
+              <ul>
+                <li><strong>DTLS 1.2</strong>: Transport Layer Security handshake over UDP.</li>
+                <li><strong>SRTP</strong>: Secure Real-time Transport Protocol encryption.</li>
+                <li><strong>SCTP (Stream Control Transmission Protocol)</strong>: Reliable, sequenced message chunking and flow-controlled data channels.</li>
+              </ul>
+            </li>
+            <li><strong>Portability</strong>: Operates seamlessly across Windows, macOS, and headless Linux without requiring native compilation toolchains or GPU access.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <section id="privacy-invariants">
+          <h2>5. Privacy Invariants & Relay Enforcement (<code>relayOnly</code>)</h2>
+          <p>When a user enables <strong>Privacy Mode</strong> (<code>relayOnly = true</code>):</p>
+          <ol>
+            <li>The Werift connection configuration sets:
+              <div class="math-display">iceTransportPolicy = 'relay'</div>
+            </li>
+            <li>The ICE engine filters out all <code>host</code> and <code>srflx</code> candidates. Only <code>relay</code> candidates are emitted in SDP offers and answers.</li>
+            <li><strong>Formal Privacy Invariant</strong>: A peer inspecting incoming ICE candidates can observe only the IP address of the Coturn relay server. The user's home ISP, public IP address, and local subnet geometry are mathematically shielded from other peers.</li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="03-virtual-overlays-and-consensus.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">03. Overlays & Consensus</span>
+          </a>
+          <a href="05-flow-control-and-integrity.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">05. Flow Control & SHA-256</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#nat-behavior" class="toc-link">1. NAT Behavior</a></li>
+          <li><a href="#ice-rfc8445" class="toc-link">2. ICE (RFC 8445)</a></li>
+          <li><a href="#ephemeral-turn-auth" class="toc-link">3. Ephemeral TURN Auth</a></li>
+          <li><a href="#werift-stack" class="toc-link">4. Werift Stack</a></li>
+          <li><a href="#privacy-invariants" class="toc-link">5. Privacy Invariants</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

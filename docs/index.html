@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="./">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>p2p-multiple-groups — Interactive Documentation Portal</title>
+  <link rel="stylesheet" href="assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+    }
+  </script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">v0.1.0</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item active"><a href="index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Hero Section -->
+        <section class="hero-banner">
+          <h1 class="hero-title">p2p-multiple-groups</h1>
+          <p class="hero-subtitle">
+            An encrypted, multi-group, hybrid peer-to-peer file sharing system and signaling network built with Electron, React 19, TypeScript, and Werift pure Node.js WebRTC.
+          </p>
+          <div class="hero-badges">
+            <span class="badge badge-primary">Node.js ≥24.12.0</span>
+            <span class="badge badge-success">React 19.3</span>
+            <span class="badge badge-info">Electron 44.4</span>
+            <span class="badge badge-warning">TypeScript 5.9</span>
+            <span class="badge badge-primary">Werift WebRTC</span>
+          </div>
+          <div class="hero-actions">
+            <a href="user-guide/01-getting-started.html" class="btn-primary">🚀 Get Started</a>
+            <button class="btn-secondary search-trigger" type="button">🔍 Search Documentation</button>
+          </div>
+        </section>
+
+        <hr>
+
+        <!-- System Architecture Overview -->
+        <section id="architecture-overview">
+          <h2>System Architecture Overview</h2>
+          <p class="lead-paragraph">
+            The system is partitioned into three decoupled execution domains: the <strong>Authoritative Signaling Layer</strong>, the <strong>Electron Main Process (P2P Engine & Host)</strong>, and the <strong>Sandboxed React 19 Renderer (Desktop UI)</strong>.
+          </p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+flowchart TB
+    subgraph SignalingCluster["Authoritative Signaling Infrastructure"]
+        SS["Signaling Server (Node.js + ws)\nws://host:port/signal"]
+        TURN["Coturn Relay (STUN / TURN)\nRFC 5766 HMAC-SHA1 Ephemeral Auth"]
+        SS --- TURN
+    end
+
+    subgraph PeerHost["Electron Host Environment (Main Process)"]
+        subgraph Engine["PeerEngine Core Subsystem"]
+            RT["GroupRuntime\n[signalingUrl, groupId]"]
+            ELEC["Election Engine\n(HRW Consistent Hashing)"]
+            CAT["Catalog Index Manager\n(Batch Inverted Index)"]
+            FLOW["Flow Controller\n(16 KiB Chunks, 256 KiB ACKs)"]
+        end
+
+        subgraph Transport["Network & WebRTC Layer"]
+            WERIFT["Werift WebRTC\n(DTLS 1.2, SRTP, SCTP)"]
+            WS["Signaling Client\n(Monotonic Leases: epoch, rev)"]
+        end
+
+        subgraph Storage["Encrypted Storage Layer"]
+            STORE["MultiGroupPeerStore\n(peer-state.json, Atomic Rename)"]
+            SAFE["SafeCredentialStore\n(Electron safeStorage DPAPI / Keychain)"]
+        end
+
+        RT --> ELEC
+        RT --> CAT
+        RT --> FLOW
+        FLOW --> WERIFT
+        RT --> WS
+        Engine --> Storage
+    end
+
+    subgraph SandboxUI["Sandboxed Renderer Process (Chromium)"]
+        BRIDGE["Preload Bridge\n(window.p2p, contextBridge)"]
+        REACT["React 19 Desktop Interface\n(Strict CSP: connect-src 'none')"]
+        VIEWS["Views: Home | Network | Library | Search | Transfers | Appearance"]
+
+        REACT --> VIEWS
+        REACT --> BRIDGE
+    end
+
+    WS <-->|"ClientSignalingMessageV2\nServerSignalingMessageV2"| SS
+    WERIFT <-->|"OverlayControlMessageV2\nTransferControlMessageV2"| WERIFT
+    WERIFT -.->|"Relayed Traversal (relayOnly)"| TURN
+    BRIDGE <-->|"IPC Channels\n(ipcMain / ipcRenderer)"| Engine
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <!-- Role-Based Reading Tracks -->
+        <section id="reading-tracks">
+          <h2>Role-Based Reading Tracks</h2>
+          <p>Explore curated learning pathways tailored to your engineering focus and operational goals:</p>
+
+          <div class="portal-tracks-grid">
+            <!-- Track 0: Source Code & Syntax -->
+            <div class="track-card">
+              <div class="track-icon">💻</div>
+              <h3 class="track-title">Developers &amp; Inquiry Candidates</h3>
+              <p class="track-desc">
+                First-principles guide to modern JS/TS/React 19 syntax, file-by-file codebase walkthrough, 30+ code locators, and 32-question inquiry exam bank.
+              </p>
+              <ul class="track-links">
+                <li><a href="code-guide/01-js-ts-react-syntax-in-codebase.html">→ 01. JS/TS &amp; React 19 Syntax</a></li>
+                <li><a href="code-guide/02-shared-preload-and-signaling-code.html">→ 02. Shared, Preload &amp; Signaling</a></li>
+                <li><a href="code-guide/03-main-process-and-p2p-engine-code.html">→ 03. Main Process &amp; P2P Engine</a></li>
+                <li><a href="code-guide/04-renderer-ui-and-inquiry-qa.html">→ 04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+              </ul>
+            </div>
+            <!-- Track 1 -->
+            <div class="track-card">
+              <div class="track-icon">👤</div>
+              <h3 class="track-title">End Users & Operators</h3>
+              <p class="track-desc">
+                Setup and launch the desktop application, manage virtual groups, configure file sharing grants, and monitor active transfers.
+              </p>
+              <ul class="track-links">
+                <li><a href="user-guide/00-js-ts-npm-fundamentals.html">→ 00. JS, TS &amp; npm Fundamentals</a></li>
+                <li><a href="user-guide/01-getting-started.html">→ 01. Getting Started Guide</a></li>
+                <li><a href="user-guide/02-network-and-groups.html">→ 02. Network & Virtual Groups</a></li>
+                <li><a href="user-guide/03-library-and-sharing.html">→ 03. Shared Library & Grants</a></li>
+                <li><a href="user-guide/04-search-and-discovery.html">→ 04. Search & Discovery Engine</a></li>
+                <li><a href="user-guide/05-transfers-and-downloads.html">→ 05. Transfers & Flow Control</a></li>
+                <li><a href="user-guide/06-signaling-and-ops.html">→ 06. Signaling Server Operations</a></li>
+                <li><a href="user-guide/07-troubleshooting-and-faq.html">→ 07. Troubleshooting & FAQ</a></li>
+              </ul>
+            </div>
+
+            <!-- Track 2 -->
+            <div class="track-card">
+              <div class="track-icon">📐</div>
+              <h3 class="track-title">Distributed Systems Engineers</h3>
+              <p class="track-desc">
+                Theoretical foundations, mathematical proofs of churn minimality, consistent hashing, NAT mechanics, and zero-trust security.
+              </p>
+              <ul class="track-links">
+                <li><a href="theory/01-distributed-topology.html">→ 01. Distributed Topology Evolution</a></li>
+                <li><a href="theory/02-election-and-consistent-hashing.html">→ 02. HRW Election & Churn Proof</a></li>
+                <li><a href="theory/03-virtual-overlays-and-consensus.html">→ 03. Virtual Overlays & Leases</a></li>
+                <li><a href="theory/04-nat-traversal-and-webrtc.html">→ 04. NAT Traversal & WebRTC</a></li>
+                <li><a href="theory/05-flow-control-and-integrity.html">→ 05. Flow Control & SHA-256</a></li>
+                <li><a href="theory/06-security-and-threat-model.html">→ 06. Threat Model & Sandboxing</a></li>
+              </ul>
+            </div>
+
+            <!-- Track 3 -->
+            <div class="track-card">
+              <div class="track-icon">⚙️</div>
+              <h3 class="track-title">Core Contributors & Implementers</h3>
+              <p class="track-desc">
+                Internal lifecycle state machines, typed IPC bridges, wire protocol specifications, and atomic profile migration.
+              </p>
+              <ul class="track-links">
+                <li><a href="architecture/01-system-overview.html">→ 01. System Architecture Layout</a></li>
+                <li><a href="architecture/02-peer-engine-lifecycle.html">→ 02. PeerEngine & GroupRuntime</a></li>
+                <li><a href="architecture/03-wire-protocol-specification.html">→ 03. Wire Protocol Specifications</a></li>
+                <li><a href="architecture/04-storage-and-persistence.html">→ 04. Storage, Migration & SafeStore</a></li>
+              </ul>
+            </div>
+
+            <!-- Track 4 -->
+            <div class="track-card">
+              <div class="track-icon">☁️</div>
+              <h3 class="track-title">Cloud Infrastructure & DevOps</h3>
+              <p class="track-desc">
+                Deploying high-availability signaling nodes on Azure VMs, Coturn TURN servers, Let's Encrypt renewal, and automated test pipelines.
+              </p>
+              <ul class="track-links">
+                <li><a href="operations/01-cloud-deployment.html">→ 01. Cloud & Coturn Setup</a></li>
+                <li><a href="operations/02-testing-and-verification.html">→ 02. Testing Architecture</a></li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <!-- Complete Documentation Index Table -->
+        <section id="full-index">
+          <h2>Complete Documentation Index</h2>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Domain</th>
+                  <th>Document</th>
+                  <th>Summary</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="badge badge-primary">Code Guide</span></td>
+                  <td><a href="code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></td>
+                  <td>Nền tảng cú pháp JS, TypeScript, Node.js và React 19 từ thực tế mã nguồn: optional chaining, discriminated unions, promise queues.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-primary">Code Guide</span></td>
+                  <td><a href="code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></td>
+                  <td>Walkthrough electron.vite.config.ts, shared contracts, wire protocol, preload bridge, signaling server, token bucket rate limiter.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-primary">Code Guide</span></td>
+                  <td><a href="code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></td>
+                  <td>Walkthrough main process, validateSender IPC 4 tầng, HRW election, SafeCredentialStore, search index, transport pooling, transfers.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-primary">Code Guide</span></td>
+                  <td><a href="code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></td>
+                  <td>Walkthrough React 19 renderer, usePeerState hook, Swarm aggregation, bảng tra cứu 30+ vị trí code, 32 câu hỏi vấn đáp (Inquiry Test).</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-info">User Guide</span></td>
+                  <td><a href="user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></td>
+                  <td>Nền tảng JavaScript, TypeScript, Node.js, npm, package.json, tsconfig và cẩm nang giải thích toàn bộ 16 lệnh CLI.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-info">User Guide</span></td>
+                  <td><a href="user-guide/01-getting-started.html">01. Getting Started</a></td>
+                  <td>System prerequisites (Node ≥24.12), build scripts, UI layout tour, and global keyboard shortcuts.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-info">User Guide</span></td>
+                  <td><a href="user-guide/02-network-and-groups.html">02. Network & Groups</a></td>
+                  <td>Virtual group lifecycle, V1/V2 invitations, hardware keychain persistence, and privacy mode.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-info">User Guide</span></td>
+                  <td><a href="user-guide/03-library-and-sharing.html">03. Library & Sharing</a></td>
+                  <td>File grants, background SHA-256 fingerprinting pipeline, rescanning, and instant dynamic revocation.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-info">User Guide</span></td>
+                  <td><a href="user-guide/04-search-and-discovery.html">04. Search & Discovery</a></td>
+                  <td>Scoped multi-group search queries, NFKC token matching, boolean AND semantics, and swarm aggregation.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-info">User Guide</span></td>
+                  <td><a href="user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></td>
+                  <td>Download workflows, 16 KiB chunk flow monitoring, route inspection, and atomic .tmp file commit.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-info">User Guide</span></td>
+                  <td><a href="user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></td>
+                  <td>Running signaling servers, issuing invitation tokens, .env reference, and /healthz probing.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-info">User Guide</span></td>
+                  <td><a href="user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></td>
+                  <td>Standard error codes, symmetric NAT diagnosis, headless Linux keychain recovery, and profile backups.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-warning">Theory</span></td>
+                  <td><a href="theory/01-distributed-topology.html">01. Distributed Topology</a></td>
+                  <td>P2P evolution from Napster and Gnutella to Kazaa; mathematical query scaling comparison matrix.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-warning">Theory</span></td>
+                  <td><a href="theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></td>
+                  <td>Deterministic election ordering, Highest Random Weight affinity equations, and minimal churn proofs.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-warning">Theory</span></td>
+                  <td><a href="theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></td>
+                  <td>Single-association transport pooling, monotonic membership leases, and inverted search LRU cache.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-warning">Theory</span></td>
+                  <td><a href="theory/04-nat-traversal-and-webrtc.html">04. NAT Traversal & WebRTC</a></td>
+                  <td>RFC 4787 NAT mapping, ICE gathering, RFC 5766 ephemeral HMAC-SHA1 auth, and Werift stack.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-warning">Theory</span></td>
+                  <td><a href="theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></td>
+                  <td>SCTP sliding-window backpressure (16 KiB chunks, 256 KiB ACKs, 512 KiB cap), streaming SHA-256.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-warning">Theory</span></td>
+                  <td><a href="theory/06-security-and-threat-model.html">06. Threat Model & Security</a></td>
+                  <td>Zero-trust threat model, constant-time token comparison, Chromium sandboxing, and strict CSP.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-primary">Architecture</span></td>
+                  <td><a href="architecture/01-system-overview.html">01. System Overview</a></td>
+                  <td>Multi-process Electron layout, IPC_CHANNELS registry, validateSender origin checks, 200ms throttle.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-primary">Architecture</span></td>
+                  <td><a href="architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></td>
+                  <td>policyQueue concurrency serializer, GroupRuntime state data structure, and watchdog monitoring.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-primary">Architecture</span></td>
+                  <td><a href="architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></td>
+                  <td>Complete wire message schemas for Signaling V2, Overlay Control V2, and Transfer Control V2.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-primary">Architecture</span></td>
+                  <td><a href="architecture/04-storage-and-persistence.html">04. Storage & Migration</a></td>
+                  <td>MultiGroupPeerStore V2 schema, atomic staging files, legacy profile migration, SafeCredentialStore.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-success">Operations</span></td>
+                  <td><a href="operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></td>
+                  <td>Azure VM production guide, Coturn turnserver.conf, systemd units, Nginx TLS proxying, Render.yaml.</td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge-success">Operations</span></td>
+                  <td><a href="operations/02-testing-and-verification.html">02. Testing Architecture</a></td>
+                  <td>4-tier automated test harness, multi-peer integration, CDP Electron E2E, and regression checklists.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="user-guide/01-getting-started.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">01. Getting Started Guide</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#architecture-overview" class="toc-link">System Architecture</a></li>
+          <li><a href="#reading-tracks" class="toc-link">Role-Based Reading Tracks</a></li>
+          <li><a href="#full-index" class="toc-link">Complete Documentation Index</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="assets/docs.js"></script>
+</body>
+</html>

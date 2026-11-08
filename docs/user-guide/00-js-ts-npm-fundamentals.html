@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>00. JS, TS &amp; npm Fundamentals — User Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item active"><a href="00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="02-network-and-groups.html">02. Network &amp; Groups</a></li>
+          <li class="nav-item"><a href="03-library-and-sharing.html">03. Library &amp; Sharing</a></li>
+          <li class="nav-item"><a href="04-search-and-discovery.html">04. Search &amp; Discovery</a></li>
+          <li class="nav-item"><a href="05-transfers-and-downloads.html">05. Transfers &amp; Downloads</a></li>
+          <li class="nav-item"><a href="06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="07-troubleshooting-and-faq.html">07. Troubleshooting &amp; FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays &amp; Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT &amp; WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control &amp; SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model &amp; Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture &amp; Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage &amp; Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations &amp; DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud &amp; Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>User Guide</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>00. JS, TS &amp; npm Fundamentals</span>
+        </nav>
+
+        <h1>Nền Tảng JS/TS, Node.js, npm &amp; Cẩm Nang Lệnh CLI</h1>
+        <p class="lead-paragraph">
+          Tài liệu nhập môn chuyên sâu bằng tiếng Việt: giải thích từ gốc rễ cách JavaScript, TypeScript, Node.js và npm phối hợp trong dự án <strong><code>p2p-multiple-groups</code></strong>, kiến trúc 3 tiến trình Electron và ý nghĩa chi tiết của toàn bộ 16 lệnh CLI.
+        </p>
+
+        <div class="callout callout-note">
+          <div class="callout-icon">💡</div>
+          <div class="callout-content">
+            <div class="callout-title">Dành cho kỹ sư mới</div>
+            <p>Nếu bạn chưa có nhiều kinh nghiệm về TypeScript hoặc Electron, hãy đọc kỹ Phần 1 và Phần 2 để nắm vững luồng biên dịch trước khi bắt đầu thực thi các lệnh ở Phần 4 và Phần 5.</p>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 1 -->
+        <section id="he-sinh-thai-js-ts-node-npm">
+          <h2>1. Nền tảng cốt lõi: JS, TS, Node.js và npm</h2>
+          <p>
+            Dự án kết hợp nhiều công nghệ hiện đại. Dưới đây là vai trò cụ thể của từng thành phần trong bức tranh tổng thể:
+          </p>
+
+          <h3>1.1. JavaScript (JS) — Ngôn ngữ thực thi chính</h3>
+          <p>
+            JavaScript là ngôn ngữ chạy đơn luồng (single-threaded) dựa trên cơ chế vòng lặp sự kiện bất đồng bộ (Non-blocking Event Loop). 
+            <strong>Nguyên lý quan trọng nhất:</strong> Cả trình duyệt Chromium (phần hiển thị giao diện) và môi trường Node.js (phần máy ảo P2P và máy chủ Signaling) đều chỉ hiểu và chạy trực tiếp mã JavaScript thuần túy.
+          </p>
+          <p>
+            Trong dự án này, toàn bộ mã nguồn tuân theo chuẩn <strong>ECMAScript Modules (ESM)</strong> hiện đại, quy định bởi dòng <code>"type": "module"</code> trong <code>package.json</code>:
+          </p>
+          <pre><code class="language-typescript">// Sử dụng cú pháp import / export chuẩn ESM
+import { MultiGroupPeerStore } from './peer-store-v2.js';
+export const engine = new PeerEngine();</code></pre>
+
+          <h3>1.2. TypeScript (TS &amp; TSX) — Bản thiết kế kiểu dữ liệu tĩnh</h3>
+          <p>
+            JavaScript thuần không có kiểu dữ liệu tĩnh; lỗi truyền sai tham số chỉ phát hiện khi ứng dụng đang chạy (Runtime Error). Trong một hệ thống P2P phức tạp, lỗi runtime khi giải mã gói tin WebRTC sẽ làm đứt kết nối mạng của cả cụm ngang hàng.
+          </p>
+          <p>
+            <strong>TypeScript</strong> bổ sung "bản thiết kế kiểu" (Static Types) phía trên JavaScript. Ví dụ interface <code>GroupInvitation</code> trong <code>src/shared/p2p.ts</code> bảo đảm mọi lời mời tham gia nhóm đều phải đầy đủ các thuộc tính bắt buộc:
+          </p>
+          <pre><code class="language-typescript">export interface GroupInvitation {
+  version: 2;
+  groupId: string;
+  groupName: string;
+  signalingUrl: string;
+  token: string;
+  createdAt: number;
+  expiresAt?: number;
+}</code></pre>
+          <p>
+            File đuôi <code>.tsx</code> là TypeScript kết hợp cú pháp giao diện JSX của React 19, cho phép viết các component như <code>&lt;button onClick={joinGroup}&gt;Gia nhập&lt;/button&gt;</code> trực tiếp bên trong logic xử lý.
+          </p>
+
+          <div class="callout callout-warning">
+            <div class="callout-icon">⚡</div>
+            <div class="callout-content">
+              <div class="callout-title">Hai cơ chế xử lý TypeScript trong dự án này</div>
+              <ul>
+                <li><strong>Kiểm tra lỗi tĩnh (Typechecking):</strong> Sử dụng lệnh <code>npm run typecheck</code> (gọi <code>tsc --noEmit</code>). Trình biên dịch TypeScript chỉ kiểm tra tính hợp lệ của kiểu dữ liệu trong bộ nhớ, tuyệt đối không sinh ra bất kỳ file nào trên ổ cứng.</li>
+                <li><strong>Chuyển đổi để chạy thực tế:</strong>
+                  <ul>
+                    <li><strong>Node.js Native Type Stripping:</strong> Với các file chạy trực tiếp như test (<code>tests/*.test.ts</code>) hay signaling server (<code>services/signaling/index.ts</code>), <strong>Node.js &gt;=24.12.0</strong> tự động lột bỏ khai báo kiểu TS trong RAM và chạy thẳng mã JS mà không cần bước build trung gian.</li>
+                    <li><strong>Electron Desktop Build:</strong> <code>electron-vite</code> (kết hợp Vite, esbuild, Rollup) dịch và gom toàn bộ mã nguồn thành các file tối ưu trong thư mục <code>./out/</code>.</li>
+                  </ul>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <h3>1.3. Node.js (&gt;=24.12.0) — Môi trường chạy JS/TS ngoài trình duyệt</h3>
+          <p>
+            Node.js cho phép JavaScript vận hành như một ngôn ngữ hệ thống trên Windows, macOS và Linux. Nó cung cấp:
+          </p>
+          <ul>
+            <li>Truy cập hệ thống tập tin cục bộ (<code>node:fs</code>) để đọc file chia sẻ và ghi trạng thái <code>peer-state.json</code>.</li>
+            <li>Socket mạng đa kênh: WebSocket (<code>ws</code>) và WebRTC data channel (<code>werift</code>).</li>
+            <li>Mã hóa bảo mật cao (<code>node:crypto</code>) để băm dữ liệu SHA-256 từng chunk 16 KiB.</li>
+            <li>Trình chạy kiểm thử tự động tốc độ cao tích hợp sẵn (<code>node:test</code>).</li>
+          </ul>
+
+          <h3>1.4. npm và bộ ba quản lý thư viện</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Thành phần</th>
+                  <th>Vai trò trong dự án</th>
+                  <th>Đưa lên Git?</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>package.json</code></td>
+                  <td>Bảng kê khai thông tin dự án, danh sách lệnh tắt (<code>scripts</code>), các thư viện chạy thật (<code>dependencies</code>: react, werift, ws) và công cụ phát triển (<code>devDependencies</code>: electron, vite, typescript).</td>
+                  <td><strong>Có</strong></td>
+                </tr>
+                <tr>
+                  <td><code>package-lock.json</code></td>
+                  <td>Sổ cái khóa cứng chính xác số phiên bản và mã băm toàn vẹn (integrity hash) của từng thư viện con để đảm bảo mọi máy tính chạy <code>npm install</code> đều ra kết quả giống hệt nhau.</td>
+                  <td><strong>Có</strong></td>
+                </tr>
+                <tr>
+                  <td><code>node_modules/</code></td>
+                  <td>Kho chứa toàn bộ mã nguồn thực tế của các thư viện bên thứ 3 tải từ Internet về máy. Rất nặng và tự sinh ra khi gõ <code>npm install</code>.</td>
+                  <td><strong>Không</strong> (luôn nằm trong <code>.gitignore</code>)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <section id="kien-truc-build-electron-vite">
+          <h2>2. Kiến trúc 3 tiến trình Electron và hệ thống 3 file tsconfig</h2>
+
+          <h3>2.1. Phân chia 3 tiến trình độc lập</h3>
+          <p>
+            Để đảm bảo an toàn tối đa cho máy tính của người dùng, ứng dụng desktop được chia làm 3 tiến trình với ranh giới an ninh nghiêm ngặt:
+          </p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+flowchart TB
+    subgraph MainProcess["Main Process (src/main/index.ts -> out/main/index.js)"]
+        direction TB
+        M["Tiến trình chính Node.js\n- Chạy PeerEngine & Werift WebRTC\n- Đọc/Ghi đĩa & Keychain safeStorage\n- Chuẩn ES Module (format: es)"]
+    end
+
+    subgraph PreloadScript["Preload Script (src/preload/index.ts -> out/preload/index.cjs)"]
+        direction TB
+        P["Cửa khẩu kiểm soát an ninh\n- contextBridge.exposeInMainWorld\n- Chỉ mở các hàm an toàn (window.p2p)\n- Chuẩn CommonJS (format: cjs)"]
+    end
+
+    subgraph RendererProcess["Renderer Process (src/renderer/ -> out/renderer/)"]
+        direction TB
+        R["Tiến trình giao diện React 19\n- Chạy trong sandbox trình duyệt Chromium\n- Bị chặn mạng hoàn toàn: connect-src 'none'\n- Giao tiếp qua IPC: contracts.ts"]
+    end
+
+    M <==>|"Kênh IPC an toàn (IPC_CHANNELS)"| P
+    P <==>|"window.p2p"| R
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tiến trình</th>
+                  <th>Mã nguồn &amp; Đầu ra</th>
+                  <th>Định dạng</th>
+                  <th>Trách nhiệm &amp; Chính sách bảo mật</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Main Process</strong></td>
+                  <td><code>src/main/index.ts</code><br>→ <code>out/main/index.js</code></td>
+                  <td>ES Module (<code>format: 'es'</code>)</td>
+                  <td>Nắm toàn quyền Node.js: kết nối mạng WebRTC, ghi file chia sẻ, quản lý khóa bảo mật <code>safeStorage</code> (DPAPI/Keychain).</td>
+                </tr>
+                <tr>
+                  <td><strong>Preload Script</strong></td>
+                  <td><code>src/preload/index.ts</code><br>→ <code>out/preload/index.cjs</code></td>
+                  <td>CommonJS (<code>format: 'cjs'</code>)</td>
+                  <td>Cửa khẩu an ninh: dùng <code>contextBridge</code> để chỉ công khai các hàm an toàn cho giao diện gọi qua kênh liên lạc IPC (<code>contracts.ts</code>).</td>
+                </tr>
+                <tr>
+                  <td><strong>Renderer Process</strong></td>
+                  <td><code>src/renderer/src/main.tsx</code><br>→ <code>out/renderer/</code></td>
+                  <td>Web Bundle (HTML/JS/CSS)</td>
+                  <td>Giao diện React 19 trong sandbox. Khi build thật, CSP khóa cứng <code>connect-src 'none'</code>, cấm tự ý kết nối mạng trực tiếp ra ngoài.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>2.2. Vai trò của 3 file tsconfig</h3>
+          <p>
+            Dự án sử dụng cơ chế <strong>Project References</strong> của TypeScript để áp dụng các luật kiểm tra kiểu phù hợp cho từng môi trường:
+          </p>
+          <ul>
+            <li><code>tsconfig.json</code>: File mồi trung tâm, điều phối tham chiếu tới 2 file con bên dưới.</li>
+            <li><code>tsconfig.node.json</code>: Quy định kiểu cho môi trường Node.js (<code>"types": ["node"]</code>). Áp dụng cho: <code>src/main/</code>, <code>src/preload/</code>, <code>src/shared/</code>, <code>services/</code>, <code>scripts/</code>, <code>tests/</code>, và <code>electron.vite.config.ts</code>. Bật <code>"erasableSyntaxOnly": true</code> để tương thích hoàn toàn với Node 24.</li>
+            <li><code>tsconfig.web.json</code>: Quy định kiểu cho môi trường trình duyệt React (<code>"jsx": "react-jsx"</code>, <code>"types": ["vite/client"]</code>). Áp dụng cho <code>src/renderer/</code> và <code>src/shared/</code>. Ngăn chặn việc gọi nhầm các API hệ thống của Node.js từ giao diện.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <section id="bang-tra-cuu-nhanh-cac-lenh">
+          <h2>3. Bảng tra cứu nhanh toàn bộ 16 lệnh trong Project</h2>
+          <p>Dưới đây là bảng tổng hợp tất cả các lệnh CLI có sẵn trong dự án:</p>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Lệnh Terminal</th>
+                  <th>Lệnh ngầm thực thi bên dưới</th>
+                  <th>Nhóm</th>
+                  <th>Tóm tắt công dụng</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td><code>npm install</code></td>
+                  <td><code>npm install</code></td>
+                  <td>Cài đặt</td>
+                  <td>Tải và cài đặt toàn bộ dependencies vào <code>node_modules</code>.</td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td><code>npm run dev</code></td>
+                  <td><code>electron-vite dev --watch</code></td>
+                  <td>Chạy app</td>
+                  <td>Bật dev server Vite (port 5173), biên dịch nóng HMR và mở cửa sổ Electron.</td>
+                </tr>
+                <tr>
+                  <td>3</td>
+                  <td><code>npm run build</code></td>
+                  <td><code>npm run typecheck &amp;&amp; electron-vite build</code></td>
+                  <td>Đóng gói</td>
+                  <td>Kiểm tra kiểu dữ liệu, sau đó biên dịch 3 tiến trình ra thư mục <code>./out/</code>.</td>
+                </tr>
+                <tr>
+                  <td>4</td>
+                  <td><code>npm run start</code></td>
+                  <td><code>electron-vite preview</code></td>
+                  <td>Chạy app</td>
+                  <td>Chạy thử bản đóng gói trong <code>./out/</code> ở điều kiện thực tế (không dùng dev server).</td>
+                </tr>
+                <tr>
+                  <td>5</td>
+                  <td><code>npm run typecheck:node</code></td>
+                  <td><code>tsc --noEmit -p tsconfig.node.json --composite false</code></td>
+                  <td>Kiểm tra kiểu</td>
+                  <td>Kiểm tra lỗi kiểu TS cho Backend, Main, Preload, Services, Tests, Scripts.</td>
+                </tr>
+                <tr>
+                  <td>6</td>
+                  <td><code>npm run typecheck:web</code></td>
+                  <td><code>tsc --noEmit -p tsconfig.web.json --composite false</code></td>
+                  <td>Kiểm tra kiểu</td>
+                  <td>Kiểm tra lỗi kiểu TS và cú pháp JSX cho Giao diện React Renderer.</td>
+                </tr>
+                <tr>
+                  <td>7</td>
+                  <td><code>npm run typecheck</code></td>
+                  <td><code>npm run typecheck:node &amp;&amp; npm run typecheck:web</code></td>
+                  <td>Kiểm tra kiểu</td>
+                  <td>Kiểm tra kiểu toàn diện cả Node lẫn Web, dừng ngay nếu có lỗi.</td>
+                </tr>
+                <tr>
+                  <td>8</td>
+                  <td><code>npm run test:unit</code></td>
+                  <td><code>node --test tests/theme-store.test.ts ...</code> (6 files)</td>
+                  <td>Kiểm thử</td>
+                  <td>Tầng 1: Kiểm thử đơn vị các store mã hóa, di chuyển dữ liệu và protocol.</td>
+                </tr>
+                <tr>
+                  <td>9</td>
+                  <td><code>npm run test:p2p</code></td>
+                  <td><code>node --test tests/signaling-server.test.ts ...</code> (9 files)</td>
+                  <td>Kiểm thử</td>
+                  <td>Tầng 2: Kiểm thử tích hợp mạng P2P, bầu Supernode, truyền file WebRTC.</td>
+                </tr>
+                <tr>
+                  <td>10</td>
+                  <td><code>npm run test:e2e</code></td>
+                  <td><code>node --test tests/electron-e2e.test.ts</code></td>
+                  <td>Kiểm thử</td>
+                  <td>Tầng 3: Khởi động Electron thật và lái giao diện tự động qua Chrome DevTools Protocol.</td>
+                </tr>
+                <tr>
+                  <td>11</td>
+                  <td><code>npm test</code></td>
+                  <td><code>npm run test:unit &amp;&amp; npm run test:p2p &amp;&amp; npm run test:e2e</code></td>
+                  <td>Kiểm thử</td>
+                  <td>Chạy toàn bộ 3 tầng kiểm thử liên tiếp (16 test files).</td>
+                </tr>
+                <tr>
+                  <td>12</td>
+                  <td><code>npm run signal:start</code></td>
+                  <td><code>node --env-file-if-exists=.env services/signaling/index.ts</code></td>
+                  <td>Signaling</td>
+                  <td>Khởi chạy WebSocket Signaling Server tại cổng <code>8787</code>.</td>
+                </tr>
+                <tr>
+                  <td>13</td>
+                  <td><code>npm run signal:invite</code></td>
+                  <td><code>node --env-file-if-exists=.env scripts/create-invite.ts</code></td>
+                  <td>Signaling</td>
+                  <td>Tạo mã lời mời tham gia nhóm (Group Invitation V2 Token) dạng JSON.</td>
+                </tr>
+                <tr>
+                  <td>14</td>
+                  <td><code>npm run docs:open</code></td>
+                  <td><code>node scripts/open-docs.js</code></td>
+                  <td>Tài liệu</td>
+                  <td>Mở cổng tài liệu HTML trên trình duyệt mặc định (hỗ trợ cờ <code>--dry-run</code>).</td>
+                </tr>
+                <tr>
+                  <td>15</td>
+                  <td><code>npm run docs:screenshots</code></td>
+                  <td><code>node scripts/capture-docs-screenshots.ts</code></td>
+                  <td>Tài liệu</td>
+                  <td>Dựng cụm P2P ảo, bật Electron và dùng CDP chụp 6 ảnh màn hình vào <code>docs/assets/</code>.</td>
+                </tr>
+                <tr>
+                  <td>16</td>
+                  <td><code>node scripts/verify-html-docs.js</code></td>
+                  <td><code>node scripts/verify-html-docs.js</code></td>
+                  <td>Chất lượng</td>
+                  <td>Quét toàn bộ HTML tài liệu, kiểm tra tính toàn vẹn của thẻ link, anchor <code>#id</code> và ảnh.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <section id="giai-thich-chi-tiet-tung-lenh">
+          <h2>4. Giải thích chuyên sâu từng lệnh: Tại sao có, nó làm gì, cờ/tham số là gì?</h2>
+
+          <h3>Nhóm 1: Cài đặt</h3>
+          <h4>1. <code>npm install</code></h4>
+          <p>
+            Đọc <code>package-lock.json</code>, tải các thư viện về thư mục <code>node_modules/</code> và thực hiện liên kết native modules. Dự án cấu hình mục <code>allowScripts</code> trong <code>package.json</code> để cấp quyền cho <code>esbuild</code> biên dịch nhị phân tối ưu hóa riêng cho hệ điều hành của bạn.
+          </p>
+
+          <h3>Nhóm 2: Chạy &amp; Đóng gói ứng dụng Desktop</h3>
+          <h4>2. <code>npm run dev</code> (Lệnh ngầm: <code>electron-vite dev --watch</code>)</h4>
+          <p>
+            Khởi động môi trường phát triển: bật máy chủ Vite tại <code>http://127.0.0.1:5173</code> phục vụ Hot Module Replacement (HMR) cho giao diện React; đồng thời biên dịch nóng Main Process và Preload Script với cờ <code>--watch</code> (tự khởi động lại nếu bạn sửa mã ở tiến trình chính).
+          </p>
+
+          <h4>3. <code>npm run build</code> (Lệnh ngầm: <code>npm run typecheck &amp;&amp; electron-vite build</code>)</h4>
+          <p>
+            Toán tử <code>&amp;&amp;</code> bảo đảm chỉ đóng gói khi bước kiểm tra kiểu (<code>typecheck</code>) không có bất kỳ lỗi nào. Sau đó <code>electron-vite build</code> sẽ đóng gói:
+          </p>
+          <ul>
+            <li><code>src/main/index.ts</code> → <code>./out/main/index.js</code> (ES Module)</li>
+            <li><code>src/preload/index.ts</code> → <code>./out/preload/index.cjs</code> (CommonJS)</li>
+            <li><code>src/renderer/</code> → <code>./out/renderer/</code> (HTML tĩnh và JS/CSS đã nén minified)</li>
+          </ul>
+
+          <h4>4. <code>npm run start</code> (Lệnh ngầm: <code>electron-vite preview</code>)</h4>
+          <p>
+            Chạy thử ứng dụng desktop Electron trực tiếp từ thư mục <code>./out/</code> giống hệt môi trường thực tế của người dùng cuối, không thông qua dev server Vite. Bắt buộc phải chạy <code>npm run build</code> trước.
+          </p>
+
+          <h3>Nhóm 3: Kiểm tra kiểu dữ liệu TypeScript (Typechecking)</h3>
+          <h4>5. <code>npm run typecheck:node</code> (<code>tsc --noEmit -p tsconfig.node.json --composite false</code>)</h4>
+          <p>Ý nghĩa từng cờ:</p>
+          <ul>
+            <li><code>tsc</code>: Trình biên dịch TypeScript Compiler.</li>
+            <li><code>--noEmit</code>: Chỉ kiểm tra lỗi trong RAM, tuyệt đối không tạo ra file mới trên ổ cứng.</li>
+            <li><code>-p tsconfig.node.json</code>: Đọc cấu hình từ file Node chuyên biệt (kiểm tra main, preload, shared, services, scripts, tests).</li>
+            <li><code>--composite false</code>: Tắt chế độ build composite để ép kiểm tra trực tiếp nhanh nhất.</li>
+          </ul>
+
+          <h4>6. <code>npm run typecheck:web</code> (<code>tsc --noEmit -p tsconfig.web.json --composite false</code>)</h4>
+          <p>
+            Tương tự lệnh trên, nhưng áp dụng cho <code>tsconfig.web.json</code> để kiểm tra giao diện React 19 trong <code>src/renderer/</code> (kiểm tra props, hooks, cú pháp thẻ JSX).
+          </p>
+
+          <h4>7. <code>npm run typecheck</code> (<code>npm run typecheck:node &amp;&amp; npm run typecheck:web</code>)</h4>
+          <p>
+            Chạy kiểm tra toàn diện cả hai môi trường Node và Web. Dừng ngay lập tức nếu xuất hiện bất kỳ cảnh báo lỗi kiểu nào.
+          </p>
+
+          <h3>Nhóm 4: Bộ kiểm thử tự động 3 tầng</h3>
+          <h4>8. <code>npm run test:unit</code></h4>
+          <p>
+            Sử dụng trình chạy test siêu tốc tích hợp sẵn <code>node --test</code> để chạy tuần tự 6 file unit test: <code>theme-store</code>, <code>credential-store</code>, <code>peer-store-v2</code> (atomic rename chống hỏng file), <code>profile-migration</code> (tự nâng cấp cấu hình V1 lên V2), <code>signaling-config</code> và <code>p2p-protocol</code>.
+          </p>
+
+          <h4>9. <code>npm run test:p2p</code></h4>
+          <p>
+            Chạy tuần tự 9 file test tích hợp mạng ngang hàng: kiểm tra WebSocket server, tự động gia hạn lease heartbeat, bắt tay WebRTC thật trong bộ nhớ qua <code>werift</code>, chia sẻ file, phân quyền grant, băm SHA-256 từng chunk 16 KiB, chịu lỗi đứt mạng giữa chừng (survival) và cô lập đa nhóm (multi-group security).
+          </p>
+
+          <h4>10. <code>npm run test:e2e</code> (<code>node --test tests/electron-e2e.test.ts</code>)</h4>
+          <p>
+            Khởi động ứng dụng Electron thật, kết nối qua <strong>Chrome DevTools Protocol (CDP)</strong> để tự động điều khiển chuột/phím, mở Command Palette (<code>Ctrl+K</code>), duyệt qua tất cả các màn hình và kiểm tra kết xuất giao diện.
+          </p>
+
+          <h4>11. <code>npm test</code></h4>
+          <p>
+            Chạy liên tiếp cả 3 tầng kiểm thử: <code>npm run test:unit &amp;&amp; npm run test:p2p &amp;&amp; npm run test:e2e</code>.
+          </p>
+
+          <h3>Nhóm 5: Vận hành Signaling &amp; Tạo mã mời</h3>
+          <h4>12. <code>npm run signal:start</code> (<code>node --env-file-if-exists=.env services/signaling/index.ts</code>)</h4>
+          <p>
+            Cờ <code>--env-file-if-exists=.env</code> là tính năng native của Node.js giúp tự động nạp file cấu hình môi trường mà không cần cài thêm thư viện <code>dotenv</code>. Khởi chạy máy chủ WebSocket Signaling tại <code>ws://127.0.0.1:8787/signal</code>.
+          </p>
+
+          <h4>13. <code>npm run signal:invite</code> (<code>node --env-file-if-exists=.env scripts/create-invite.ts</code>)</h4>
+          <p>
+            Cách truyền tham số qua ký hiệu <code>--</code>:
+          </p>
+          <pre><code class="language-bash">npm run signal:invite -- --group-id=engineering-team --group-name="Đội Kỹ Thuật"</code></pre>
+          <p>
+            Ký hiệu <code>--</code> báo cho npm biết hãy chuyển toàn bộ tham số phía sau vào cho script xử lý để sinh ra chuỗi JSON lời mời <code>GroupInvitation</code> V2 có chữ ký bảo mật.
+          </p>
+
+          <h3>Nhóm 6: Tài liệu &amp; Đảm bảo chất lượng</h3>
+          <h4>14. <code>npm run docs:open</code> (<code>node scripts/open-docs.js</code>)</h4>
+          <p>
+            Tự động nhận diện hệ điều hành (Windows <code>cmd /c start</code>, macOS <code>open</code>, Linux <code>xdg-open</code>) để mở cổng tài liệu <code>docs/index.html</code> trên trình duyệt web. Hỗ trợ cờ <code>npm run docs:open -- --dry-run</code> để kiểm tra trong CI.
+          </p>
+
+          <h4>15. <code>npm run docs:screenshots</code> (<code>node scripts/capture-docs-screenshots.ts</code>)</h4>
+          <p>
+            Dựng cụm P2P ảo với dữ liệu mẫu, mở Electron và dùng CDP tự động chụp lại 6 ảnh giao diện sắc nét lưu vào thư mục <code>docs/assets/</code>.
+          </p>
+
+          <h4>16. <code>node scripts/verify-html-docs.js</code></h4>
+          <p>
+            Bộ công cụ kiểm tra tự động: duyệt qua tất cả 21 file HTML, kiểm tra từng đường dẫn liên kết tương đối, ảnh, script và mọi thẻ neo <code>#id</code> nội bộ để đảm bảo tài liệu không có bất kỳ liên kết hỏng nào.
+          </p>
+        </section>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <section id="quy-trinh-thuc-te">
+          <h2>5. Các quy trình thực hành chuẩn cho người mới bắt đầu</h2>
+
+          <h3>Quy trình 1: Cài đặt và khởi chạy ứng dụng lần đầu</h3>
+          <pre><code class="language-bash"># 1. Di chuyển vào thư mục dự án
+cd p2p-multiple-groups
+
+# 2. Kiểm tra phiên bản Node.js (bắt buộc >= 24.12.0)
+node -v
+
+# 3. Cài đặt toàn bộ thư viện dependencies
+npm install
+
+# 4. Kiểm tra kiểu dữ liệu để đảm bảo môi trường sạch
+npm run typecheck
+
+# 5. Khởi động ứng dụng ở chế độ phát triển
+npm run dev</code></pre>
+
+          <h3>Quy trình 2: Tự mở mạng P2P và thử nghiệm chia sẻ file trên máy cá nhân</h3>
+          <p>Bạn có thể mô phỏng một mạng P2P gồm 2 máy tính kết nối với nhau ngay trên 1 chiếc laptop:</p>
+          <pre><code class="language-bash"># CỬA SỔ TERMINAL 1: Bật máy chủ Signaling
+npm run signal:start
+
+# CỬA SỔ TERMINAL 2: Tạo mã mời cho nhóm thử nghiệm
+npm run signal:invite -- --group-id=nhom-test --group-name="Nhóm Test"
+# -> Sao chép toàn bộ chuỗi JSON in ra trên màn hình
+
+# CỬA SỔ TERMINAL 3: Bật Peer A
+npm run dev
+# -> Vào mục "Network & Groups" -> Dán chuỗi JSON -> Bấm "Join Group"
+# -> Vào mục "Library" -> Bấm "Add File" để chọn file và cấp quyền chia sẻ cho nhóm
+
+# CỬA SỔ TERMINAL 4: Bật Peer B (chạy bản preview độc lập)
+npm run build
+npm run start
+# -> Vào mục "Network & Groups" -> Dán mã mời -> Bấm "Join Group"
+# -> Vào mục "Search & Discovery" -> Tìm kiếm file -> Bấm "Download"
+# -> Vào mục "Transfers" để quan sát các khối 16 KiB được truyền trực tiếp qua WebRTC!</code></pre>
+
+          <h3>Quy trình 3: Kiểm tra toàn diện trước khi commit / bàn giao code</h3>
+          <pre><code class="language-bash"># Bước 1: Kiểm tra kiểu dữ liệu tĩnh (Bắt buộc không có bất kỳ lỗi TS nào)
+npm run typecheck
+
+# Bước 2: Chạy trọn bộ 3 tầng kiểm thử tự động (Unit, P2P, E2E)
+npm test
+
+# Bước 3: Kiểm tra tính toàn vẹn của hệ thống tài liệu HTML
+node scripts/verify-html-docs.js</code></pre>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="../index.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">Portal Hub</span>
+          </a>
+          <a href="01-getting-started.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">01. Getting Started</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#he-sinh-thai-js-ts-node-npm" class="toc-link">1. Hệ sinh thái JS, TS, Node &amp; npm</a></li>
+          <li><a href="#kien-truc-build-electron-vite" class="toc-link">2. Kiến trúc 3 tiến trình &amp; tsconfig</a></li>
+          <li><a href="#bang-tra-cuu-nhanh-cac-lenh" class="toc-link">3. Bảng tra cứu nhanh 16 lệnh</a></li>
+          <li><a href="#giai-thich-chi-tiet-tung-lenh" class="toc-link">4. Giải thích chi tiết từng lệnh</a></li>
+          <li><a href="#quy-trinh-thuc-te" class="toc-link">5. Quy trình thực tế cho người mới</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System &amp; Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

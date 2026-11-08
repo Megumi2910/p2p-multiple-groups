@@ -4,7 +4,6 @@ import type {
   GroupKey,
   MultiGroupSearchResult,
   P2pGroupState,
-  P2pSearchResult,
   P2pSearchState
 } from '../../../../shared/p2p.ts'
 
@@ -13,9 +12,8 @@ interface SearchProps {
   groups?: P2pGroupState[]
   selectedGroupKey?: string | null
   onSelectGroup?: (groupKey: string) => void
-  onSearch: (arg1: string, arg2?: string) => Promise<ActionResult>
-  onDownload: (arg1: string, arg2?: string) => Promise<ActionResult>
-  // Backward compatibility
+  onSearch: (groupKey: GroupKey, query: string) => Promise<ActionResult>
+  onDownload: (groupKey: GroupKey, resultId: string) => Promise<ActionResult>
   search?: P2pSearchState
   isNetworkConnected?: boolean
 }
@@ -32,7 +30,7 @@ interface GroupedResult {
   sha256: string
   size: number
   primaryName: string
-  sources: (P2pSearchResult | MultiGroupSearchResult)[]
+  sources: MultiGroupSearchResult[]
   selectedSourceIndex: number
 }
 
@@ -68,15 +66,14 @@ export const Search: React.FC<SearchProps> = ({
     e.preventDefault()
     const trimmed = queryInput.trim()
     if (!trimmed) return
+    if (!activeGroup) {
+      setErrorMessage('Please join or select a group before searching')
+      return
+    }
 
     setErrorMessage(null)
     setIsSearching(true)
-    let res: ActionResult
-    if (activeGroup) {
-      res = await onSearch(activeGroup.groupKey, trimmed)
-    } else {
-      res = await onSearch(trimmed)
-    }
+    const res = await onSearch(activeGroup.groupKey, trimmed)
     setIsSearching(false)
     if (!res.ok) {
       setErrorMessage(`${res.code}: ${res.message}`)
@@ -84,14 +81,10 @@ export const Search: React.FC<SearchProps> = ({
   }
 
   const handleDownloadClick = async (resultId: string): Promise<void> => {
+    if (!activeGroup) return
     setDownloadingId(resultId)
     setErrorMessage(null)
-    let res: ActionResult
-    if (activeGroup) {
-      res = await onDownload(activeGroup.groupKey, resultId)
-    } else {
-      res = await onDownload(resultId)
-    }
+    const res = await onDownload(activeGroup.groupKey, resultId)
     setDownloadingId(null)
     if (!res.ok) {
       setErrorMessage(`${res.code}: ${res.message}`)
@@ -126,82 +119,94 @@ export const Search: React.FC<SearchProps> = ({
       </h1>
 
       {groups.length === 0 ? (
-        <div className="status-banner status-degraded" role="alert">
-          You are not currently in any P2P groups. Join a group in the Network tab to search files.
+        <div className="status-banner status-warning" role="alert" style={{ marginBottom: '16px' }}>
+          You have not joined any groups. Connect to a group in the Network tab to search files across peers.
         </div>
       ) : !isConnected ? (
-        <div className="status-banner status-degraded" role="alert">
-          Group {activeGroup?.groupId} is currently disconnected. Reconnect in the Network tab before searching.
+        <div className="status-banner status-warning" role="alert" style={{ marginBottom: '16px' }}>
+          Group &quot;{activeGroup?.groupId}&quot; is not currently connected. Searches will execute when connection restores.
         </div>
       ) : null}
 
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
-        {groups.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label htmlFor="search-group-select" className="form-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>
-              Search in:
-            </label>
-            <select
-              id="search-group-select"
-              className="text-input"
-              style={{ width: 'auto', padding: '6px 12px' }}
-              value={activeGroup?.groupKey || ''}
-              onChange={(e) => handleGroupChange(e.target.value)}
-              disabled={isSearching}
-            >
-              {groups.map((g) => (
-                <option key={g.groupKey} value={g.groupKey}>
-                  {g.groupId} ({g.network.status})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-
-      <form className="search-form-row" onSubmit={handleSearchSubmit}>
-        <input
-          type="text"
-          className="text-input search-input"
-          placeholder="Search by filename (e.g. anthem, rock, album)..."
-          value={queryInput}
-          onChange={(e) => setQueryInput(e.target.value)}
-          disabled={!isConnected || isSearching}
-          maxLength={120}
-          aria-label="Search query"
-        />
-        <button
-          type="submit"
-          className="action-button primary-button"
-          disabled={!isConnected || isSearching || !queryInput.trim()}
-        >
-          {isSearching || currentSearch.status === 'searching' ? 'Searching...' : 'Search'}
-        </button>
-      </form>
-
-      {errorMessage && (
-        <div className="error-message" role="alert">
-          {errorMessage}
+      {/* Group Selector Dropdown */}
+      {groups.length > 1 && (
+        <div className="form-group" style={{ maxWidth: '400px', marginBottom: '16px' }}>
+          <label htmlFor="search-group-select" className="form-label">
+            Search in Group
+          </label>
+          <select
+            id="search-group-select"
+            className="text-input"
+            value={activeGroup?.groupKey || ''}
+            onChange={(e) => handleGroupChange(e.target.value)}
+          >
+            {groups.map((g) => (
+              <option key={g.groupKey} value={g.groupKey}>
+                {g.groupId} ({g.network.status}, {g.network.members.length} members)
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
-      {currentSearch.message && (
-        <div className={`status-banner status-${currentSearch.status}`} role="status">
+      {/* Search Input Bar */}
+      <form className="search-form" onSubmit={handleSearchSubmit}>
+        <div className="search-input-wrapper">
+          <input
+            id="search-query-input"
+            type="search"
+            className="search-input"
+            value={queryInput}
+            onChange={(e) => setQueryInput(e.target.value)}
+            placeholder="Search filenames across connected peers..."
+            disabled={isSearching}
+            aria-label="Search filenames"
+          />
+          <button
+            type="submit"
+            className="action-button primary-button search-button"
+            disabled={isSearching || !queryInput.trim() || !isConnected}
+          >
+            {isSearching ? 'Searching...' : 'Search'}
+          </button>
+        </div>
+      </form>
+
+      {/* Status Indicators */}
+      {currentSearch.status === 'searching' && (
+        <div className="search-status-bar" role="status">
+          <span className="spinner" aria-hidden="true" />
+          <span>Searching network...</span>
+        </div>
+      )}
+
+      {currentSearch.status === 'error' && currentSearch.message && (
+        <div className="error-message" role="alert" style={{ marginTop: '12px' }}>
           {currentSearch.message}
         </div>
       )}
 
-      <div className="search-results-section" style={{ marginTop: '20px' }}>
-        <h2 className="section-subheading">
-          Results ({groupedList.length} unique file{groupedList.length === 1 ? '' : 's'})
-          {activeGroup && <span style={{ marginLeft: '8px', fontSize: '13px', color: 'var(--color-text-subtle)' }}>in group: {activeGroup.groupId}</span>}
-        </h2>
+      {errorMessage && (
+        <div className="error-message" role="alert" style={{ marginTop: '12px' }}>
+          {errorMessage}
+        </div>
+      )}
+
+      {/* Results Table */}
+      <div className="search-results-section">
+        <div className="view-header-row" style={{ marginBottom: '8px' }}>
+          <h2 className="section-subheading" style={{ margin: 0 }}>
+            Results ({groupedList.length} distinct files, {currentSearch.results.length} sources)
+          </h2>
+        </div>
 
         {groupedList.length === 0 ? (
           <p className="empty-hint">
-            {currentSearch.status === 'complete' && currentSearch.query
-              ? `No files found matching "${currentSearch.query}" in this group.`
-              : 'Enter a search term above to find files across peers in the selected group.'}
+            {currentSearch.status === 'searching'
+              ? 'Querying supernodes...'
+              : currentSearch.query
+                ? 'No matching files found. Try a different search term.'
+                : 'Enter a search term above to find files shared by group members.'}
           </p>
         ) : (
           <div className="table-wrapper">
@@ -210,58 +215,61 @@ export const Search: React.FC<SearchProps> = ({
                 <tr>
                   <th>Filename</th>
                   <th>Size</th>
-                  <th>Group</th>
-                  <th>Peer</th>
-                  <th>SHA-256</th>
-                  <th>Action</th>
+                  <th>Sources</th>
+                  <th>Peer Selection</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {groupedList.map((group) => {
-                  const selectedIdx = sourceSelections[group.groupKey] ?? 0
-                  const activeSource = group.sources[selectedIdx] || group.sources[0]
+                {groupedList.map((item) => {
+                  const selIdx = sourceSelections[item.groupKey] ?? 0
+                  const activeSource = item.sources[selIdx] || item.sources[0]
                   const isDownloading = downloadingId === activeSource.resultId
 
                   return (
-                    <tr key={group.groupKey}>
-                      <td className="filename-cell" title={group.primaryName}>
-                        {group.primaryName}
+                    <tr key={item.groupKey}>
+                      <td className="filename-cell">
+                        <strong>{item.primaryName}</strong>
+                        <div className="code-text" style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
+                          {item.sha256.slice(0, 16)}...
+                        </div>
                       </td>
-                      <td>{formatBytes(group.size)}</td>
+                      <td>{formatBytes(item.size)}</td>
                       <td>
-                        <span className="badge badge-connected" style={{ fontSize: '11px', padding: '1px 6px' }}>
-                          {activeGroup?.groupId || 'Group'}
+                        <span className="badge badge-source-count">
+                          {item.sources.length} source{item.sources.length === 1 ? '' : 's'}
                         </span>
                       </td>
                       <td>
-                        {group.sources.length === 1 ? (
-                          activeSource.ownerName
-                        ) : (
+                        {item.sources.length > 1 ? (
                           <select
-                            className="text-input"
-                            style={{ padding: '2px 4px', fontSize: '12px' }}
-                            value={selectedIdx}
-                            onChange={(e) => {
-                              const newIdx = Number(e.target.value)
-                              setSourceSelections((prev) => ({ ...prev, [group.groupKey]: newIdx }))
-                            }}
+                            className="source-select"
+                            value={selIdx}
+                            onChange={(e) =>
+                              setSourceSelections((prev) => ({
+                                ...prev,
+                                [item.groupKey]: parseInt(e.target.value, 10)
+                              }))
+                            }
+                            aria-label={`Select peer for ${item.primaryName}`}
                           >
-                            {group.sources.map((s, idx) => (
-                              <option key={s.resultId} value={idx}>
-                                {s.ownerName}
+                            {item.sources.map((src, idx) => (
+                              <option key={src.resultId} value={idx}>
+                                {src.ownerName} ({src.ownerPeerId.slice(0, 8)})
                               </option>
                             ))}
                           </select>
+                        ) : (
+                          <span>{activeSource.ownerName}</span>
                         )}
                       </td>
-                      <td className="code-cell">{group.sha256.slice(0, 12)}...</td>
                       <td>
                         <button
                           type="button"
                           className="action-button primary-button"
-                          style={{ padding: '3px 10px', fontSize: '12px' }}
-                          onClick={() => void handleDownloadClick(activeSource.resultId)}
-                          disabled={isDownloading}
+                          style={{ padding: '4px 12px', fontSize: '12px' }}
+                          onClick={() => handleDownloadClick(activeSource.resultId)}
+                          disabled={isDownloading || !isConnected}
                         >
                           {isDownloading ? 'Saving...' : 'Download'}
                         </button>

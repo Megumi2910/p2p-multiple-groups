@@ -1,12 +1,10 @@
 import React, { useState } from 'react'
 import type {
   ActionResult,
-  ConnectOptions,
+  CreateGroupOptions,
   GroupKey,
   JoinGroupOptions,
-  P2pGroupState,
-  P2pNetworkState,
-  P2pRecoveryEvent
+  P2pGroupState
 } from '../../../../shared/p2p.ts'
 import { parseGroupInvitation } from '../../../../shared/p2p.ts'
 
@@ -16,18 +14,16 @@ interface NetworkProps {
   selectedGroupKey?: string | null
   onSelectGroup?: (groupKey: string) => void
   identity?: { peerId: string; displayName: string }
+  defaultSignalingUrl?: string
+  onCreateGroup?: (options: CreateGroupOptions) => Promise<ActionResult>
   onJoinGroup?: (options: JoinGroupOptions) => Promise<ActionResult>
   onLeaveGroup?: (groupKey: string) => Promise<ActionResult>
+  onRotateGroupInvite?: (groupKey: string) => Promise<ActionResult>
+  onRemoveGroupMember?: (groupKey: string, targetPeerId: string) => Promise<ActionResult>
   onSetGroupAutoJoin?: (groupKey: string, autoJoin: boolean) => Promise<ActionResult>
   onSetGroupEligibility?: (groupKey: string, eligible: boolean) => Promise<ActionResult>
   onForgetGroup?: (groupKey: string) => Promise<ActionResult>
   onDisconnectAll?: () => Promise<ActionResult>
-  // Backward compatibility legacy props
-  network?: P2pNetworkState
-  recoveryEvents?: P2pRecoveryEvent[]
-  onConnect?: (options: ConnectOptions) => Promise<ActionResult>
-  onDisconnect?: () => Promise<ActionResult>
-  onSetEligibility?: (eligible: boolean) => Promise<ActionResult>
 }
 
 export const Network: React.FC<NetworkProps> = ({
@@ -36,28 +32,49 @@ export const Network: React.FC<NetworkProps> = ({
   selectedGroupKey = null,
   onSelectGroup,
   identity,
+  defaultSignalingUrl = 'ws://127.0.0.1:8787/signal',
+  onCreateGroup,
   onJoinGroup,
   onLeaveGroup,
+  onRotateGroupInvite,
+  onRemoveGroupMember,
   onSetGroupAutoJoin,
   onSetGroupEligibility,
   onForgetGroup,
-  onDisconnectAll,
-  network,
-  recoveryEvents = [],
-  onConnect,
-  onDisconnect,
-  onSetEligibility
+  onDisconnectAll
 }) => {
-  const [displayName, setDisplayName] = useState(identity?.displayName || network?.displayName || '')
-  const [invitationText, setInvitationText] = useState('')
+  const [panelMode, setPanelMode] = useState<'join' | 'create'>('join')
+
+  // Shared form inputs
+  const [displayName, setDisplayName] = useState(identity?.displayName || '')
+  const [signalingUrl, setSignalingUrl] = useState(defaultSignalingUrl)
   const [eligible, setEligible] = useState(true)
   const [autoJoin, setAutoJoin] = useState(true)
   const [rememberInvitation, setRememberInvitation] = useState(true)
   const [relayOnly, setRelayOnly] = useState(false)
+
+  // Join form inputs
+  const [inviteCodeInput, setInviteCodeInput] = useState('')
+
+  // Create form inputs
+  const [createGroupId, setCreateGroupId] = useState('')
+
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [copiedCode, setCopiedCode] = useState(false)
 
+  React.useEffect(() => {
+    if (identity?.displayName && !displayName) {
+      setDisplayName(identity.displayName)
+    }
+  }, [identity?.displayName])
+
+  React.useEffect(() => {
+    if (defaultSignalingUrl) {
+      setSignalingUrl(defaultSignalingUrl)
+    }
+  }, [defaultSignalingUrl])
   const handleJoinSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     setFormError(null)
@@ -69,34 +86,42 @@ export const Network: React.FC<NetworkProps> = ({
       return
     }
 
-    const invitation = parseGroupInvitation(invitationText)
-    if (!invitation) {
-      setFormError('Invalid invitation JSON. Please paste a valid network invitation.')
+    const trimmedCode = inviteCodeInput.trim()
+    if (!trimmedCode) {
+      setFormError('Invite code is required')
       return
     }
 
     setIsSubmitting(true)
-    setInvitationText('')
 
     let result: ActionResult
     if (onJoinGroup) {
-      result = await onJoinGroup({
-        invitation,
-        displayName: trimmedName,
-        supernodeEligible: eligible,
-        autoJoin,
-        relayOnly,
-        rememberInvitation
-      })
-    } else if (onConnect) {
-      result = await onConnect({
-        signalingUrl: invitation.signalingUrl,
-        roomId: invitation.groupId,
-        token: invitation.token,
-        displayName: trimmedName,
-        supernodeEligible: eligible,
-        relayOnly
-      })
+      if (trimmedCode.startsWith('{')) {
+        const parsed = parseGroupInvitation(trimmedCode, signalingUrl)
+        if (!parsed) {
+          setIsSubmitting(false)
+          setFormError('Invalid invitation JSON. Please paste a valid JSON invitation or short invite code.')
+          return
+        }
+        result = await onJoinGroup({
+          invitation: parsed,
+          displayName: trimmedName,
+          supernodeEligible: eligible,
+          autoJoin,
+          relayOnly,
+          rememberInvitation
+        })
+      } else {
+        result = await onJoinGroup({
+          inviteCode: trimmedCode,
+          signalingUrl: signalingUrl.trim() || defaultSignalingUrl,
+          displayName: trimmedName,
+          supernodeEligible: eligible,
+          autoJoin,
+          relayOnly,
+          rememberInvitation
+        })
+      }
     } else {
       result = { ok: false, code: 'IO_ERROR', message: 'Join handler unavailable' }
     }
@@ -106,12 +131,58 @@ export const Network: React.FC<NetworkProps> = ({
       setFormError(`${result.code}: ${result.message}`)
     } else {
       setActionMessage('Successfully joined group!')
+      setInviteCodeInput('')
+    }
+  }
+
+  const handleCreateSubmit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+    setFormError(null)
+    setActionMessage(null)
+
+    const trimmedName = displayName.trim()
+    if (!trimmedName) {
+      setFormError('Display name is required')
+      return
+    }
+
+    const trimmedGroupId = createGroupId.trim()
+    if (!trimmedGroupId) {
+      setFormError('Group ID is required')
+      return
+    }
+
+    setIsSubmitting(true)
+
+    let result: ActionResult
+    if (onCreateGroup) {
+      result = await onCreateGroup({
+        groupId: trimmedGroupId,
+        signalingUrl: signalingUrl.trim() || defaultSignalingUrl,
+        displayName: trimmedName,
+        supernodeEligible: eligible,
+        autoJoin,
+        relayOnly,
+        rememberInvitation
+      })
+    } else {
+      result = { ok: false, code: 'IO_ERROR', message: 'Create group handler unavailable' }
+    }
+
+    setIsSubmitting(false)
+    if (!result.ok) {
+      setFormError(`${result.code}: ${result.message}`)
+    } else {
+      setActionMessage(`Successfully created group "${trimmedGroupId}"! You are the Group Owner.`)
+      setCreateGroupId('')
     }
   }
 
   const handleLeaveClick = async (groupKey: string): Promise<void> => {
     if (!onLeaveGroup) return
     setIsSubmitting(true)
+    setFormError(null)
+    setActionMessage(null)
     const res = await onLeaveGroup(groupKey)
     setIsSubmitting(false)
     if (!res.ok) {
@@ -122,10 +193,50 @@ export const Network: React.FC<NetworkProps> = ({
   const handleForgetClick = async (groupKey: string): Promise<void> => {
     if (!onForgetGroup) return
     setIsSubmitting(true)
+    setFormError(null)
+    setActionMessage(null)
     const res = await onForgetGroup(groupKey)
     setIsSubmitting(false)
     if (!res.ok) {
       setFormError(`${res.code}: ${res.message}`)
+    }
+  }
+
+  const handleRotateInvite = async (groupKey: string): Promise<void> => {
+    if (!onRotateGroupInvite) return
+    setIsSubmitting(true)
+    setFormError(null)
+    setActionMessage(null)
+    const res = await onRotateGroupInvite(groupKey)
+    setIsSubmitting(false)
+    if (!res.ok) {
+      setFormError(`${res.code}: ${res.message}`)
+    } else {
+      setActionMessage('Invite code rotated successfully. Existing members received the updated code.')
+    }
+  }
+
+  const handleRemoveMember = async (groupKey: string, targetPeerId: string): Promise<void> => {
+    if (!onRemoveGroupMember) return
+    setIsSubmitting(true)
+    setFormError(null)
+    setActionMessage(null)
+    const res = await onRemoveGroupMember(groupKey, targetPeerId)
+    setIsSubmitting(false)
+    if (!res.ok) {
+      setFormError(`${res.code}: ${res.message}`)
+    } else {
+      setActionMessage('Member removed from group.')
+    }
+  }
+
+  const handleCopyInviteCode = (code: string): void => {
+    try {
+      void navigator.clipboard.writeText(code)
+      setCopiedCode(true)
+      setTimeout(() => setCopiedCode(false), 2000)
+    } catch {
+      // fallback
     }
   }
 
@@ -162,15 +273,15 @@ export const Network: React.FC<NetworkProps> = ({
         </div>
 
         {groups.length === 0 ? (
-          <p className="empty-hint">You have not joined any P2P groups yet. Join a group below to start sharing and searching files.</p>
+          <p className="empty-hint">You have not joined any P2P groups yet. Join a group or create one below to start sharing and searching files.</p>
         ) : (
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
                 <tr>
                   <th>Group ID</th>
+                  <th>Role / Ownership</th>
                   <th>Status</th>
-                  <th>Role</th>
                   <th>Members</th>
                   <th>Auto-Join</th>
                   <th>Supernode</th>
@@ -194,10 +305,14 @@ export const Network: React.FC<NetworkProps> = ({
                         {isSelected && <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--color-primary)' }}>(active)</span>}
                       </td>
                       <td>
-                        <span className={`badge badge-${g.network.status}`}>{g.network.status}</span>
+                        {g.isOwner ? (
+                          <span className="badge" style={{ backgroundColor: 'var(--color-primary, #3182ce)', color: '#fff' }}>Owner</span>
+                        ) : (
+                          <span className={`badge badge-role-${g.network.role}`}>{g.network.role}</span>
+                        )}
                       </td>
                       <td>
-                        <span className={`badge badge-role-${g.network.role}`}>{g.network.role}</span>
+                        <span className={`badge badge-${g.network.status}`}>{g.network.status}</span>
                       </td>
                       <td>{g.network.members.length}</td>
                       <td>
@@ -261,6 +376,42 @@ export const Network: React.FC<NetworkProps> = ({
           <h2 className="section-subheading">Active Group Details: {selectedGroup.groupId}</h2>
           <div className="network-summary-card">
             <div className="summary-row">
+              <span className="summary-label">Owner:</span>
+              <span style={{ fontWeight: selectedGroup.isOwner ? 'bold' : 'normal' }}>
+                {selectedGroup.isOwner ? 'You (Group Owner)' : (selectedGroup.ownerPeerId || 'Server-Managed')}
+              </span>
+            </div>
+            <div className="summary-row">
+              <span className="summary-label">Invite Code:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <code className="code-text" style={{ wordBreak: 'break-all' }}>
+                  {selectedGroup.inviteCode || 'N/A'}
+                </code>
+                {selectedGroup.inviteCode && (
+                  <button
+                    type="button"
+                    className="action-button secondary-button"
+                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                    onClick={() => handleCopyInviteCode(selectedGroup.inviteCode!)}
+                  >
+                    {copiedCode ? 'Copied!' : 'Copy Code'}
+                  </button>
+                )}
+                {selectedGroup.isOwner && (
+                  <button
+                    type="button"
+                    className="action-button secondary-button"
+                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                    onClick={() => handleRotateInvite(selectedGroup.groupKey)}
+                    disabled={isSubmitting}
+                    title="Generate a new invite code. Existing members will automatically update."
+                  >
+                    Rotate Invite Code
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="summary-row">
               <span className="summary-label">Status:</span>
               <span className={`badge badge-${selectedGroup.network.status}`}>{selectedGroup.network.status}</span>
             </div>
@@ -286,109 +437,316 @@ export const Network: React.FC<NetworkProps> = ({
               <span className="summary-label">Active Links:</span>
               <span>{selectedGroup.network.links.filter((l) => l.state === 'open').length} open WebRTC link(s)</span>
             </div>
+
+            {/* Group Members List with Owner Actions */}
+            <div style={{ marginTop: '16px' }}>
+              <span className="summary-label" style={{ display: 'block', marginBottom: '8px' }}>
+                Group Members ({selectedGroup.network.members.length}):
+              </span>
+              <div className="table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Display Name</th>
+                      <th>Peer ID</th>
+                      <th>Role</th>
+                      {selectedGroup.isOwner && <th>Admin</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedGroup.network.members.map((m) => {
+                      const isMemberOwner = m.peerId === selectedGroup.ownerPeerId
+                      const isSelf = m.peerId === identity?.peerId
+                      return (
+                        <tr key={m.peerId}>
+                          <td>
+                            <strong>{m.displayName}</strong>
+                            {isMemberOwner && <span style={{ marginLeft: '6px', fontSize: '11px', color: 'var(--color-primary)' }}>(Owner)</span>}
+                            {isSelf && <span style={{ marginLeft: '6px', fontSize: '11px', color: 'var(--color-muted)' }}>(You)</span>}
+                          </td>
+                          <td className="code-text" style={{ fontSize: '11px' }}>{m.peerId}</td>
+                          <td>
+                            <span className={`badge badge-role-${m.role}`}>{m.role}</span>
+                          </td>
+                          {selectedGroup.isOwner && (
+                            <td>
+                              {!isSelf && (
+                                <button
+                                  type="button"
+                                  className="action-button secondary-button"
+                                  style={{ padding: '1px 6px', fontSize: '11px', color: 'var(--color-danger, #e53e3e)' }}
+                                  onClick={() => handleRemoveMember(selectedGroup.groupKey, m.peerId)}
+                                  disabled={isSubmitting}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Join New Group Panel */}
+      {/* Group Join / Create Panel */}
       <div className="network-connect-panel">
-        <h2 className="section-subheading">Join a Group</h2>
-        <form className="settings-form" onSubmit={handleJoinSubmit}>
-          <div className="form-group">
-            <label htmlFor="p2p-display-name" className="form-label">
-              Your Display Name
-            </label>
-            <input
-              id="p2p-display-name"
-              type="text"
-              className="text-input"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              maxLength={40}
-              required
-              disabled={isSubmitting}
-            />
-          </div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          <button
+            type="button"
+            className={`action-button ${panelMode === 'join' ? 'primary-button' : 'secondary-button'}`}
+            onClick={() => {
+              setPanelMode('join')
+              setFormError(null)
+            }}
+          >
+            Join with Invite Code
+          </button>
+          <button
+            type="button"
+            className={`action-button ${panelMode === 'create' ? 'primary-button' : 'secondary-button'}`}
+            onClick={() => {
+              setPanelMode('create')
+              setFormError(null)
+            }}
+          >
+            Create a Group (Become Owner)
+          </button>
+        </div>
 
-          <div className="form-group">
-            <label htmlFor="p2p-invitation" className="form-label">
-              Group Invitation (JSON)
-            </label>
-            <textarea
-              id="p2p-invitation"
-              className="text-area-input"
-              rows={4}
-              value={invitationText}
-              onChange={(e) => setInvitationText(e.target.value)}
-              placeholder='Paste {"version":2,"signalingUrl":"...","groupId":"...","token":"..."}'
-              required
-              disabled={isSubmitting}
-            />
-            <p className="field-hint">
-              Paste a group invitation generated by create-invite or provided by your network operator.
-            </p>
-          </div>
-
-          <div className="checkbox-group">
-            <label className="checkbox-label">
+        {panelMode === 'join' ? (
+          <form className="settings-form" onSubmit={handleJoinSubmit}>
+            <div className="form-group">
+              <label htmlFor="p2p-display-name" className="form-label">
+                Your Display Name
+              </label>
               <input
-                type="checkbox"
-                checked={eligible}
-                onChange={(e) => setEligible(e.target.checked)}
+                id="p2p-display-name"
+                type="text"
+                className="text-input"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                maxLength={40}
+                required
                 disabled={isSubmitting}
               />
-              Allow this computer to become a supernode in this group
-            </label>
-          </div>
-
-          <div className="checkbox-group">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={autoJoin}
-                onChange={(e) => setAutoJoin(e.target.checked)}
-                disabled={isSubmitting}
-              />
-              Automatically join this group on startup
-            </label>
-          </div>
-
-          <div className="checkbox-group">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={rememberInvitation}
-                onChange={(e) => setRememberInvitation(e.target.checked)}
-                disabled={isSubmitting}
-              />
-              Remember invitation token securely on this device
-            </label>
-          </div>
-
-          <div className="checkbox-group">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={relayOnly}
-                onChange={(e) => setRelayOnly(e.target.checked)}
-                disabled={isSubmitting}
-              />
-              Force relayed connection (Relay-only / TURN)
-            </label>
-          </div>
-
-          {formError && (
-            <div className="error-message" role="alert">
-              {formError}
             </div>
-          )}
 
-          <div className="form-actions">
-            <button type="submit" className="action-button primary-button" disabled={isSubmitting}>
-              {isSubmitting ? 'Joining...' : 'Join Group'}
-            </button>
-          </div>
-        </form>
+            <div className="form-group">
+              <label htmlFor="p2p-invite-code" className="form-label">
+                Invite Code
+              </label>
+              <input
+                id="p2p-invite-code"
+                type="text"
+                className="text-input"
+                value={inviteCodeInput}
+                onChange={(e) => setInviteCodeInput(e.target.value)}
+                placeholder="Enter invite code or paste JSON invitation"
+                required
+                disabled={isSubmitting}
+              />
+              <p className="field-hint">
+                Paste the short invite code shared by the group owner (or a full JSON invitation).
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="p2p-signaling-url" className="form-label">
+                Signaling Server URL (Optional)
+              </label>
+              <input
+                id="p2p-signaling-url"
+                type="text"
+                className="text-input"
+                value={signalingUrl}
+                onChange={(e) => setSignalingUrl(e.target.value)}
+                disabled={isSubmitting}
+              />
+              <p className="field-hint">
+                Defaults to the configured server. Override only if connecting to a remote endpoint.
+              </p>
+            </div>
+
+            <div className="checkbox-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={eligible}
+                  onChange={(e) => setEligible(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                Allow this computer to become a supernode in this group
+              </label>
+            </div>
+
+            <div className="checkbox-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={autoJoin}
+                  onChange={(e) => setAutoJoin(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                Automatically join this group on startup
+              </label>
+            </div>
+
+            <div className="checkbox-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={rememberInvitation}
+                  onChange={(e) => setRememberInvitation(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                Remember invitation token securely on this device
+              </label>
+            </div>
+
+            <div className="checkbox-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={relayOnly}
+                  onChange={(e) => setRelayOnly(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                Force relayed connection (Relay-only / TURN)
+              </label>
+            </div>
+
+            {formError && (
+              <div className="error-message" role="alert">
+                {formError}
+              </div>
+            )}
+
+            <div className="form-actions">
+              <button type="submit" className="action-button primary-button" disabled={isSubmitting}>
+                {isSubmitting ? 'Joining...' : 'Join Group'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form className="settings-form" onSubmit={handleCreateSubmit}>
+            <div className="form-group">
+              <label htmlFor="p2p-create-display-name" className="form-label">
+                Your Display Name
+              </label>
+              <input
+                id="p2p-create-display-name"
+                type="text"
+                className="text-input"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                maxLength={40}
+                required
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="p2p-create-group-id" className="form-label">
+                Group ID
+              </label>
+              <input
+                id="p2p-create-group-id"
+                type="text"
+                className="text-input"
+                value={createGroupId}
+                onChange={(e) => setCreateGroupId(e.target.value)}
+                placeholder="e.g. project-x, study-group-1"
+                maxLength={32}
+                pattern="^[A-Za-z0-9_-]{1,32}$"
+                required
+                disabled={isSubmitting}
+              />
+              <p className="field-hint">
+                Choose a unique alphanumeric identifier (1-32 chars of letters, numbers, hyphens, underscores).
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="p2p-create-signaling-url" className="form-label">
+                Signaling Server URL (Optional)
+              </label>
+              <input
+                id="p2p-create-signaling-url"
+                type="text"
+                className="text-input"
+                value={signalingUrl}
+                onChange={(e) => setSignalingUrl(e.target.value)}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div className="checkbox-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={eligible}
+                  onChange={(e) => setEligible(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                Allow this computer to become a supernode in this group
+              </label>
+            </div>
+
+            <div className="checkbox-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={autoJoin}
+                  onChange={(e) => setAutoJoin(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                Automatically join this group on startup
+              </label>
+            </div>
+
+            <div className="checkbox-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={rememberInvitation}
+                  onChange={(e) => setRememberInvitation(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                Remember ownership secret securely on this device
+              </label>
+            </div>
+
+            <div className="checkbox-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={relayOnly}
+                  onChange={(e) => setRelayOnly(e.target.checked)}
+                  disabled={isSubmitting}
+                />
+                Force relayed connection (Relay-only / TURN)
+              </label>
+            </div>
+
+            {formError && (
+              <div className="error-message" role="alert">
+                {formError}
+              </div>
+            )}
+
+            <div className="form-actions">
+              <button type="submit" className="action-button primary-button" disabled={isSubmitting}>
+                {isSubmitting ? 'Creating...' : 'Create Group'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </section>
   )

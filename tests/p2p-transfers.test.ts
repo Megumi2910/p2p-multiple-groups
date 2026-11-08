@@ -7,7 +7,7 @@ import { randomUUID, createHash } from 'node:crypto'
 import { sanitizeDestinationFileName } from '../src/main/p2p/transfers.ts'
 import { createSignalingServer } from '../services/signaling/server.ts'
 import { createPeerEngine, type PeerEngine } from '../src/main/p2p/engine.ts'
-import type { P2pState } from '../src/shared/p2p.ts'
+import { makeGroupKey, type MultiGroupP2pState } from '../src/shared/p2p.ts'
 
 describe('File Transfer Safety & Protocols', () => {
   it('sanitizes Windows reserved names, illegal chars, and trailing dots/spaces', () => {
@@ -35,29 +35,33 @@ describe('End-to-End Verified Peer Transfers', () => {
   })
 
   it('transfers binary and zero-byte files with hash verification and atomic publication', async () => {
-    const roomId = `room-${randomUUID().slice(0, 8)}`
+    const groupId = `group-${randomUUID().slice(0, 8)}`
     const token = Buffer.alloc(32, 13).toString('base64url')
 
     const server = await createSignalingServer({
       host: '127.0.0.1',
       port: 0,
-      roomId,
-      token
+      groups: [{ groupId, token }]
     })
 
     const signalUrl = `ws://127.0.0.1:${server.address.port}/signal`
+    const groupKey = makeGroupKey(signalUrl, groupId)
 
     async function createEngine(name: string, supernodeEligible: boolean): Promise<PeerEngine> {
-      const dir = await mkdtemp(join(tmpdir(), `kazaa-xfer-${name}-`))
+      const dir = await mkdtemp(join(tmpdir(), `p2p-xfer-${name}-`))
       tempDirs.push(dir)
       const engine = await createPeerEngine({ dataDirectory: dir })
-      await engine.connect({
-        signalingUrl: signalUrl,
-        roomId,
-        token,
+      await engine.joinGroup({
+        invitation: {
+          version: 2,
+          signalingUrl: signalUrl,
+          groupId,
+          token
+        },
         displayName: name,
         supernodeEligible,
-        relayOnly: false
+        relayOnly: false,
+        rememberInvitation: false
       })
       return engine
     }
@@ -73,14 +77,13 @@ describe('End-to-End Verified Peer Transfers', () => {
 
       function waitForState(
         engine: PeerEngine,
-        predicate: (state: P2pState) => boolean,
+        predicate: (state: MultiGroupP2pState) => boolean,
         timeoutMs = 25000,
-        rejectPredicate?: (state: P2pState) => string | null,
+        rejectPredicate?: (state: MultiGroupP2pState) => string | null,
         label?: string
-      ): Promise<P2pState> {
-        const { promise, resolve, reject } = Promise.withResolvers<P2pState>()
+      ): Promise<MultiGroupP2pState> {
+        const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState>()
         let done = false
-        // Real-time safety deadline: bounding asynchronous peer engine events across WebRTC network
         const timer = setTimeout(() => {
           if (!done) {
             done = true
@@ -89,7 +92,7 @@ describe('End-to-End Verified Peer Transfers', () => {
           }
         }, timeoutMs)
 
-        const check = (s: P2pState) => {
+        const check = (s: MultiGroupP2pState) => {
           if (done) return
           if (typeof rejectPredicate === 'function') {
             const err = rejectPredicate(s)
@@ -114,14 +117,14 @@ describe('End-to-End Verified Peer Transfers', () => {
         return promise
       }
 
-      function waitForPeers(engine: PeerEngine, count: number): Promise<P2pState> {
-        return waitForState(engine, (s) => s.network.members.length === count, 25000, undefined, 'peers-count-' + count)
+      function waitForPeers(engine: PeerEngine, count: number): Promise<MultiGroupP2pState> {
+        return waitForState(engine, (s) => (s.groups[0]?.network.members.length || 0) === count, 25000, undefined, 'peers-count-' + count)
       }
 
-      function waitForLink(engine: PeerEngine, targetPeerId: string): Promise<P2pState> {
+      function waitForLink(engine: PeerEngine, targetPeerId: string): Promise<MultiGroupP2pState> {
         return waitForState(
           engine,
-          (s) => s.network.links.some((l) => l.peerId === targetPeerId && l.state === 'open'),
+          (s) => Boolean(s.groups[0]?.network.links.some((l) => l.peerId === targetPeerId && l.state === 'open')),
           25000,
           undefined,
           'link-open-' + targetPeerId.slice(0, 8)
@@ -130,10 +133,10 @@ describe('End-to-End Verified Peer Transfers', () => {
 
       await Promise.all([waitForPeers(sn, 3), waitForPeers(uploader, 3), waitForPeers(downloader, 3)])
       await Promise.all([
-        waitForLink(uploader, sn.getState().network.peerId),
-        waitForLink(downloader, sn.getState().network.peerId),
-        waitForLink(sn, uploader.getState().network.peerId),
-        waitForLink(sn, downloader.getState().network.peerId)
+        waitForLink(uploader, sn.getState().identity.peerId),
+        waitForLink(downloader, sn.getState().identity.peerId),
+        waitForLink(sn, uploader.getState().identity.peerId),
+        waitForLink(sn, downloader.getState().identity.peerId)
       ])
       const upDir = await mkdtemp(join(tmpdir(), 'up-files-'))
       tempDirs.push(upDir)
@@ -150,8 +153,8 @@ describe('End-to-End Verified Peer Transfers', () => {
       const uploadAck = waitForState(
         uploader,
         (s) =>
-          s.library.acknowledgedGeneration !== null &&
-          s.library.acknowledgedGeneration === s.library.advertisedGeneration &&
+          s.groups[0]?.catalog.acknowledgedGeneration !== null &&
+          s.groups[0]?.catalog.acknowledgedGeneration === s.groups[0]?.catalog.advertisedGeneration &&
           s.library.files.length === 2 &&
           s.library.files.every((f) => f.status === 'shared'),
         25000,
@@ -161,26 +164,26 @@ describe('End-to-End Verified Peer Transfers', () => {
         },
         'upload-ack'
       )
-      await uploader.addFiles([binaryPath, zeroPath])
+      await uploader.addFiles(groupKey, [binaryPath, zeroPath])
       await uploadAck
 
       // 2. Downloader searches for files
       const searchDone = waitForState(
         downloader,
         (s) => {
-          return s.search.status === 'complete' && s.search.results.some((r) => r.file.name === 'payload.bin')
+          return s.groups[0]?.search.status === 'complete' && Boolean(s.groups[0]?.search.results.some((r) => r.file.name === 'payload.bin'))
         },
         25000,
         undefined,
         'search-done'
       )
-      await downloader.search('payload')
+      await downloader.search(groupKey, 'payload')
       await searchDone
-      const results = downloader.getState().search.results
+      const results = downloader.getState().groups[0]?.search.results || []
       const binaryResult = results.find((r) => r.file.name === 'payload.bin')!
       assert.ok(binaryResult)
 
-      // 3. Download binary file (120-second transfer deadline)
+      // 3. Download binary file
       const dlDir = await mkdtemp(join(tmpdir(), 'dl-files-'))
       tempDirs.push(dlDir)
       const dlDest = join(dlDir, 'downloaded.bin')
@@ -198,7 +201,7 @@ describe('End-to-End Verified Peer Transfers', () => {
         },
         'binary-dl-done'
       )
-      await downloader.download(binaryResult.resultId, dlDest)
+      await downloader.download(groupKey, binaryResult.resultId, dlDest)
       await binaryDlDone
 
       // Verify destination file exists and hash matches
@@ -208,27 +211,25 @@ describe('End-to-End Verified Peer Transfers', () => {
       assert.equal(dlHash, binaryResult.file.sha256)
 
       // Verify .part file removed
-      const partFiles = join(dlDir, `.kazaa-${downloader.getState().transfers[0].id}.part`)
+      const partFiles = join(dlDir, `.p2p-multiple-groups-${downloader.getState().transfers[0].id}.part`)
       await assert.rejects(async () => stat(partFiles), (err: NodeJS.ErrnoException) => err.code === 'ENOENT')
 
-      await assert.rejects(
-        async () => {
-          await downloader!.download(binaryResult.resultId, dlDest) // dlDest already exists!
-        },
-        (err: Error) => err.message === 'DESTINATION_EXISTS'
-      )
+      const secondDl = await downloader.download(groupKey, binaryResult.resultId, dlDest)
+      assert.equal(secondDl.ok, false)
+      assert.equal(secondDl.code, 'DESTINATION_EXISTS')
 
       const zeroSearchDone = waitForState(
         downloader,
-        (s) => s.search.status === 'complete' && s.search.results.some((r) => r.file.name === 'empty.txt'),
+        (s) => s.groups[0]?.search.status === 'complete' && Boolean(s.groups[0]?.search.results.some((r) => r.file.name === 'empty.txt')),
         25000,
         undefined,
         'zero-search-done'
       )
-      await downloader.search('empty')
+      await downloader.search(groupKey, 'empty')
       await zeroSearchDone
 
-      const zeroResult = downloader.getState().search.results.find((r) => r.file.name === 'empty.txt')!
+      const zeroResults = downloader.getState().groups[0]?.search.results || []
+      const zeroResult = zeroResults.find((r) => r.file.name === 'empty.txt')!
       assert.ok(zeroResult)
       assert.equal(zeroResult.file.size, 0)
 
@@ -246,7 +247,7 @@ describe('End-to-End Verified Peer Transfers', () => {
         },
         'zero-dl-done'
       )
-      await downloader.download(zeroResult.resultId, zeroDest)
+      await downloader.download(groupKey, zeroResult.resultId, zeroDest)
       await zeroDlDone
       const zeroBytes = await readFile(zeroDest)
       assert.equal(zeroBytes.length, 0)

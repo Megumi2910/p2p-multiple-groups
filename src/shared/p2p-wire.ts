@@ -42,207 +42,6 @@ export interface SignalingIceConfig {
 }
 
 // ==========================================
-// V1 Wire Contracts (Retained until Phase 3)
-// ==========================================
-
-export interface SignalingRosterPeer {
-  peerId: string
-  sessionId: string
-  joinOrder: number
-  displayName: string
-  supernodeEligible: boolean
-}
-
-// Client -> Server signaling messages v1
-export type ClientSignalingMessage =
-  | {
-      v: 1
-      type: 'join'
-      roomId: string
-      peerId: string
-      displayName: string
-      supernodeEligible: boolean
-    }
-  | {
-      v: 1
-      type: 'eligibility'
-      supernodeEligible: boolean
-    }
-  | {
-      v: 1
-      type: 'leave'
-    }
-  | {
-      v: 1
-      type: 'ice-config'
-    }
-  | {
-      v: 1
-      type: 'signal'
-      targetPeerId: string
-      targetSessionId: string
-      connectionId: string
-      kind: 'request-offer' | 'offer' | 'answer' | 'candidate'
-      payload: unknown
-    }
-
-// Server -> Client signaling messages v1
-export type ServerSignalingMessage =
-  | {
-      v: 1
-      type: 'welcome'
-      sessionId: string
-      epoch: string
-      iceConfig: SignalingIceConfig
-    }
-  | {
-      v: 1
-      type: 'roster'
-      epoch: string
-      revision: number
-      peers: SignalingRosterPeer[]
-    }
-  | {
-      v: 1
-      type: 'ice-config'
-      iceConfig: SignalingIceConfig
-    }
-  | {
-      v: 1
-      type: 'signal'
-      fromPeerId: string
-      fromSessionId: string
-      connectionId: string
-      kind: 'request-offer' | 'offer' | 'answer' | 'candidate'
-      payload: unknown
-    }
-  | {
-      v: 1
-      type: 'error'
-      code: string
-      message: string
-    }
-
-// Overlay control messages v1 (kazaa-control-v1)
-export interface OverlayHelloMessage {
-  v: 1
-  type: 'hello'
-  epoch: string
-  revision: number
-  peerId: string
-  sessionId: string
-}
-
-export interface OverlayPingMessage {
-  v: 1
-  type: 'ping'
-  epoch: string
-  revision: number
-}
-
-export interface OverlayPongMessage {
-  v: 1
-  type: 'pong'
-  epoch: string
-  revision: number
-}
-
-export interface OverlayCatalogBeginMessage {
-  v: 1
-  type: 'catalog-begin'
-  epoch: string
-  revision: number
-  generation: number
-  count: number
-}
-
-export interface OverlayCatalogBatchMessage {
-  v: 1
-  type: 'catalog-batch'
-  epoch: string
-  revision: number
-  generation: number
-  entries: P2pFileMetadata[]
-}
-
-export interface OverlayCatalogEndMessage {
-  v: 1
-  type: 'catalog-end'
-  epoch: string
-  revision: number
-  generation: number
-}
-
-export interface OverlayCatalogAckMessage {
-  v: 1
-  type: 'catalog-ack'
-  epoch: string
-  revision: number
-  generation: number
-}
-
-export interface OverlaySearchMessage {
-  v: 1
-  type: 'search'
-  epoch: string
-  revision: number
-  queryId: string
-  query: string
-  ttl: number
-}
-
-export interface OverlaySearchForwardMessage {
-  v: 1
-  type: 'search-forward'
-  epoch: string
-  revision: number
-  queryId: string
-  query: string
-  originPeerId: string
-  ttl: number
-}
-
-export interface WireSearchResultEntry {
-  ownerPeerId: string
-  ownerSessionId: string
-  file: P2pFileMetadata
-}
-
-export interface OverlaySearchResultsMessage {
-  v: 1
-  type: 'search-results'
-  epoch: string
-  revision: number
-  queryId: string
-  originPeerId: string
-  entries: WireSearchResultEntry[]
-  done: boolean
-  partial: boolean
-}
-
-export type OverlayControlMessage =
-  | OverlayHelloMessage
-  | OverlayPingMessage
-  | OverlayPongMessage
-  | OverlayCatalogBeginMessage
-  | OverlayCatalogBatchMessage
-  | OverlayCatalogEndMessage
-  | OverlayCatalogAckMessage
-  | OverlaySearchMessage
-  | OverlaySearchForwardMessage
-  | OverlaySearchResultsMessage
-
-// File transfer messages v1 (kazaa-file-v1)
-export type TransferControlMessage =
-  | { v: 1; type: 'request'; fileId: string; size: number; sha256: string }
-  | { v: 1; type: 'accepted'; size: number; sha256: string }
-  | { v: 1; type: 'ack'; receivedBytes: number }
-  | { v: 1; type: 'end'; size: number; sha256: string }
-  | { v: 1; type: 'verified' }
-  | { v: 1; type: 'cancel' }
-  | { v: 1; type: 'error'; code: string }
-
-// ==========================================
 // V2 Wire Contracts (Group-Aware Multiplexed)
 // ==========================================
 
@@ -265,15 +64,36 @@ export type ClientSignalingMessageV2 =
     }
   | {
       v: 2
-      type: 'join-group'
+      type: 'create-group'
       groupId: string
+      ownerSecret: string
+      supernodeEligible: boolean
+    }
+  | {
+      v: 2
+      type: 'join-group'
+      groupId?: string
       token: string
+      ownerSecret?: string
       supernodeEligible: boolean
     }
   | {
       v: 2
       type: 'leave-group'
       groupId: string
+    }
+  | {
+      v: 2
+      type: 'rotate-invite'
+      groupId: string
+      ownerSecret: string
+    }
+  | {
+      v: 2
+      type: 'remove-member'
+      groupId: string
+      targetPeerId: string
+      ownerSecret: string
     }
   | {
       v: 2
@@ -309,6 +129,8 @@ export interface GroupJoinedMessage {
   epoch: string
   revision: number
   peers: SignalingRosterPeerV2[]
+  ownerPeerId?: string | null
+  inviteCode?: string
 }
 
 // Server -> Client signaling messages v2
@@ -327,11 +149,24 @@ export type ServerSignalingMessageV2 =
       epoch: string
       revision: number
       peers: SignalingRosterPeerV2[]
+      ownerPeerId?: string | null
     }
   | {
       v: 2
       type: 'group-left'
       groupId: string
+    }
+  | {
+      v: 2
+      type: 'invite-rotated'
+      groupId: string
+      inviteCode: string
+    }
+  | {
+      v: 2
+      type: 'group-kicked'
+      groupId: string
+      reason: string
     }
   | {
       v: 2
@@ -455,7 +290,7 @@ export interface OverlaySearchForwardMessageV2 {
 export interface WireSearchResultEntryV2 {
   ownerPeerId: string
   ownerSessionId: string
-  ownerMembershipId: string
+  ownerMembershipId?: string
   file: P2pFileMetadata
 }
 
@@ -466,11 +301,11 @@ export interface OverlaySearchResultsMessageV2 {
   epoch: string
   revision: number
   senderMembershipId: string
-  responderPeerId: string
-  responderMembershipId: string
   queryId: string
   originPeerId: string
   originMembershipId: string
+  responderPeerId: string
+  responderMembershipId: string
   entries: WireSearchResultEntryV2[]
   done: boolean
   partial: boolean
@@ -565,6 +400,12 @@ export function isSha256(value: unknown): value is string {
   return typeof value === 'string' && SHA256_REGEX.test(value)
 }
 
+const INVITE_CODE_REGEX = /^[A-Za-z0-9_-]{8,64}$/
+
+export function isValidInviteCode(val: unknown): val is string {
+  return typeof val === 'string' && INVITE_CODE_REGEX.test(val)
+}
+
 export function isValidGroupId(value: unknown): value is string {
   return typeof value === 'string' && GROUP_ID_REGEX.test(value)
 }
@@ -574,32 +415,33 @@ export function isNonNegativeSafeInteger(val: unknown): val is number {
 }
 
 export function isValidSignalPayload(kind: string, payload: unknown): boolean {
-  if (kind === 'request-offer') {
-    return payload === null
-  }
-  if (kind === 'offer' || kind === 'answer') {
-    if (!payload || typeof payload !== 'object') return false
-    const s = payload as Record<string, unknown>
-    return (
-      (s.type === 'offer' || s.type === 'answer') &&
-      typeof s.sdp === 'string' &&
-      s.sdp.length > 0 &&
-      s.sdp.length <= 65536
-    )
-  }
-  if (kind === 'candidate') {
-    if (!payload || typeof payload !== 'object') return false
-    const c = payload as Record<string, unknown>
-    return (
-      typeof c.candidate === 'string' &&
-      c.candidate.length <= 4096 &&
-      (c.sdpMid === undefined || c.sdpMid === null || typeof c.sdpMid === 'string') &&
-      (c.sdpMLineIndex === undefined || c.sdpMLineIndex === null || typeof c.sdpMLineIndex === 'number')
-    )
-  }
-  return false
-}
+  if (kind === 'request-offer') return payload === null
+  if (!payload || typeof payload !== 'object') return false
+  const p = payload as Record<string, unknown>
 
+  switch (kind) {
+    case 'offer':
+    case 'answer':
+      return (
+        p.type === kind &&
+        typeof p.sdp === 'string' &&
+        p.sdp.length > 0 &&
+        p.sdp.length <= 65536
+      )
+    case 'candidate':
+      if (p.candidate === null || p.candidate === undefined) return true
+      return (
+        typeof p.candidate === 'string' &&
+        p.candidate.length <= 4096 &&
+        (p.sdpMid === undefined || p.sdpMid === null || typeof p.sdpMid === 'string') &&
+        (p.sdpMLineIndex === undefined ||
+          p.sdpMLineIndex === null ||
+          (typeof p.sdpMLineIndex === 'number' && Number.isInteger(p.sdpMLineIndex)))
+      )
+    default:
+      return false
+  }
+}
 export function isValidFileMetadata(val: unknown): val is P2pFileMetadata {
   if (!val || typeof val !== 'object') return false
   const r = val as Record<string, unknown>
@@ -614,8 +456,7 @@ export function isValidFileMetadata(val: unknown): val is P2pFileMetadata {
 export function isValidIceConfig(val: unknown): val is SignalingIceConfig {
   if (!val || typeof val !== 'object') return false
   const r = val as Record<string, unknown>
-  if (!isNonNegativeSafeInteger(r.expiresAt)) return false
-  if (!Array.isArray(r.servers)) return false
+  if (!isNonNegativeSafeInteger(r.expiresAt) || !Array.isArray(r.servers)) return false
   return r.servers.every((s: unknown) => {
     if (!s || typeof s !== 'object') return false
     const srv = s as Record<string, unknown>
@@ -624,178 +465,6 @@ export function isValidIceConfig(val: unknown): val is SignalingIceConfig {
     if (srv.credential !== undefined && typeof srv.credential !== 'string') return false
     return true
   })
-}
-
-// ------------------------------------------
-// V1 Type Guards
-// ------------------------------------------
-
-export function isClientSignalingMessage(val: unknown): val is ClientSignalingMessage {
-  if (!val || typeof val !== 'object') return false
-  const r = val as Record<string, unknown>
-  if (r.v !== 1 || typeof r.type !== 'string') return false
-
-  switch (r.type) {
-    case 'join':
-      return (
-        typeof r.roomId === 'string' &&
-        isUuid(r.peerId) &&
-        typeof r.displayName === 'string' &&
-        typeof r.supernodeEligible === 'boolean'
-      )
-    case 'eligibility':
-      return typeof r.supernodeEligible === 'boolean'
-    case 'leave':
-    case 'ice-config':
-      return true
-    case 'signal':
-      return (
-        isUuid(r.targetPeerId) &&
-        isUuid(r.targetSessionId) &&
-        isUuid(r.connectionId) &&
-        (r.kind === 'request-offer' || r.kind === 'offer' || r.kind === 'answer' || r.kind === 'candidate')
-      )
-    default:
-      return false
-  }
-}
-
-export function isServerSignalingMessage(val: unknown): val is ServerSignalingMessage {
-  if (!val || typeof val !== 'object') return false
-  const r = val as Record<string, unknown>
-  if (r.v !== 1 || typeof r.type !== 'string') return false
-
-  switch (r.type) {
-    case 'welcome':
-      return isUuid(r.sessionId) && isUuid(r.epoch) && isValidIceConfig(r.iceConfig)
-    case 'roster':
-      return (
-        isUuid(r.epoch) &&
-        typeof r.revision === 'number' &&
-        Array.isArray(r.peers) &&
-        r.peers.every(
-          (p: unknown) =>
-            p &&
-            typeof p === 'object' &&
-            isUuid((p as Record<string, unknown>).peerId) &&
-            isUuid((p as Record<string, unknown>).sessionId) &&
-            typeof (p as Record<string, unknown>).joinOrder === 'number' &&
-            typeof (p as Record<string, unknown>).displayName === 'string' &&
-            typeof (p as Record<string, unknown>).supernodeEligible === 'boolean'
-        )
-      )
-    case 'ice-config':
-      return isValidIceConfig(r.iceConfig)
-    case 'signal':
-      return (
-        isUuid(r.fromPeerId) &&
-        isUuid(r.fromSessionId) &&
-        isUuid(r.connectionId) &&
-        (r.kind === 'request-offer' || r.kind === 'offer' || r.kind === 'answer' || r.kind === 'candidate')
-      )
-    case 'error':
-      return typeof r.code === 'string' && typeof r.message === 'string'
-    default:
-      return false
-  }
-}
-
-export function isOverlayControlMessage(val: unknown): val is OverlayControlMessage {
-  if (!val || typeof val !== 'object') return false
-  const r = val as Record<string, unknown>
-  if (r.v !== 1 || typeof r.type !== 'string' || !isUuid(r.epoch) || typeof r.revision !== 'number') {
-    return false
-  }
-
-  switch (r.type) {
-    case 'hello':
-      return isUuid(r.peerId) && isUuid(r.sessionId)
-    case 'ping':
-    case 'pong':
-      return true
-    case 'catalog-begin':
-      return (
-        typeof r.generation === 'number' &&
-        typeof r.count === 'number' &&
-        r.count >= 0 &&
-        r.count <= 1000
-      )
-    case 'catalog-batch':
-      return (
-        typeof r.generation === 'number' &&
-        Array.isArray(r.entries) &&
-        r.entries.length <= MAX_CATALOG_BATCH_ENTRIES &&
-        r.entries.every(isValidFileMetadata)
-      )
-    case 'catalog-end':
-    case 'catalog-ack':
-      return typeof r.generation === 'number'
-    case 'search':
-      return (
-        isUuid(r.queryId) &&
-        typeof r.query === 'string' &&
-        r.query.length >= 1 &&
-        r.query.length <= MAX_SEARCH_QUERY_LENGTH &&
-        typeof r.ttl === 'number'
-      )
-    case 'search-forward':
-      return (
-        isUuid(r.queryId) &&
-        typeof r.query === 'string' &&
-        r.query.length >= 1 &&
-        r.query.length <= MAX_SEARCH_QUERY_LENGTH &&
-        isUuid(r.originPeerId) &&
-        typeof r.ttl === 'number'
-      )
-    case 'search-results':
-      return (
-        isUuid(r.queryId) &&
-        isUuid(r.originPeerId) &&
-        Array.isArray(r.entries) &&
-        r.entries.length <= MAX_SEARCH_RESULTS_ENTRIES &&
-        r.entries.every(
-          (e: unknown) =>
-            e &&
-            typeof e === 'object' &&
-            isUuid((e as Record<string, unknown>).ownerPeerId) &&
-            isUuid((e as Record<string, unknown>).ownerSessionId) &&
-            isValidFileMetadata((e as Record<string, unknown>).file)
-        ) &&
-        typeof r.done === 'boolean' &&
-        typeof r.partial === 'boolean'
-      )
-    default:
-      return false
-  }
-}
-
-export function isTransferControlMessage(val: unknown): val is TransferControlMessage {
-  if (!val || typeof val !== 'object') return false
-  const r = val as Record<string, unknown>
-  if (r.v !== 1 || typeof r.type !== 'string') return false
-
-  switch (r.type) {
-    case 'request':
-    case 'accepted':
-      return (
-        typeof r.size === 'number' &&
-        Number.isInteger(r.size) &&
-        r.size >= 0 &&
-        isSha256(r.sha256) &&
-        (r.type !== 'request' || isUuid(r.fileId))
-      )
-    case 'ack':
-      return typeof r.receivedBytes === 'number' && Number.isInteger(r.receivedBytes) && r.receivedBytes >= 0
-    case 'end':
-      return typeof r.size === 'number' && isSha256(r.sha256)
-    case 'verified':
-    case 'cancel':
-      return true
-    case 'error':
-      return typeof r.code === 'string'
-    default:
-      return false
-  }
 }
 
 // ------------------------------------------
@@ -810,14 +479,38 @@ export function isClientSignalingMessageV2(val: unknown): val is ClientSignaling
   switch (r.type) {
     case 'register':
       return isUuid(r.peerId) && typeof r.displayName === 'string' && r.displayName.length >= 1 && r.displayName.length <= 40
-    case 'join-group':
+    case 'create-group':
       return (
         isValidGroupId(r.groupId) &&
+        typeof r.ownerSecret === 'string' &&
+        r.ownerSecret.length >= 8 &&
+        r.ownerSecret.length <= 64 &&
+        typeof r.supernodeEligible === 'boolean'
+      )
+    case 'join-group':
+      return (
+        (r.groupId === undefined || isValidGroupId(r.groupId)) &&
         typeof r.token === 'string' &&
+        (r.ownerSecret === undefined || (typeof r.ownerSecret === 'string' && r.ownerSecret.length >= 8 && r.ownerSecret.length <= 64)) &&
         typeof r.supernodeEligible === 'boolean'
       )
     case 'leave-group':
       return isValidGroupId(r.groupId)
+    case 'rotate-invite':
+      return (
+        isValidGroupId(r.groupId) &&
+        typeof r.ownerSecret === 'string' &&
+        r.ownerSecret.length >= 8 &&
+        r.ownerSecret.length <= 64
+      )
+    case 'remove-member':
+      return (
+        isValidGroupId(r.groupId) &&
+        isUuid(r.targetPeerId) &&
+        typeof r.ownerSecret === 'string' &&
+        r.ownerSecret.length >= 8 &&
+        r.ownerSecret.length <= 64
+      )
     case 'eligibility':
       return isValidGroupId(r.groupId) && typeof r.supernodeEligible === 'boolean'
     case 'profile':
@@ -853,6 +546,8 @@ export function isServerSignalingMessageV2(val: unknown): val is ServerSignaling
         (r.type !== 'group-joined' || isUuid((r as Record<string, unknown>).membershipId)) &&
         isUuid(r.epoch) &&
         isNonNegativeSafeInteger(r.revision) &&
+        (r.ownerPeerId === undefined || r.ownerPeerId === null || isUuid(r.ownerPeerId)) &&
+        (r.type !== 'group-joined' || (r as Record<string, unknown>).inviteCode === undefined || isValidInviteCode((r as Record<string, unknown>).inviteCode)) &&
         Array.isArray(r.peers) &&
         r.peers.every(
           (p: unknown) =>
@@ -868,6 +563,10 @@ export function isServerSignalingMessageV2(val: unknown): val is ServerSignaling
       )
     case 'group-left':
       return isValidGroupId(r.groupId)
+    case 'invite-rotated':
+      return isValidGroupId(r.groupId) && isValidInviteCode(r.inviteCode)
+    case 'group-kicked':
+      return isValidGroupId(r.groupId) && typeof r.reason === 'string'
     case 'ice-config':
       return isValidIceConfig(r.iceConfig)
     case 'signal':
@@ -963,6 +662,8 @@ export function isOverlayControlMessageV2(val: unknown): val is OverlayControlMe
             typeof e === 'object' &&
             isUuid((e as Record<string, unknown>).ownerPeerId) &&
             isUuid((e as Record<string, unknown>).ownerSessionId) &&
+            ((e as Record<string, unknown>).ownerMembershipId === undefined ||
+              typeof (e as Record<string, unknown>).ownerMembershipId === 'string') &&
             isValidFileMetadata((e as Record<string, unknown>).file)
         ) &&
         typeof r.done === 'boolean' &&

@@ -1,5 +1,5 @@
 import { createPeerEngine, type PeerEngine } from '../../src/main/p2p/engine.ts'
-import type { GroupInvitation, GroupKey, JoinGroupOptions, MultiGroupP2pState, P2pState } from '../../src/shared/p2p.ts'
+import type { GroupInvitation, GroupKey, JoinGroupOptions, MultiGroupP2pState } from '../../src/shared/p2p.ts'
 
 function getArg(prefix: string): string | null {
   const match = process.argv.find((a) => a.startsWith(prefix))
@@ -9,7 +9,7 @@ function getArg(prefix: string): string | null {
 async function main(): Promise<void> {
   const dataDir = getArg('--data-dir=')
   const signalingUrl = getArg('--signaling-url=')
-  const roomId = getArg('--room-id=') || getArg('--group-id=')
+  const groupId = getArg('--group-id=')
   const token = getArg('--token=')
   const name = getArg('--name=') || `Peer-${process.pid}`
   const notEligible = process.argv.includes('--not-eligible')
@@ -24,20 +24,24 @@ async function main(): Promise<void> {
   try {
     engine = await createPeerEngine({ dataDirectory: dataDir })
 
-    engine.subscribe((state: MultiGroupP2pState & P2pState) => {
+    engine.subscribe((state: MultiGroupP2pState) => {
       if (process.send) {
         process.send({ type: 'state', state })
       }
     })
 
-    if (signalingUrl && roomId && token) {
-      await engine.connect({
-        signalingUrl,
-        roomId,
-        token,
+    if (signalingUrl && groupId && token) {
+      await engine.joinGroup({
+        invitation: {
+          version: 2,
+          signalingUrl,
+          groupId,
+          token
+        },
         displayName: name,
         supernodeEligible: !notEligible,
-        relayOnly: false
+        relayOnly: false,
+        rememberInvitation: false
       })
     }
 
@@ -76,27 +80,22 @@ async function main(): Promise<void> {
             break
           }
           case 'set-eligible': {
-            if (c.groupKey) {
-              await engine.setSupernodeEligible(c.groupKey as GroupKey, Boolean(c.eligible))
-            } else {
-              await engine.setSupernodeEligible(Boolean(c.eligible))
+            const gk = (c.groupKey as GroupKey) || engine.getState().groups[0]?.groupKey
+            if (gk) {
+              await engine.setSupernodeEligible(gk, Boolean(c.eligible))
             }
             break
           }
           case 'search': {
-            if (c.groupKey) {
-              await engine.search(c.groupKey as GroupKey, String(c.query))
-            } else {
-              await engine.search(String(c.query))
+            const gk = (c.groupKey as GroupKey) || engine.getState().groups[0]?.groupKey
+            if (gk) {
+              await engine.search(gk, String(c.query))
             }
             break
           }
           case 'add-files': {
-            if (c.groupKey) {
-              await engine.addFiles(c.groupKey as GroupKey, c.paths as readonly string[])
-            } else {
-              await engine.addFiles(c.paths as readonly string[])
-            }
+            const gk = (c.groupKey as GroupKey) || engine.getState().groups[0]?.groupKey || null
+            await engine.addFiles(gk, c.paths as readonly string[])
             break
           }
           case 'disconnect': {

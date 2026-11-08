@@ -4,16 +4,15 @@ import { basename } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import type {
   P2pFileMetadata,
-  P2pLibraryFile,
-  P2pLibraryFileStatus,
-  P2pLibraryState
+  MultiGroupLibraryFile,
+  P2pLibraryFileStatus
 } from '../../shared/p2p.ts'
 import {
   MAX_CATALOG_BATCH_ENTRIES,
   MAX_CONTROL_MESSAGE_SIZE,
   isValidFileMetadata
 } from '../../shared/p2p-wire.ts'
-import type { PersistedSharedFile } from './peer-store.ts'
+import type { PersistedSharedFileV2 } from './peer-store.ts'
 
 export const MAX_LIBRARY_FILES = 1000
 export const MAX_FILE_SIZE = 1024 * 1024 * 1024 // 1 GiB
@@ -27,12 +26,7 @@ export interface LocalFileEntry {
   sha256: string | null
   status: P2pLibraryFileStatus
   message: string | null
-  statFingerprint: {
-    size: number
-    mtimeMs: number
-    ino?: number
-    dev?: number
-  } | null
+  statFingerprint: { size: number; mtimeMs: number; ino: number; dev: number } | null
   generation: number
   groupKeys: string[]
 }
@@ -45,7 +39,6 @@ export function sanitizeBasename(rawName: string): string | null {
   if (trimmed.includes('/') || trimmed.includes('\\')) {
     return null
   }
-  // Check for control characters
   if (/[\u0000-\u001F\u007F]/.test(trimmed)) {
     return null
   }
@@ -57,8 +50,8 @@ export function sanitizeBasename(rawName: string): string | null {
 }
 
 export class LibraryManager {
-  private readonly files = new Map<string, LocalFileEntry>() // fileId -> LocalFileEntry
-  private readonly pathToId = new Map<string, string>() // canonicalPath -> fileId
+  private readonly files = new Map<string, LocalFileEntry>()
+  private readonly pathToId = new Map<string, string>()
   private scanningCount = 0
   private currentGeneration = 1
   private acknowledgedGeneration: number | null = null
@@ -118,22 +111,20 @@ export class LibraryManager {
     this.notify()
   }
 
-  getState(): P2pLibraryState {
-    const list: P2pLibraryFile[] = Array.from(this.files.values()).map((f) => ({
+  isScanning(): boolean {
+    return this.scanningCount > 0
+  }
+
+  getFiles(): MultiGroupLibraryFile[] {
+    return Array.from(this.files.values()).map((f) => ({
       fileId: f.fileId,
       name: f.name,
       size: f.size,
       sha256: f.sha256,
       status: f.status,
-      message: f.message
+      message: f.message,
+      groupKeys: [...f.groupKeys]
     }))
-
-    return {
-      status: this.scanningCount > 0 ? 'scanning' : 'idle',
-      files: list,
-      advertisedGeneration: this.currentGeneration,
-      acknowledgedGeneration: this.acknowledgedGeneration
-    }
   }
 
   getSharedMetadata(groupKey?: string): P2pFileMetadata[] {
@@ -188,7 +179,7 @@ export class LibraryManager {
   }
 
   async loadStoredFiles(
-    stored: readonly { fileId: string; path: string; groupKeys?: string[] }[] | readonly PersistedSharedFile[]
+    stored: readonly (PersistedSharedFileV2 | { fileId: string; path: string; groupKeys?: string[] })[]
   ): Promise<void> {
     for (const s of stored) {
       const initialKeys = 'groupKeys' in s && Array.isArray(s.groupKeys) ? [...s.groupKeys] : []
@@ -221,10 +212,15 @@ export class LibraryManager {
   setFileGroups(fileId: string, groupKeys: readonly string[]): void {
     const entry = this.files.get(fileId)
     if (!entry) return
-    entry.groupKeys = Array.from(new Set(groupKeys))
-    this.currentGeneration++
-    this.acknowledgedGeneration = null
-    this.notifyMetadata([fileId])
+    const dedupedKeys = Array.from(new Set(groupKeys))
+    const prevKeys = new Set(entry.groupKeys)
+    entry.groupKeys = [...dedupedKeys]
+    const hasChange = prevKeys.size !== dedupedKeys.length || dedupedKeys.some((k) => !prevKeys.has(k))
+    if (hasChange && entry.status === 'shared') {
+      this.currentGeneration++
+      this.acknowledgedGeneration = null
+      this.notifyMetadata([fileId])
+    }
     this.notify()
   }
 
@@ -240,12 +236,10 @@ export class LibraryManager {
       try {
         canonical = await realpath(rawPath)
       } catch {
-        // Path does not exist or cannot be resolved
         continue
       }
 
       if (this.pathToId.has(canonical)) {
-        // Already known canonical path: return existing entry ID without re-adding
         const existingId = this.pathToId.get(canonical)!
         added.push({ fileId: existingId, path: canonical })
         continue
@@ -268,7 +262,7 @@ export class LibraryManager {
         message: 'Queued for hashing...',
         statFingerprint: null,
         generation: this.currentGeneration,
-        groupKeys: [] // Starts unshared until explicit committed grant
+        groupKeys: []
       }
 
       this.files.set(fileId, entry)
@@ -298,67 +292,58 @@ export class LibraryManager {
     return true
   }
 
-  async rescan(): Promise<void> {
+  async rescanLibrary(): Promise<void> {
     this.currentGeneration++
     this.acknowledgedGeneration = null
-    this.notifyMetadata(Array.from(this.files.keys()))
-
-    for (const entry of this.files.values()) {
-      entry.status = 'hashing'
-      entry.message = 'Re-verifying file...'
+    const entries = Array.from(this.files.values())
+    for (const entry of entries) {
       entry.generation = this.currentGeneration
+      entry.status = 'hashing'
+      entry.message = 'Rescanning...'
       void this.scheduleFileScan(entry)
     }
     this.notify()
   }
 
-  private scheduleFileScan(entry: LocalFileEntry): Promise<void> {
+  private async scheduleFileScan(entry: LocalFileEntry): Promise<void> {
     this.scanningCount++
     this.notify()
 
-    const task = async (): Promise<void> => {
+    const runTask = async (): Promise<void> => {
       try {
         await this.scanEntry(entry)
       } finally {
         this.scanningCount = Math.max(0, this.scanningCount - 1)
-        this.activeHashers = Math.max(0, this.activeHashers - 1)
+        this.activeHashers--
+        this.processQueue()
         this.notify()
-        this.drainQueue()
       }
     }
 
-    if (this.activeHashers < MAX_CONCURRENT_HASHING) {
-      this.activeHashers++
-      return task()
-    } else {
-      this.hashQueue.push(task)
-      return Promise.resolve()
-    }
+    this.hashQueue.push(runTask)
+    this.processQueue()
   }
 
-  private drainQueue(): void {
+  private processQueue(): void {
     while (this.activeHashers < MAX_CONCURRENT_HASHING && this.hashQueue.length > 0) {
+      const nextTask = this.hashQueue.shift()!
       this.activeHashers++
-      const next = this.hashQueue.shift()!
-      void next()
+      void nextTask()
     }
   }
 
   private async scanEntry(entry: LocalFileEntry): Promise<void> {
     const taskGeneration = entry.generation
-    const wasShared = entry.status === 'shared'
 
-    const failScan = (status: 'unavailable' | 'error', message: string): void => {
+    const failScan = (status: P2pLibraryFileStatus, message: string): void => {
       entry.status = status
       entry.message = message
       entry.size = null
       entry.sha256 = null
       entry.statFingerprint = null
-      if (wasShared) {
-        this.currentGeneration++
-        this.acknowledgedGeneration = null
-        this.notifyMetadata([entry.fileId])
-      }
+      this.currentGeneration++
+      this.acknowledgedGeneration = null
+      this.notifyMetadata([entry.fileId])
     }
 
     let statBefore: Stats
@@ -366,33 +351,31 @@ export class LibraryManager {
       statBefore = await stat(entry.path)
     } catch {
       if (entry.generation !== taskGeneration) return
-      failScan('unavailable', 'File not found or unreadable on disk')
+      failScan('unavailable', 'File could not be accessed')
       return
     }
 
     if (!statBefore.isFile()) {
       if (entry.generation !== taskGeneration) return
-      failScan('error', 'Not a regular file')
+      failScan('error', 'Path is not a regular file')
       return
     }
 
     if (statBefore.size > MAX_FILE_SIZE) {
       if (entry.generation !== taskGeneration) return
-      failScan('error', `File exceeds maximum allowed size of 1 GiB (${statBefore.size} bytes)`)
+      failScan('error', `File exceeds maximum allowed size (1 GiB)`)
       return
     }
 
-    // Stream hash
     let digest: string
     try {
       digest = await this.computeFileHash(entry.path)
-    } catch (readErr) {
+    } catch {
       if (entry.generation !== taskGeneration) return
-      failScan('error', `Read error during hashing: ${readErr instanceof Error ? readErr.message : String(readErr)}`)
+      failScan('error', 'Error reading file during hashing')
       return
     }
 
-    // Check stat after hash
     let statAfter: Stats
     try {
       statAfter = await stat(entry.path)
@@ -412,7 +395,6 @@ export class LibraryManager {
     }
 
     if (entry.generation !== taskGeneration) {
-      // Outdated scan, generation advanced
       return
     }
 
@@ -466,7 +448,6 @@ export class LibraryManager {
       throw new Error('NOT_FOUND')
     }
 
-    // Live re-verification of stat against indexed fingerprint
     let currentStat: Stats
     try {
       currentStat = await stat(entry.path)
@@ -485,7 +466,6 @@ export class LibraryManager {
       throw new Error('FILE_CHANGED')
     }
 
-    // Recheck grant after awaited disk work
     if (groupKey && !entry.groupKeys.includes(groupKey)) {
       throw new Error('NOT_FOUND')
     }

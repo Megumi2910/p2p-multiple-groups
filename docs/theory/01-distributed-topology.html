@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>01. Distributed Topology Foundations — Theory — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item active"><a href="01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Distributed Theory</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>01. Distributed Topology Foundations</span>
+        </nav>
+
+        <h1>Theory: Distributed Topology Foundations</h1>
+        <p class="lead-paragraph">
+          This document details the architectural evolution of Peer-to-Peer (P2P) topologies, formalizes the scalability constraints that motivated two-tier hybrid networks, and compares <strong><code>p2p-multiple-groups</code></strong> against classical distributed systems.
+        </p>
+
+        <hr>
+
+        <section id="evolution-of-p2p">
+          <h2>1. Evolution of Peer-to-Peer Architectures</h2>
+          <p>Distributed networks balance decentralization, routing efficiency, and bandwidth utilization. Historical architectures highlight distinct tradeoffs:</p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+flowchart LR
+    subgraph CentralizedIndex["Generation 1: Centralized Index (Napster)"]
+        direction TB
+        CIndex[("Central Index Server\nO(N) Bottleneck")]
+        P1((Peer 1))
+        P2((Peer 2))
+        P3((Peer 3))
+        P1 -->|Register/Query| CIndex
+        P2 -->|Register/Query| CIndex
+        P3 -->|Register/Query| CIndex
+        P1 <-->|Direct Data| P2
+    end
+
+    subgraph UnstructuredFlood["Generation 2: Pure Flooding (Gnutella v0.4)"]
+        direction TB
+        G1((Peer A)) <--> G2((Peer B))
+        G2 <--> G3((Peer C))
+        G1 <--> G4((Peer D))
+        G4 <--> G5((Peer E))
+        G3 <--> G5
+    end
+
+    subgraph TwoTierHybrid["Generation 3: Two-Tier Hybrid (FastTrack / Kazaa)"]
+        direction TB
+        SN1{{"Supernode 1"}} <===> SN2{{"Supernode 2"}}
+        L1((Leaf 1)) --> SN1
+        L2((Leaf 2)) --> SN1
+        L3((Leaf 3)) --> SN2
+        L4((Leaf 4)) --> SN2
+    end
+            </div>
+          </div>
+
+          <h3>Generation 1: Centralized Index (Napster, 1999)</h3>
+          <ul>
+            <li><strong>Mechanics</strong>: Peers connected to a centralized cluster of servers to upload their file catalogs and search for files. File transfer was direct peer-to-peer.</li>
+            <li><strong>Complexity</strong>: Search query lookup took <span class="math-inline">O(1)</span> operations on the index server.</li>
+            <li><strong>Failure Mode</strong>: The central index represents a single point of failure (SPOF) and an operational bottleneck scaling as <span class="math-inline">O(N)</span> with total peers <span class="math-inline">N</span>. It is also vulnerable to legal and infrastructural shutdown.</li>
+          </ul>
+
+          <h3>Generation 2: Pure Unstructured Flooding (Gnutella v0.4, 2000)</h3>
+          <ul>
+            <li><strong>Mechanics</strong>: Fully decentralized overlay with no hierarchy. Queries were propagated using Breadth-First Search (BFS) flooding bounded by a Time-To-Live (<span class="math-inline">TTL</span>) counter.</li>
+            <li><strong>Complexity</strong>: For average node degree <span class="math-inline">d</span> and hop count <span class="math-inline">TTL</span>, a single query generated:
+              <div class="math-display">
+                M_flood = Σ (i=1 to TTL) [ d · (d - 1)^(i - 1) ] = O(d^TTL)
+              </div>
+            </li>
+            <li><strong>Failure Mode</strong>: Network saturation and "query storms." As network size <span class="math-inline">N</span> grew, the total query message volume across the network grew as <span class="math-inline">O(N · d^TTL)</span>. Slower modem and dial-up connections collapsed under upstream routing overhead, fragmenting the network.</li>
+          </ul>
+
+          <h3>Generation 3: Two-Tier Hybrid Overlay (FastTrack / Kazaa, 2001)</h3>
+          <ul>
+            <li><strong>Mechanics</strong>: Recognized asymmetric edge node heterogeneity. Nodes with broadband connections, open NATs, and high CPU availability were dynamically designated as <strong>Supernodes</strong> (<span class="math-inline">S &lt;&lt; N</span>).</li>
+            <li><strong>Complexity</strong>: Leaf nodes (<span class="math-inline">L = N - S</span>) connect to a single supernode, offloading their catalogs. Queries propagate only across the supernode mesh.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <section id="scalability-justification">
+          <h2>2. Mathematical Scalability Justification</h2>
+          <p>Consider a network with <span class="math-inline">N</span> total participating peers.</p>
+
+          <h3>Query Complexity in Flooded Overlays</h3>
+          <p>In an unstructured flat network, searching for rare content requires traversing a substantial fraction of the network:</p>
+          <div class="math-display">
+            Cost_flat = O(N)
+          </div>
+          <p>Each node must inspect and forward incoming query messages, consuming upstream network bandwidth proportionally to the total query rate across the entire global population:</p>
+          <div class="math-display">
+            Upstream Bandwidth per Node ∝ λ_global · Cost_flat
+          </div>
+          <p>where <span class="math-inline">λ_global</span> is the aggregate query generation frequency.</p>
+
+          <h3>Query Complexity in Two-Tier Supernode Overlays</h3>
+          <p>In <code>p2p-multiple-groups</code>, the population is partitioned into supernodes <span class="math-inline">S</span> and leaf nodes <span class="math-inline">L</span>, where typically:</p>
+          <div class="math-display">
+            |S| = min(k, |{ p ∈ Roster | p.supernodeEligible = true }|)
+          </div>
+          <p>For virtual groups, <span class="math-inline">k = 2</span> guarantees a <strong>Primary Supernode</strong> and a <strong>Standby Supernode</strong> per group.</p>
+
+          <p>Let <span class="math-inline">N_g</span> be the number of peers in virtual group <span class="math-inline">g</span>.</p>
+          <ol>
+            <li><strong>Catalog Offloading</strong>: Leaf node <span class="math-inline">p</span> publishes its catalog to its designated primary supernode in a single batched transmission:
+              <div class="math-display">Messages_pub = O(1)</div>
+            </li>
+            <li><strong>Search Query Routing</strong>: When leaf node <span class="math-inline">p</span> initiates a search, it transmits the query solely to its assigned primary supernode:
+              <div class="math-display">Messages_query = 1 = O(1)</div>
+            </li>
+            <li><strong>Index Evaluation</strong>: The primary supernode executes a local memory lookup over its aggregated inverted index:
+              <div class="math-display">Lookup Time = O(tokens)</div>
+            </li>
+            <li><strong>Bandwidth Shielding</strong>: Leaf nodes experience <strong>zero</strong> upstream bandwidth consumption from queries generated by other peers. Bandwidth consumption on leaf nodes is restricted purely to active file transfers.</li>
+          </ol>
+
+          <div class="callout callout-tip">
+            <div class="callout-icon">💡</div>
+            <div class="callout-content">
+              <div class="callout-title">Efficiency Outcome</div>
+              <p>The two-tier hybrid overlay reduces query forwarding overhead on 99% of nodes from <span class="math-inline">O(N)</span> to strictly <span class="math-inline">O(0)</span>, while keeping query latency bounded by a single round-trip time (<span class="math-inline">RTT</span>) between leaf and supernode.</p>
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="comparative-matrix">
+          <h2>3. Comparative Architecture Matrix</h2>
+          <p>The following matrix compares <code>p2p-multiple-groups</code> with landmark distributed architectures:</p>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dimension</th>
+                  <th>Napster</th>
+                  <th>Gnutella v0.4</th>
+                  <th>BitTorrent (DHT)</th>
+                  <th>p2p-multiple-groups</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Topology Type</strong></td>
+                  <td>Centralized Index / P2P</td>
+                  <td>Flat Unstructured P2P</td>
+                  <td>Structured DHT (Kademlia)</td>
+                  <td>Two-Tier Hybrid + Virtual Overlays</td>
+                </tr>
+                <tr>
+                  <td><strong>Indexing Structure</strong></td>
+                  <td>Central Relational DB</td>
+                  <td>Distributed Flooding Cache</td>
+                  <td>DHT (b-bit XOR metric)</td>
+                  <td>Inverted Index per Group Supernode</td>
+                </tr>
+                <tr>
+                  <td><strong>Search Query Cost</strong></td>
+                  <td><span class="math-inline">O(1)</span> server request</td>
+                  <td><span class="math-inline">O(d^TTL)</span> broadcast</td>
+                  <td><span class="math-inline">O(log N)</span> exact key lookup</td>
+                  <td><span class="math-inline">O(1)</span> supernode direct query</td>
+                </tr>
+                <tr>
+                  <td><strong>Arbitrary Keyword Search</strong></td>
+                  <td>Full substring / keyword</td>
+                  <td>Full substring / keyword</td>
+                  <td>Key-only (SHA-1 infohash)</td>
+                  <td>Full tokenized boolean AND search</td>
+                </tr>
+                <tr>
+                  <td><strong>Node Heterogeneity</strong></td>
+                  <td>Homogeneous assumption</td>
+                  <td>Homogeneous assumption</td>
+                  <td>Homogeneous assumption</td>
+                  <td>Asymmetric tiers (Supernode vs Leaf)</td>
+                </tr>
+                <tr>
+                  <td><strong>NAT Traversal</strong></td>
+                  <td>Outbound TCP client-to-host</td>
+                  <td>Direct TCP; reverse connection</td>
+                  <td>STUN / uTP UDP hole punching</td>
+                  <td>ICE (RFC 8445), STUN, Coturn TURN</td>
+                </tr>
+                <tr>
+                  <td><strong>Transport Protocol</strong></td>
+                  <td>TCP sockets</td>
+                  <td>TCP sockets</td>
+                  <td>TCP (v0) / uTP UDP</td>
+                  <td>Werift WebRTC (DTLS 1.2, SCTP)</td>
+                </tr>
+                <tr>
+                  <td><strong>Multi-Tenancy</strong></td>
+                  <td>Single global namespace</td>
+                  <td>Single global overlay</td>
+                  <td>Single swarm per torrent</td>
+                  <td>Multiplexed virtual groups over shared SCTP</td>
+                </tr>
+                <tr>
+                  <td><strong>Security & Auth</strong></td>
+                  <td>Cleartext password</td>
+                  <td>None (open network)</td>
+                  <td>None (public torrent swarms)</td>
+                  <td>Per-group crypto tokens, constant-time</td>
+                </tr>
+                <tr>
+                  <td><strong>Credential Storage</strong></td>
+                  <td>Plaintext config files</td>
+                  <td>N/A</td>
+                  <td>N/A</td>
+                  <td>OS Keychains (DPAPI, Keychain, DBus)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="../user-guide/07-troubleshooting-and-faq.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">07. Troubleshooting & FAQ</span>
+          </a>
+          <a href="02-election-and-consistent-hashing.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">02. HRW Election Math</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#evolution-of-p2p" class="toc-link">1. P2P Evolution</a></li>
+          <li><a href="#scalability-justification" class="toc-link">2. Scalability Proof</a></li>
+          <li><a href="#comparative-matrix" class="toc-link">3. Comparative Matrix</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

@@ -6,18 +6,17 @@ import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { createSignalingServer } from '../services/signaling/server.ts'
 import { createPeerEngine, type PeerEngine } from '../src/main/p2p/engine.ts'
-import type { P2pState } from '../src/shared/p2p.ts'
+import { makeGroupKey, type MultiGroupP2pState } from '../src/shared/p2p.ts'
 
 function waitForState(
   engine: PeerEngine,
-  predicate: (state: P2pState) => boolean,
+  predicate: (state: MultiGroupP2pState) => boolean,
   timeoutMs = 25000,
-  rejectPredicate?: (state: P2pState) => string | null,
+  rejectPredicate?: (state: MultiGroupP2pState) => string | null,
   label?: string
-): Promise<P2pState> {
-  const { promise, resolve, reject } = Promise.withResolvers<P2pState>()
+): Promise<MultiGroupP2pState> {
+  const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState>()
   let done = false
-  // Real-time safety deadline: bounding asynchronous peer engine events across WebRTC network
   const timer = setTimeout(() => {
     if (!done) {
       done = true
@@ -26,9 +25,9 @@ function waitForState(
     }
   }, timeoutMs)
 
-  const check = (s: P2pState) => {
+  const check = (s: MultiGroupP2pState) => {
     if (done) return
-    if (rejectPredicate) {
+    if (typeof rejectPredicate === 'function') {
       const err = rejectPredicate(s)
       if (err) {
         done = true
@@ -65,29 +64,33 @@ describe('Peer Transfer Survival Across Supernode Failure', () => {
   })
 
   it('preserves active transfer between ordinary peers when supernode dies', async () => {
-    const roomId = `room-${randomUUID().slice(0, 8)}`
+    const groupId = `group-${randomUUID().slice(0, 8)}`
     const token = Buffer.alloc(32, 14).toString('base64url')
 
     const server = await createSignalingServer({
       host: '127.0.0.1',
       port: 0,
-      roomId,
-      token
+      groups: [{ groupId, token }]
     })
 
     const signalUrl = `ws://127.0.0.1:${server.address.port}/signal`
+    const groupKey = makeGroupKey(signalUrl, groupId)
 
     async function createEngine(name: string, supernodeEligible: boolean): Promise<PeerEngine> {
-      const dir = await mkdtemp(join(tmpdir(), `kazaa-surv-${name}-`))
+      const dir = await mkdtemp(join(tmpdir(), `p2p-surv-${name}-`))
       tempDirs.push(dir)
       const engine = await createPeerEngine({ dataDirectory: dir })
-      await engine.connect({
-        signalingUrl: signalUrl,
-        roomId,
-        token,
+      await engine.joinGroup({
+        invitation: {
+          version: 2,
+          signalingUrl: signalUrl,
+          groupId,
+          token
+        },
         displayName: name,
         supernodeEligible,
-        relayOnly: false
+        relayOnly: false,
+        rememberInvitation: false
       })
       return engine
     }
@@ -104,10 +107,10 @@ describe('Peer Transfer Survival Across Supernode Failure', () => {
       downloader = await createEngine('Downloader', false)
 
       await Promise.all([
-        waitForState(sn1, (s) => s.network.members.length === 4, 25000, undefined, 'sn1-peers-4'),
-        waitForState(sn2, (s) => s.network.members.length === 4, 25000, undefined, 'sn2-peers-4'),
-        waitForState(uploader, (s) => s.network.members.length === 4 && Boolean(s.network.primaryPeerId) && s.network.links.some(l => l.peerId === s.network.primaryPeerId && l.state === 'open'), 25000, undefined, 'uploader-peers-4-open'),
-        waitForState(downloader, (s) => s.network.members.length === 4 && Boolean(s.network.primaryPeerId) && s.network.links.some(l => l.peerId === s.network.primaryPeerId && l.state === 'open'), 25000, undefined, 'downloader-peers-4-open')
+        waitForState(sn1, (s) => (s.groups[0]?.network.members.length || 0) === 4, 25000, undefined, 'sn1-peers-4'),
+        waitForState(sn2, (s) => (s.groups[0]?.network.members.length || 0) === 4, 25000, undefined, 'sn2-peers-4'),
+        waitForState(uploader, (s) => (s.groups[0]?.network.members.length || 0) === 4 && Boolean(s.groups[0]?.network.primaryPeerId) && s.groups[0]?.network.links.some(l => l.peerId === s.groups[0]?.network.primaryPeerId && l.state === 'open'), 25000, undefined, 'uploader-peers-4-open'),
+        waitForState(downloader, (s) => (s.groups[0]?.network.members.length || 0) === 4 && Boolean(s.groups[0]?.network.primaryPeerId) && s.groups[0]?.network.links.some(l => l.peerId === s.groups[0]?.network.primaryPeerId && l.state === 'open'), 25000, undefined, 'downloader-peers-4-open')
       ])
 
       // Prepare large file (256 KiB) on uploader
@@ -120,8 +123,8 @@ describe('Peer Transfer Survival Across Supernode Failure', () => {
       const ack = waitForState(
         uploader,
         (state) =>
-          state.library.acknowledgedGeneration !== null &&
-          state.library.acknowledgedGeneration === state.library.advertisedGeneration &&
+          state.groups[0]?.catalog.acknowledgedGeneration !== null &&
+          state.groups[0]?.catalog.acknowledgedGeneration === state.groups[0]?.catalog.advertisedGeneration &&
           state.library.files.length === 1 &&
           state.library.files[0].status === 'shared',
         25000,
@@ -130,19 +133,19 @@ describe('Peer Transfer Survival Across Supernode Failure', () => {
           return errFile ? `File error: ${errFile.name} (${errFile.message})` : null
         }
       )
-      await uploader.addFiles([filePath])
+      await uploader.addFiles(groupKey, [filePath])
       await ack
 
       // Downloader searches
       const searchDone = waitForState(
         downloader,
-        (state) => state.search.status === 'complete' && state.search.results.some((r) => r.file.name === 'bigfile.dat'),
+        (state) => state.groups[0]?.search.status === 'complete' && Boolean(state.groups[0]?.search.results.some((r) => r.file.name === 'bigfile.dat')),
         25000
       )
-      await downloader.search('bigfile')
+      await downloader.search(groupKey, 'bigfile')
       await searchDone
 
-      const fileResult = downloader.getState().search.results.find((r) => r.file.name === 'bigfile.dat')!
+      const fileResult = downloader.getState().groups[0]?.search.results.find((r) => r.file.name === 'bigfile.dat')!
       assert.ok(fileResult)
 
       const dlDir = await mkdtemp(join(tmpdir(), 'dl-surv-'))
@@ -172,7 +175,7 @@ describe('Peer Transfer Survival Across Supernode Failure', () => {
         }
       )
 
-      await downloader.download(fileResult.resultId, destPath)
+      await downloader.download(groupKey, fileResult.resultId, destPath)
       await transferStarted
 
       // Kill SN1 while transfer is in flight

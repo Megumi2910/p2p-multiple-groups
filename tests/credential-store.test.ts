@@ -131,7 +131,7 @@ describe('CredentialStore Persistence & Security', () => {
       // 2. Controlled store with paused initial read
       const { promise: pausePromise, resolve: unpauseRead } = Promise.withResolvers<void>()
       const customFileIO: CredentialStoreFileIO = {
-        readFile: async (path: Parameters<typeof readFile>[0]) => {
+        readFile: async (path: Parameters<typeof readFile>[0]): Promise<Buffer> => {
           await pausePromise
           return readFile(path)
         },

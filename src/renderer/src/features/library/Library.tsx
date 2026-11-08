@@ -4,8 +4,7 @@ import type {
   GroupKey,
   MultiGroupLibraryFile,
   MultiGroupP2pState,
-  P2pGroupState,
-  P2pLibraryState
+  P2pGroupState
 } from '../../../../shared/p2p.ts'
 
 interface LibraryProps {

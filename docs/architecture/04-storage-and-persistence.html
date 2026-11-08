@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>04. Storage, Persistence & Migration — Architecture — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item active"><a href="04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Architecture & Internals</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>04. Storage, Persistence & Migration</span>
+        </nav>
+
+        <h1>Architecture: Storage, Persistence & Migration</h1>
+        <p class="lead-paragraph">
+          This document details the on-disk storage architectures, atomic filesystem invariants, legacy profile migration, and hardware-backed credential encryption implemented in <code>src/main/p2p/peer-store.ts</code> and <code>src/main/p2p/credential-store.ts</code>.
+        </p>
+
+        <hr>
+
+        <section id="storage-architecture">
+          <h2>1. Storage Architecture Overview</h2>
+          <p>All application state is saved under the platform user data directory:</p>
+          <ul>
+            <li><strong>Windows</strong>: <code>%APPDATA%\p2p-multiple-groups\</code></li>
+            <li><strong>macOS</strong>: <code>~/Library/Application Support/p2p-multiple-groups/</code></li>
+            <li><strong>Linux</strong>: <code>~/.config/p2p-multiple-groups/</code></li>
+          </ul>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+graph TD
+    subgraph DataDirectory["Application Data Directory"]
+        STATE[("peer-state.json\n(MultiGroupPeerStore V2)")]
+        BACKUP[("peer-state.v1.backup.json\n(Legacy Migration Safety)")]
+        CRED[("credentials.enc\n(SafeCredentialStore 0o600)")]
+        THEME[("theme-store.json\n(User Preferences)")]
+    end
+
+    subgraph MemoryLayer["In-Memory Execution Layer"]
+        STORE_MEM["MultiGroupPeerStore State Cache"]
+        CRED_MEM["SafeCredentialStore Memory Cache"]
+    end
+
+    subgraph OSKeychains["OS Native Keychains"]
+        DPAPI["Windows DPAPI"]
+        KEYCHAIN["macOS Keychain"]
+        SECRET["Linux Secret Service / DBus"]
+    end
+
+    STORE_MEM <-->|Atomic .tmp Rename| STATE
+    CRED_MEM <-->|Atomic .tmp Rename (0o600)| CRED
+    CRED <-->|safeStorage.encryptString / decryptString| OSKeychains
+    STATE -.->|One-time Migration Backup| BACKUP
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="peerstore-v2">
+          <h2>2. <code>MultiGroupPeerStore</code> (V2 Schema)</h2>
+          <p>The peer profile is persisted in <code>peer-state.json</code>. It captures node identity, virtual group memberships, and local library file registrations.</p>
+
+          <pre><code class="language-typescript">export interface PersistedPeerStateV2 {
+  version: 2
+  peerId: string                            // Persistent UUIDv4
+  displayName: string                       // 1-32 characters
+  relayOnly: boolean                        // Global privacy mode
+  groups: PersistedGroupV2[]
+  sharedFiles: PersistedSharedFileV2[]
+}
+
+export interface PersistedGroupV2 {
+  groupKey: string                          // JSON string [signalingUrl, groupId]
+  signalingUrl: string                      // WebSocket URL
+  groupId: string                           // Room identifier
+  supernodeEligible: boolean
+  autoJoin: boolean
+  credentialCiphertext: string | null       // Deprecated legacy field; managed by SafeCredentialStore
+}
+
+export interface PersistedSharedFileV2 {
+  fileId: string                            // UUIDv4
+  path: string                              // Filesystem path
+  groupKeys: string[]                       // Authorized group keys
+}</code></pre>
+
+          <h3>Atomic Disk Persistence Invariants</h3>
+          <p>To prevent file truncation during unexpected application crashes or power loss:</p>
+          <ol>
+            <li>State is serialized to a JSON string with 2-space indentation.</li>
+            <li>The payload is written to a staging file:
+              <div class="math-display">StagingPath = join(dataDir, "peer-state.json." || randomUUID() || ".tmp")</div>
+            </li>
+            <li>Written using exclusive write flags (<code>flag: 'wx'</code>).</li>
+            <li>Atomically renamed over <code>peer-state.json</code> via <code>fs.rename()</code>.</li>
+            <li>Disk write operations are serialized through an internal promise queue, ensuring concurrent caller promises never interleave filesystem writes.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="legacy-migration">
+          <h2>3. Legacy Migration Subsystem (V1 -> V2)</h2>
+          <p>The application provides automatic forward migration for profiles generated by legacy V1 single-network builds (<code>Kazaa</code>).</p>
+
+          <h3>Detection & Trigger</h3>
+          <p>When <code>createMultiGroupPeerStore(dataDir)</code> executes:</p>
+          <ol>
+            <li>Reads <code>peer-state.json</code>.</li>
+            <li>If <code>version === 1</code>:
+              <ul>
+                <li>Validates legacy schema (must have valid <code>peerId</code>, <code>displayName</code>, <code>roomId</code>, <code>signalingUrl</code>, and <code>sharedFiles</code>).</li>
+                <li>Verifies that no conflicting <code>peer-state.v1.backup.json</code> already exists with different contents.</li>
+              </ul>
+            </li>
+            <li><strong>Backup Creation</strong>: Copies the exact V1 file bytes to <code>peer-state.v1.backup.json</code> before altering a single byte on disk.</li>
+            <li><strong>V2 Migration Logic</strong>:
+              <ul>
+                <li>Preserves <code>peerId</code> and <code>displayName</code>.</li>
+                <li>Derives the canonical group key:
+                  <div class="math-display">GroupKey = makeGroupKey(signalingUrl, roomId)</div>
+                </li>
+                <li>Converts the single room into the first entry in <code>groups</code> (<code>autoJoin: false</code>, <code>supernodeEligible</code> preserved).</li>
+                <li>Maps each entry in <code>sharedFiles</code> to a <code>PersistedSharedFileV2</code> object, setting <code>groupKeys: [GroupKey]</code>.</li>
+              </ul>
+            </li>
+            <li>Atomically commits the upgraded V2 payload to <code>peer-state.json</code>.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="safe-credential-store">
+          <h2>4. <code>SafeCredentialStore</code> Hardware Encryption</h2>
+          <p>Secret access tokens for virtual groups are decoupled from <code>peer-state.json</code> to prevent exposure via accidental file sharing or system diagnostics.</p>
+
+          <h3>Storage Mechanics</h3>
+          <ol>
+            <li><strong>OS-Level Key Derivation</strong>: Uses Electron <code>safeStorage</code>:
+              <ul>
+                <li>Calls <code>safeStorage.isEncryptionAvailable()</code> to probe native keyring support.</li>
+                <li>Encrypts via <code>safeStorage.encryptString(jsonPayload)</code>.</li>
+                <li>Decrypts via <code>safeStorage.decryptString(cipherBuffer)</code>.</li>
+              </ul>
+            </li>
+            <li><strong>File Permissions (<code>0o600</code>)</strong>:
+              <ul>
+                <li>The encrypted blob is stored in <code>credentials.enc</code>.</li>
+                <li>Staged in a temporary file with restrictive POSIX permissions:
+                  <pre><code class="language-typescript">await this.fileIO.writeFile(tempPath, encrypted, { flag: 'wx', mode: 0o600 })</code></pre>
+                </li>
+                <li>Only the operating system user account executing the process can read or write the file.</li>
+              </ul>
+            </li>
+            <li><strong>Graceful Memory Fallback</strong>:
+              <ul>
+                <li>In environments where hardware keychains are unavailable (e.g., headless Linux, CI runners, Docker containers), the store logs a diagnostic warning and retains tokens in an in-memory <code>Map&lt;string, string&gt;</code>.</li>
+                <li>Tokens remain accessible throughout the application session but are never written to disk in plaintext.</li>
+              </ul>
+            </li>
+            <li><strong>Queue Serialization</strong>: All <code>getCredential</code>, <code>setCredential</code>, and <code>deleteCredential</code> calls pass through <code>queueOperation</code>, eliminating read-after-write inconsistencies.</li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="03-wire-protocol-specification.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">03. Wire Protocol Specs</span>
+          </a>
+          <a href="../operations/01-cloud-deployment.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Section →</span>
+            <span class="footer-nav-title">01. Cloud & Coturn Setup</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#storage-architecture" class="toc-link">1. Storage Architecture</a></li>
+          <li><a href="#peerstore-v2" class="toc-link">2. MultiGroupPeerStore V2</a></li>
+          <li><a href="#legacy-migration" class="toc-link">3. Legacy Migration</a></li>
+          <li><a href="#safe-credential-store" class="toc-link">4. SafeCredentialStore</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

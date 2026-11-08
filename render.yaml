@@ -1,29 +1,19 @@
 # Render Blueprint for p2p-multiple-groups Signaling Server (Free Tier)
-# Pairs with Metered.ca Free STUN/TURN (no credit card required) so you can
-# save your 12-month Azure for Students trial for later.
+# Pairs with Metered.ca Free STUN/TURN (no credit card required)
 
 services:
   - type: web
     name: p2p-multiple-groups-signaling
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
-    buildCommand: npm ci --omit=dev
-    startCommand: npm run signal:start
     healthCheckPath: /healthz
     envVars:
-      - key: NODE_VERSION
-        value: 24.12.0
-      # Multi-group registry JSON format (recommended):
+      # Optional multi-group pre-seeded registry JSON format:
       # '[{"groupId":"alpha","token":"...","name":"Alpha"},{"groupId":"beta","token":"...","name":"Beta"}]'
       - key: P2P_MULTIPLE_GROUPS_GROUPS_JSON
         sync: false
-      # Fallback single-group identifier (when P2P_MULTIPLE_GROUPS_GROUPS_JSON is not set)
-      - key: KAZAA_ROOM_ID
-        value: classroom-network-1
-      # Fallback single-group 32-byte base64url token
-      # Generate locally with:
-      #   node -e "console.log(crypto.randomBytes(32).toString('base64url'))"
-      - key: KAZAA_ROOM_TOKEN
+      - key: P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL
         sync: false
       # Free STUN + TURN via Metered.ca (https://www.metered.ca/stun-turn — free tier, no credit card)
       - key: P2P_MULTIPLE_GROUPS_STUN_URL

@@ -1,0 +1,11 @@
+node_modules
+out
+dist
+.git
+.idea
+tests
+docs
+.env
+*.log
+*.tsbuildinfo
+!.env.example

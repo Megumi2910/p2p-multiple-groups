@@ -6,16 +6,16 @@ import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { createSignalingServer } from '../services/signaling/server.ts'
 import { createPeerEngine, type PeerEngine } from '../src/main/p2p/engine.ts'
-import { makeGroupKey, type MultiGroupP2pState, type P2pState } from '../src/shared/p2p.ts'
+import { makeGroupKey, type MultiGroupP2pState } from '../src/shared/p2p.ts'
 
 function waitForEngineState(
   engine: PeerEngine,
-  predicate: (state: MultiGroupP2pState & P2pState) => boolean,
+  predicate: (state: MultiGroupP2pState) => boolean,
   timeoutMs = 25000,
-  rejectPredicate?: (state: MultiGroupP2pState & P2pState) => string | null,
+  rejectPredicate?: (state: MultiGroupP2pState) => string | null,
   label?: string
-): Promise<MultiGroupP2pState & P2pState> {
-  const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState & P2pState>()
+): Promise<MultiGroupP2pState> {
+  const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState>()
   let done = false
 
   const timer = setTimeout(() => {
@@ -26,8 +26,7 @@ function waitForEngineState(
     }
   }, timeoutMs)
 
-  const check = (s: MultiGroupP2pState & P2pState) => {
-    if (done) return
+  const check = (s: MultiGroupP2pState) => {
     if (typeof rejectPredicate === 'function') {
       const err = rejectPredicate(s)
       if (err) {
@@ -72,31 +71,33 @@ describe('Simultaneous Multi-Group P2P Mesh', () => {
     const betaKey = makeGroupKey(signalUrl, groupBetaId)
 
     const tempDirs: string[] = []
+    const allEngines: PeerEngine[] = []
 
     async function createTestEngine(name: string, isSupernode: boolean): Promise<PeerEngine> {
       const dir = await mkdtemp(join(tmpdir(), `p2p-multi-${name}-`))
       tempDirs.push(dir)
       const engine = await createPeerEngine({ dataDirectory: dir })
+      allEngines.push(engine)
 
-        // Join Alpha
-        const resAlpha = await engine.joinGroup({
-          invitation: { version: 2, signalingUrl: signalUrl, groupId: groupAlphaId, token: tokenAlpha },
-          displayName: `${name}-Peer`,
-          supernodeEligible: isSupernode,
-          relayOnly: false,
-          rememberInvitation: false
-        })
-        assert.ok(resAlpha.ok, `Join alpha failed: ${!resAlpha.ok ? (resAlpha as any).message : ''}`)
+      // Join Alpha
+      const resAlpha = await engine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId: groupAlphaId, token: tokenAlpha },
+        displayName: `${name}-Peer`,
+        supernodeEligible: isSupernode,
+        relayOnly: false,
+        rememberInvitation: false
+      })
+      assert.ok(resAlpha.ok, `Join alpha failed: ${!resAlpha.ok ? (resAlpha as any).message : ''}`)
 
-        // Join Beta
-        const resBeta = await engine.joinGroup({
-          invitation: { version: 2, signalingUrl: signalUrl, groupId: groupBetaId, token: tokenBeta },
-          displayName: `${name}-Peer`,
-          supernodeEligible: isSupernode,
-          relayOnly: false,
-          rememberInvitation: false
-        })
-        assert.ok(resBeta.ok, `Join beta failed: ${!resBeta.ok ? (resBeta as any).message : ''}`)
+      // Join Beta
+      const resBeta = await engine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId: groupBetaId, token: tokenBeta },
+        displayName: `${name}-Peer`,
+        supernodeEligible: isSupernode,
+        relayOnly: false,
+        rememberInvitation: false
+      })
+      assert.ok(resBeta.ok, `Join beta failed: ${!resBeta.ok ? (resBeta as any).message : ''}`)
 
       return engine
     }
@@ -297,9 +298,161 @@ describe('Simultaneous Multi-Group P2P Mesh', () => {
       assert.equal(upBeta.groupKey, betaKey)
       assert.equal(upBeta.groupId, groupBetaId)
     } finally {
-      if (sn) await sn.dispose()
-      if (uploader) await uploader.dispose()
-      if (downloader) await downloader.dispose()
+      for (const e of allEngines) {
+        await e.dispose()
+      }
+      await server.close()
+      for (const d of tempDirs) {
+        await rm(d, { recursive: true, force: true }).catch(() => {})
+      }
+    }
+  })
+
+  it('supports Group Owner workflow: createGroup, short-code join, invite rotation with credential persistence, auto-reseed on server restart, and member removal', async () => {
+    const staticToken43 = Buffer.alloc(32, 55).toString('base64url')
+    let server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [
+        { groupId: 'static-preseeded', token: staticToken43, name: 'Preseeded 43-char Group' }
+      ]
+    })
+
+    const serverPort = server.address.port
+    const signalUrl = `ws://127.0.0.1:${serverPort}/signal`
+    const tempDirs: string[] = []
+
+    let engineA: PeerEngine | null = null
+    let engineB: PeerEngine | null = null
+    let engineC: PeerEngine | null = null
+
+    try {
+      const dirA = await mkdtemp(join(tmpdir(), 'owner-a-'))
+      const dirB = await mkdtemp(join(tmpdir(), 'member-b-'))
+      const dirC = await mkdtemp(join(tmpdir(), 'member-c-'))
+      tempDirs.push(dirA, dirB, dirC)
+
+      engineA = await createPeerEngine({ dataDirectory: dirA, defaultSignalingUrl: signalUrl })
+      engineB = await createPeerEngine({ dataDirectory: dirB, defaultSignalingUrl: signalUrl })
+      engineC = await createPeerEngine({ dataDirectory: dirC, defaultSignalingUrl: signalUrl })
+
+      // 1. Peer A creates group 'owners-club', becomes Group Owner, receives 22-char invite code
+      const createRes = await engineA.createGroup({
+        groupId: 'owners-club',
+        displayName: 'OwnerAlice',
+        supernodeEligible: true,
+        rememberInvitation: true
+      })
+      assert.equal(createRes.ok, true)
+
+      const stateA = engineA.getState()
+      assert.equal(stateA.groups.length, 1)
+      const groupA = stateA.groups[0]
+      assert.equal(groupA.groupId, 'owners-club')
+      assert.equal(groupA.isOwner, true)
+      assert.equal(groupA.network.isOwner, true)
+      assert.ok(groupA.inviteCode)
+      assert.equal(groupA.inviteCode.length, 22)
+      const initialInviteCode = groupA.inviteCode
+      const groupKeyA = groupA.groupKey
+
+      // 2. Peer B joins using only short inviteCode
+      const joinBRes = await engineB.joinGroup({
+        inviteCode: initialInviteCode,
+        signalingUrl: signalUrl,
+        displayName: 'MemberBob',
+        supernodeEligible: false,
+        rememberInvitation: true
+      })
+      assert.equal(joinBRes.ok, true)
+
+      await Promise.all([
+        waitForEngineState(engineA, (s) => (s.groups[0]?.network.members.length || 0) === 2),
+        waitForEngineState(engineB, (s) => (s.groups[0]?.network.members.length || 0) === 2)
+      ])
+
+      const stateB = engineB.getState()
+      assert.equal(stateB.groups[0]?.groupId, 'owners-club')
+      assert.equal(stateB.groups[0]?.isOwner, false)
+      assert.equal(stateB.groups[0]?.network.isOwner, false)
+      assert.equal(stateB.groups[0]?.inviteCode, initialInviteCode)
+      const groupKeyB = stateB.groups[0]?.groupKey!
+      const peerBId = stateB.identity.peerId
+
+      // 3. Owner rotates invite code
+      const rotateRes = await engineA.rotateGroupInvite(groupKeyA)
+      assert.equal(rotateRes.ok, true)
+
+      const updatedCodeA = engineA.getState().groups[0]?.inviteCode!
+      assert.notEqual(updatedCodeA, initialInviteCode)
+      assert.equal(updatedCodeA.length, 22)
+
+      // Peer B automatically receives updated invite code
+      await waitForEngineState(engineB, (s) => s.groups[0]?.inviteCode === updatedCodeA)
+
+      // Outsider Peer C attempts to join with old invite code -> fails with AUTH_FAILED
+      const failJoinC = await engineC.joinGroup({
+        inviteCode: initialInviteCode,
+        signalingUrl: signalUrl,
+        displayName: 'OutsiderC',
+        supernodeEligible: false,
+        rememberInvitation: true
+      })
+      assert.equal(failJoinC.ok, false)
+      assert.equal(failJoinC.code, 'AUTH_FAILED')
+
+      // Peer C joins with new invite code -> succeeds
+      const successJoinC = await engineC.joinGroup({
+        inviteCode: updatedCodeA,
+        signalingUrl: signalUrl,
+        displayName: 'MemberC',
+        supernodeEligible: false,
+        rememberInvitation: true
+      })
+      assert.equal(successJoinC.ok, true)
+
+      await Promise.all([
+        waitForEngineState(engineA, (s) => (s.groups[0]?.network.members.length || 0) === 3),
+        waitForEngineState(engineB, (s) => (s.groups[0]?.network.members.length || 0) === 3),
+        waitForEngineState(engineC, (s) => (s.groups[0]?.network.members.length || 0) === 3)
+      ])
+
+      // 4. Restart signaling server with groups: [] (empty in-memory state)
+      const preRestartEpochA = engineA.getState().groups[0]?.network.epoch
+      await server.close()
+
+      server = await createSignalingServer({
+        host: '127.0.0.1',
+        port: serverPort,
+        groups: []
+      })
+
+      // Owner reconnects/resumes and auto-reseeds group in server memory
+      const resumeA = await engineA.resumeGroup(groupKeyA)
+      assert.equal(resumeA.ok, true)
+
+      // Member B reconnects and joins the auto-reseeded group
+      const resumeB = await engineB.resumeGroup(groupKeyB)
+      assert.equal(resumeB.ok, true)
+
+      await Promise.all([
+        waitForEngineState(engineA, (s) => (s.groups[0]?.network.members.length || 0) >= 2 && s.groups[0]?.network.epoch !== preRestartEpochA),
+        waitForEngineState(engineB, (s) => (s.groups[0]?.network.members.length || 0) >= 2 && s.groups[0]?.network.epoch !== preRestartEpochA)
+      ])
+      // 5. Group Owner removes Member B
+      const removeRes = await engineA.removeGroupMember(groupKeyA, peerBId)
+      assert.equal(removeRes.ok, true)
+
+      // Peer B receives group-kicked and transitions to disconnected with reason
+      await waitForEngineState(engineB, (s) => s.groups[0]?.network.status === 'disconnected')
+      assert.equal(engineB.getState().groups[0]?.network.message, 'Removed by group owner')
+
+      // Peer A observes roster drops
+      await waitForEngineState(engineA, (s) => !s.groups[0]?.network.members.some((m) => m.peerId === peerBId))
+    } finally {
+      if (engineA) await engineA.dispose()
+      if (engineB) await engineB.dispose()
+      if (engineC) await engineC.dispose()
       await server.close()
       for (const d of tempDirs) {
         await rm(d, { recursive: true, force: true }).catch(() => {})

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>01. Cloud Deployment & Infrastructure — Operations — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item active"><a href="01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Operations & DevOps</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>01. Cloud Deployment & Infrastructure</span>
+        </nav>
+
+        <h1>Operations: Cloud Deployment & Infrastructure</h1>
+        <p class="lead-paragraph">
+          This guide details deploying the authoritative signaling server and a dedicated Coturn STUN/TURN media relay across production cloud infrastructure (Azure Virtual Machines or Render.com PaaS).
+        </p>
+
+        <hr>
+
+        <section id="cloud-architecture">
+          <h2>1. Cloud Infrastructure Architecture</h2>
+          <p>In production, client nodes are distributed globally behind heterogeneous NATs and firewalls. Reliable peer-to-peer connectivity requires:</p>
+          <ol>
+            <li><strong>Signaling Server</strong>: Handles WebSocket client connections over HTTPS/WSS (<code>443</code>).</li>
+            <li><strong>Coturn TURN/STUN Relay</strong>: Traverses symmetric NATs via UDP/TCP (<code>3478</code>) and encrypted TLS TURNS (<code>5349</code> or <code>443</code>).</li>
+            <li><strong>Nginx Reverse Proxy</strong>: Terminates TLS for HTTP health checks (<code>/healthz</code>) and proxies WebSocket upgrades (<code>/signal</code>).</li>
+            <li><strong>Certbot</strong>: Issues and automatically renews Let's Encrypt certificates.</li>
+          </ol>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+flowchart TD
+    subgraph InternetClients["Global Client Peers"]
+        P1["Peer Node A"]
+        P2["Peer Node B (Symmetric NAT)"]
+    end
+
+    subgraph AzureHost["Azure VM (Ubuntu 22.04 LTS)"]
+        NGINX["Nginx (Port 80 / 443)\nTLS Termination"]
+        SIG["Signaling Service (systemd: kazaa-signaling)\nNode.js (Port 8787)"]
+        COTURN["Coturn Daemon (coturn.service)\nSTUN/TURN: 3478 UDP/TCP\nTURNS: 5349 TLS"]
+        CERTBOT["Certbot & Deploy Hook\n(renew-turn-certificate.sh)"]
+
+        NGINX -->|Proxy /signal & /healthz| SIG
+        CERTBOT -->|Update TLS Certs| NGINX
+        CERTBOT -->|Update TLS Certs| COTURN
+    end
+
+    P1 <-->|"WSS wss://signal.domain.com/signal"| NGINX
+    P2 <-->|"WSS wss://signal.domain.com/signal"| NGINX
+    P1 <-->|"P2P Data (Direct UDP)"| P2
+    P2 <-->|"Relayed Data (TURNS 443/5349)"| COTURN
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="azure-deployment">
+          <h2>2. Production Azure VM Deployment (Ubuntu 22.04 LTS)</h2>
+
+          <h3>Step 1: Provisioning & System Preparation</h3>
+          <ol>
+            <li>Create a Standard B1s or B2s Azure VM running Ubuntu 22.04 LTS.</li>
+            <li>Assign a static public IP and point your DNS FQDN (e.g. <code>signal.yourdomain.com</code>) to the IP.</li>
+            <li>Create the dedicated non-root service user:
+              <pre><code class="language-bash">sudo useradd -r -m -d /home/kazaa -s /bin/bash kazaa
+sudo usermod -aG coturn kazaa</code></pre>
+            </li>
+          </ol>
+
+          <h3>Step 2: Install Node.js 24 and Coturn</h3>
+          <pre><code class="language-bash"># Install Coturn, Nginx, and Certbot
+sudo apt-get update
+sudo apt-get install -y coturn nginx certbot python3-certbot-nginx
+
+# Install Node.js 24 LTS
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt-get install -y nodejs</code></pre>
+
+          <h3>Step 3: Configure Coturn (<code>/etc/turnserver.conf</code>)</h3>
+          <p>Edit <code>/etc/turnserver.conf</code>:</p>
+          <pre><code class="language-ini">listening-port=3478
+tls-listening-port=5349
+fingerprint
+lt-cred-mech
+use-auth-secret
+static-auth-secret=YOUR_COTURN_SHARED_SECRET_HEX_HERE
+realm=signal.yourdomain.com
+cert=/etc/coturn/certs/turn_server_cert.pem
+pkey=/etc/coturn/certs/turn_server_pkey.pem
+no-cli
+no-loopback-peers
+no-multicast-peers
+min-port=49152
+max-port=65535</code></pre>
+
+          <p>Enable the daemon in <code>/etc/default/coturn</code>:</p>
+          <pre><code class="language-ini">TURNSERVER_ENABLED=1</code></pre>
+
+          <h3>Step 4: Configure the Signaling Service Unit</h3>
+          <p>The repository includes a hardened systemd service unit template at <code>ops/azure/kazaa-signaling.service</code>:</p>
+          <pre><code class="language-ini">[Unit]
+Description=p2p-multiple-groups Authenticated Signaling Service
+After=network.target
+
+[Service]
+Type=simple
+User=kazaa
+Group=kazaa
+WorkingDirectory=/home/kazaa/app
+ExecStart=/usr/bin/node services/signaling/index.ts
+EnvironmentFile=/etc/kazaa/signaling.env
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+CapabilityBoundingSet=
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+
+          <p>Deploy the unit and environment file:</p>
+          <pre><code class="language-bash">sudo cp ops/azure/kazaa-signaling.service /etc/systemd/system/kazaa-signaling.service
+
+# Create protected environment file (mode 0600)
+sudo mkdir -p /etc/kazaa
+sudo tee /etc/kazaa/signaling.env &gt; /dev/null &lt;&lt;EOF
+P2P_MULTIPLE_GROUPS_SIGNAL_HOST=127.0.0.1
+P2P_MULTIPLE_GROUPS_SIGNAL_PORT=8787
+P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL=wss://signal.yourdomain.com/signal
+P2P_MULTIPLE_GROUPS_GROUPS_JSON=[{"groupId":"engineering-team","token":"$(openssl rand -hex 32)"},{"groupId":"research-docs","token":"$(openssl rand -hex 32)"}]
+P2P_MULTIPLE_GROUPS_STUN_URL=stun:signal.yourdomain.com:3478
+P2P_MULTIPLE_GROUPS_TURN_HOST=signal.yourdomain.com:3478
+P2P_MULTIPLE_GROUPS_TURN_SECRET=YOUR_COTURN_SHARED_SECRET_HEX_HERE
+EOF
+
+sudo chmod 0600 /etc/kazaa/signaling.env
+sudo chown root:root /etc/kazaa/signaling.env</code></pre>
+
+          <h3>Step 5: Configure Nginx TLS Reverse Proxy</h3>
+          <p>Create <code>/etc/nginx/sites-available/signaling</code>:</p>
+          <pre><code class="language-nginx">server {
+    server_name signal.yourdomain.com;
+
+    location /healthz {
+        proxy_pass http://127.0.0.1:8787/healthz;
+        proxy_set_header Host $host;
+    }
+
+    location /signal {
+        proxy_pass http://127.0.0.1:8787/signal;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+}</code></pre>
+
+          <p>Enable the site and obtain Let's Encrypt certificates:</p>
+          <pre><code class="language-bash">sudo ln -s /etc/nginx/sites-available/signaling /etc/nginx/sites-enabled/
+sudo certbot --nginx -d signal.yourdomain.com</code></pre>
+
+          <h3>Step 6: Automated Certificate Hook (<code>ops/azure/renew-turn-certificate.sh</code>)</h3>
+          <p>Install the renewal hook so Coturn receives renewed TLS certificates automatically without permission conflicts:</p>
+          <pre><code class="language-bash">sudo cp ops/azure/renew-turn-certificate.sh /etc/letsencrypt/renewal-hooks/deploy/p2p-renew.sh
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/p2p-renew.sh
+sudo /etc/letsencrypt/renewal-hooks/deploy/p2p-renew.sh</code></pre>
+
+          <h3>Step 7: Azure Network Security Group (NSG) Rules</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Port Range</th>
+                  <th>Protocol</th>
+                  <th>Source</th>
+                  <th>Service</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>80</td>
+                  <td>TCP</td>
+                  <td>*</td>
+                  <td>HTTP (Certbot ACME challenge)</td>
+                </tr>
+                <tr>
+                  <td>443</td>
+                  <td>TCP</td>
+                  <td>*</td>
+                  <td>HTTPS / WSS (Nginx proxy)</td>
+                </tr>
+                <tr>
+                  <td>3478</td>
+                  <td>UDP, TCP</td>
+                  <td>*</td>
+                  <td>Coturn STUN/TURN listener</td>
+                </tr>
+                <tr>
+                  <td>5349</td>
+                  <td>TCP</td>
+                  <td>*</td>
+                  <td>Coturn TURNS listener</td>
+                </tr>
+                <tr>
+                  <td>49152:65535</td>
+                  <td>UDP</td>
+                  <td>*</td>
+                  <td>Coturn Relay UDP Port Range</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>Start and enable all services:</p>
+          <pre><code class="language-bash">sudo systemctl daemon-reload
+sudo systemctl enable --now coturn
+sudo systemctl enable --now kazaa-signaling
+sudo systemctl restart nginx</code></pre>
+        </section>
+
+        <hr>
+
+        <section id="render-paas">
+          <h2>3. Turnkey PaaS Deployment (Render.com)</h2>
+          <p>
+            For lightweight deployments without managing virtual machines, the repository includes a ready-to-use <strong>Render Blueprint</strong> in <code>render.yaml</code>.
+          </p>
+          <p>A live reference deployment is running at <a href="https://kazaa.onrender.com" target="_blank" rel="noopener noreferrer">https://kazaa.onrender.com</a>.</p>
+
+          <h3>Render Blueprint Deployment</h3>
+          <ol>
+            <li>Connect your GitHub repository to <a href="https://render.com" target="_blank" rel="noopener noreferrer">Render.com</a>.</li>
+            <li>Choose <strong>New &gt; Blueprint</strong> and select the repository.</li>
+            <li>Render parses <code>render.yaml</code> and provisions:
+              <ul>
+                <li>Service Type: <code>web</code></li>
+                <li>Node Version: <code>24.12.0</code></li>
+                <li>Build Command: <code>npm ci --omit=dev</code></li>
+                <li>Start Command: <code>npm run signal:start</code></li>
+                <li>Health Check Path: <code>/healthz</code></li>
+              </ul>
+            </li>
+            <li>Set the secret environment variables in the Render dashboard:
+              <ul>
+                <li><code>P2P_MULTIPLE_GROUPS_GROUPS_JSON</code>: Your group definitions JSON.</li>
+                <li><code>P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL</code>: <code>wss://your-render-app.onrender.com/signal</code>.</li>
+                <li><code>P2P_MULTIPLE_GROUPS_STUN_URL</code>: <code>stun:stun.relay.metered.ca:80</code>.</li>
+                <li><code>P2P_MULTIPLE_GROUPS_TURN_URL</code>: <code>turns:global.relay.metered.ca:443?transport=tcp</code>.</li>
+                <li><code>P2P_MULTIPLE_GROUPS_TURN_USERNAME</code>: Metered.ca API username.</li>
+                <li><code>P2P_MULTIPLE_GROUPS_TURN_CREDENTIAL</code>: Metered.ca API credential.</li>
+              </ul>
+            </li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="../architecture/04-storage-and-persistence.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Section</span>
+            <span class="footer-nav-title">04. Storage & Migration</span>
+          </a>
+          <a href="02-testing-and-verification.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">02. Testing Architecture</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#cloud-architecture" class="toc-link">1. Infrastructure Overview</a></li>
+          <li><a href="#azure-deployment" class="toc-link">2. Azure VM Deployment</a></li>
+          <li><a href="#render-paas" class="toc-link">3. Render.com PaaS</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

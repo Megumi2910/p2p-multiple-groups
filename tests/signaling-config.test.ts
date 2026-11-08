@@ -88,20 +88,16 @@ describe('Signaling Configuration & CLI Parser', () => {
     )
   })
 
-  it('falls back to legacy KAZAA_ROOM_ID and KAZAA_ROOM_TOKEN when groups JSON is absent', () => {
-    const legacyEnv: NodeJS.ProcessEnv = {
-      KAZAA_ROOM_ID: 'legacy-room',
-      KAZAA_ROOM_TOKEN: validToken1,
-      KAZAA_SIGNAL_PORT: '8888',
-      KAZAA_PUBLIC_SIGNAL_URL: 'ws://127.0.0.1:8888/signal'
+  it('starts cleanly with empty groups when P2P_MULTIPLE_GROUPS_GROUPS_JSON is absent or empty', () => {
+    const dynamicEnv: NodeJS.ProcessEnv = {
+      P2P_MULTIPLE_GROUPS_SIGNAL_PORT: '8888',
+      P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL: 'ws://127.0.0.1:8888/signal'
     }
 
-    const config = loadSignalingOptions(legacyEnv)
+    const config = loadSignalingOptions(dynamicEnv)
     assert.equal(config.port, 8888)
     assert.equal(config.publicSignalUrl, 'ws://127.0.0.1:8888/signal')
-    assert.equal(config.groups?.length, 1)
-    assert.equal(config.groups?.[0].groupId, 'legacy-room')
-    assert.equal(config.groups?.[0].token, validToken1)
+    assert.deepEqual(config.groups, [])
   })
 
   it('enforces TURN pairing and all-or-none validation', () => {
@@ -232,6 +228,22 @@ describe('Signaling Configuration & CLI Parser', () => {
     // 1. Read shipped templates from disk
     const renderYamlContent = await readFile(join(process.cwd(), 'render.yaml'), 'utf-8')
     const azureEnvContent = await readFile(join(process.cwd(), 'ops', 'azure', 'signaling.env.example'), 'utf-8')
+    const envExampleContent = await readFile(join(process.cwd(), '.env.example'), 'utf-8')
+    const dockerfileContent = await readFile(join(process.cwd(), 'Dockerfile'), 'utf-8')
+    const composeContent = await readFile(join(process.cwd(), 'docker-compose.yml'), 'utf-8')
+
+    // Assert .env.example, Dockerfile, and docker-compose.yml use canonical keys with zero legacy KAZAA or roomId
+    assert.ok(envExampleContent.includes('P2P_MULTIPLE_GROUPS_SIGNAL_HOST='))
+    assert.ok(!envExampleContent.includes('KAZAA_'))
+    assert.ok(!envExampleContent.includes('roomId'))
+
+    assert.ok(dockerfileContent.includes('P2P_MULTIPLE_GROUPS_SIGNAL_PORT'))
+    assert.ok(!dockerfileContent.includes('KAZAA_'))
+    assert.ok(!dockerfileContent.includes('roomId'))
+
+    assert.ok(composeContent.includes('p2p-multiple-groups-signaling'))
+    assert.ok(!composeContent.includes('KAZAA_'))
+    assert.ok(!composeContent.includes('roomId'))
 
     // Assert render.yaml uses canonical P2P_MULTIPLE_GROUPS_* keys and no deprecated short names
     assert.ok(renderYamlContent.includes('key: P2P_MULTIPLE_GROUPS_GROUPS_JSON'), 'render.yaml must use P2P_MULTIPLE_GROUPS_GROUPS_JSON')
@@ -245,6 +257,8 @@ describe('Signaling Configuration & CLI Parser', () => {
     assert.ok(!renderYamlContent.includes('key: P2P_TURN_URL'), 'render.yaml must not use short P2P_TURN_URL')
     assert.ok(!renderYamlContent.includes('key: P2P_TURN_USERNAME'), 'render.yaml must not use short P2P_TURN_USERNAME')
     assert.ok(!renderYamlContent.includes('key: P2P_TURN_CREDENTIAL'), 'render.yaml must not use short P2P_TURN_CREDENTIAL')
+    assert.ok(!renderYamlContent.includes('KAZAA_'), 'render.yaml must not contain KAZAA_')
+    assert.ok(!renderYamlContent.includes('roomId'), 'render.yaml must not contain roomId')
 
     // Assert azure template uses canonical P2P_MULTIPLE_GROUPS_* keys
     assert.ok(azureEnvContent.includes('P2P_MULTIPLE_GROUPS_SIGNAL_HOST='), 'azure template must use P2P_MULTIPLE_GROUPS_SIGNAL_HOST')
@@ -258,7 +272,8 @@ describe('Signaling Configuration & CLI Parser', () => {
     assert.ok(!/^P2P_GROUPS_JSON=/m.test(azureEnvContent), 'azure template must not use short P2P_GROUPS_JSON')
     assert.ok(!/^P2P_TURN_HOST=/m.test(azureEnvContent), 'azure template must not use short P2P_TURN_HOST')
     assert.ok(!/^P2P_TURN_SECRET=/m.test(azureEnvContent), 'azure template must not use short P2P_TURN_SECRET')
-
+    assert.ok(!azureEnvContent.includes('KAZAA_'), 'azure template must not contain KAZAA_')
+    assert.ok(!azureEnvContent.includes('roomId'), 'azure template must not contain roomId')
     // 2. Render-derived environment test
     const renderPort = await getFreePort()
     const renderEnv: NodeJS.ProcessEnv = {

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>05. Flow Control & Cryptographic Integrity — Theory — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item active"><a href="05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Distributed Theory</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>05. Flow Control & Cryptographic Integrity</span>
+        </nav>
+
+        <h1>Theory: Flow Control & Cryptographic Integrity</h1>
+        <p class="lead-paragraph">
+          This document details the sliding-window flow control algorithms, buffer backpressure management, and content-addressable SHA-256 verification pipeline implemented in <code>src/main/p2p/transfers.ts</code>.
+        </p>
+
+        <hr>
+
+        <section id="flow-control">
+          <h2>1. Flow Control & Congestion Management</h2>
+          <p>
+            WebRTC SCTP data channels provide reliable ordered transmission, but without application-level flow control, fast senders can overwhelm slow receivers, exhaust process heap memory, or trigger socket buffer overflows.
+          </p>
+          <p><code>p2p-multiple-groups</code> implements a <strong>multi-tiered sliding-window flow control architecture</strong>:</p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+flowchart TD
+    subgraph Uploader["Uploader Node"]
+        FS["Filesystem ReadStream\n(highWaterMark: 16 KiB)"]
+        HWM{"bufferedAmount > 256 KiB?"}
+        UNACK{"unackBytes > 512 KiB?"}
+        SCTP["SCTP Data Channel Send Buffer"]
+
+        FS --> HWM
+        HWM -->|Yes: stream.pause()| PAUSE["Pause Disk Read"]
+        HWM -->|No| UNACK
+        UNACK -->|Yes: await AckGate| WAIT["Wait for Window ACK"]
+        UNACK -->|No| SCTP
+    end
+
+    subgraph Receiver["Receiver Node"]
+        RECV["SCTP OnMessage Chunk"]
+        ACC["Accumulated Bytes Counter"]
+        ACK_CHK{"accumulated >= 256 KiB?"}
+        SEND_ACK["Send TransferControlMessageV2::ack"]
+        DISK["WriteStream to .tmp.transferId"]
+        HASH["Streaming SHA-256 Digest"]
+
+        RECV --> DISK
+        RECV --> HASH
+        RECV --> ACC
+        ACC --> ACK_CHK
+        ACK_CHK -->|Yes| SEND_ACK
+        ACK_CHK -->|No| RECV
+    end
+
+    SCTP -->|"16 KiB Chunks"| RECV
+    SEND_ACK -->|"Ack(acknowledgedBytes)"| UNACK
+            </div>
+          </div>
+
+          <h3>Protocol Constants</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Parameter</th>
+                  <th>Constant</th>
+                  <th>Value</th>
+                  <th>Architectural Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Chunk Size</td>
+                  <td><code>CHUNK_SIZE</code></td>
+                  <td>16 KiB (16,384 B)</td>
+                  <td>Aligned with SCTP MTU to prevent IP fragmentation.</td>
+                </tr>
+                <tr>
+                  <td>ACK Interval</td>
+                  <td><code>ACK_INTERVAL_BYTES</code></td>
+                  <td>256 KiB (262,144 B)</td>
+                  <td>Cumulative sliding-window ACK frequency; minimizes control overhead.</td>
+                </tr>
+                <tr>
+                  <td>Max Unacknowledged</td>
+                  <td><code>MAX_UNACK_BYTES</code></td>
+                  <td>512 KiB (524,288 B)</td>
+                  <td>Maximum allowed inflight unacknowledged bytes.</td>
+                </tr>
+                <tr>
+                  <td>High Water Mark</td>
+                  <td><code>HIGH_WATER_BUFFER</code></td>
+                  <td>256 KiB (262,144 B)</td>
+                  <td>SCTP buffer ceiling triggering <code>stream.pause()</code>.</td>
+                </tr>
+                <tr>
+                  <td>Low Water Mark</td>
+                  <td><code>LOW_WATER_BUFFER</code></td>
+                  <td>128 KiB (131,072 B)</td>
+                  <td>SCTP buffer floor triggering <code>stream.resume()</code>.</td>
+                </tr>
+                <tr>
+                  <td>Stall Timeout</td>
+                  <td><code>STALL_TIMEOUT_MS</code></td>
+                  <td>30,000 ms (30 s)</td>
+                  <td>Watchdog timer detecting stalled or unacknowledged streams.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>The Cumulative Sliding-Window ACK Invariant</h3>
+          <p>
+            Instead of acknowledging every 16 KiB chunk individually (which would cause a 1:1 message amplification), the receiver accumulates inbound bytes:
+          </p>
+          <div class="math-display">
+            Emit ACK ⟺ ΔBytes_recv ≥ 256 KiB
+          </div>
+          <p>The uploader tracks unacknowledged bytes:</p>
+          <div class="math-display">
+            UnackBytes = Bytes_sent - Bytes_acked
+          </div>
+          <p>
+            If <span class="math-inline">UnackBytes ≥ 512 KiB</span>, the uploader halts reading from disk until an ACK message arrives from the receiver, strictly bounding maximum inflight memory footprint.
+          </p>
+
+          <h3>Double-Tier Buffer Backpressure</h3>
+          <ol>
+            <li>When <code>channel.bufferedAmount &gt; HIGH_WATER_BUFFER</code> (256 KiB), the sender pauses the local filesystem stream (<code>stream.pause()</code>).</li>
+            <li>When the kernel flushes the SCTP socket buffer down to <code>LOW_WATER_BUFFER</code> (128 KiB), Werift fires the <code>bufferedamountlow</code> event, resuming filesystem reads (<code>stream.resume()</code>).</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="cryptographic-integrity">
+          <h2>2. Cryptographic Integrity & Content Addressability</h2>
+          <p>
+            In untrusted P2P overlays, files must never be identified solely by mutable filenames. <code>p2p-multiple-groups</code> establishes content addressability via cryptographic digests:
+          </p>
+          <div class="math-display">
+            FileID ⟹ SHA-256(FileContents)
+          </div>
+
+          <h3>On-The-Fly Streaming Verification</h3>
+          <p>During download:</p>
+          <ol>
+            <li>Incoming 16 KiB binary chunks are piped simultaneously into the disk staging stream and a Node.js cryptographic hashing stream:
+              <pre><code class="language-typescript">hash.update(chunk)</code></pre>
+            </li>
+            <li>When the uploader dispatches <code>TransferControlMessageV2::end</code>, the receiver closes the file and completes the digest:
+              <div class="math-display">ComputedDigest = hash.digest('hex')</div>
+            </li>
+            <li>The receiver compares <span class="math-inline">ComputedDigest</span> against the catalog advertisement <span class="math-inline">ExpectedDigest</span> in constant time:
+              <div class="math-display">crypto.timingSafeEqual(ComputedDigest, ExpectedDigest)</div>
+            </li>
+          </ol>
+
+          <h3>Atomic Publication & Staging Invariants</h3>
+          <p>To prevent partial, truncated, or malicious files from being exposed to the host operating system:</p>
+          <ol>
+            <li><strong>Staging File</strong>: Downloads are written strictly to a hidden temporary file:
+              <div class="math-display">Path_staging = join(targetDir, ".tmp." || transferId)</div>
+            </li>
+            <li><strong>Failure Cleanliness</strong>: If the connection breaks, the stall timer fires, or the SHA-256 digest fails verification, the staging file is unlinked immediately via <code>fs.rm()</code>.</li>
+            <li><strong>Atomic Commit</strong>: Only after verification succeeds does the engine atomically rename the staging file to the destination path using <code>fs.rename()</code>:
+              <div class="math-display">rename(Path_staging, Path_final)</div>
+              <p>In POSIX and Windows filesystems, <code>rename()</code> within the same volume is an atomic directory entry swap. External applications never observe a half-written file.</p>
+            </li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="04-nat-traversal-and-webrtc.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">04. NAT & WebRTC</span>
+          </a>
+          <a href="06-security-and-threat-model.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">06. Threat Model & Security</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#flow-control" class="toc-link">1. Flow Control</a></li>
+          <li><a href="#cryptographic-integrity" class="toc-link">2. Cryptographic Integrity</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

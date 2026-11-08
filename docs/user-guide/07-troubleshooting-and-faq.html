@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>07. Troubleshooting & FAQ — User Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          
+          <li class="nav-item"><a href="02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item active"><a href="07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>User Guide</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>07. Troubleshooting & FAQ</span>
+        </nav>
+
+        <h1>User Guide: Troubleshooting & FAQ</h1>
+        <p class="lead-paragraph">
+          This document provides resolutions for common operational errors, NAT traversal hurdles, keychain permission edge cases, and profile recovery procedures.
+        </p>
+
+        <hr>
+
+        <section id="error-code-encyclopedia">
+          <h2>1. Error Code Encyclopedia</h2>
+          <p>When an operation fails, the application returns a structured <code>ActionResult</code> containing a standardized error code:</p>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Error Code</th>
+                  <th>Trigger Condition</th>
+                  <th>Root Cause & Resolution</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>AUTH_FAILED</code></td>
+                  <td>Joining a group or authenticating signaling session.</td>
+                  <td>The provided group token does not match the token configured on the signaling server. Verify the invitation string with your server operator.</td>
+                </tr>
+                <tr>
+                  <td><code>NO_SUPERNODE</code></td>
+                  <td>Executing search queries or publishing catalogs.</td>
+                  <td>No peer in the group is currently eligible or elected as a supernode. Ensure at least one participating node checks <strong>Supernode Eligible</strong> in their network settings.</td>
+                </tr>
+                <tr>
+                  <td><code>UNREACHABLE</code></td>
+                  <td>Initiating a direct or relayed WebRTC transfer.</td>
+                  <td>ICE candidate gathering failed to establish a DTLS session. Symmetric NATs on both sides without a configured Coturn TURN relay. Check STUN/TURN configuration.</td>
+                </tr>
+                <tr>
+                  <td><code>NOT_FOUND</code></td>
+                  <td>Downloading a file from search results.</td>
+                  <td>The target peer removed the file from their library or went offline after the search result was received. Rescan search results to refresh.</td>
+                </tr>
+                <tr>
+                  <td><code>FILE_CHANGED</code></td>
+                  <td>Validating file during chunk streaming.</td>
+                  <td>The file was modified on the host peer's filesystem during active transfer (mismatched size or SHA-256). The host must rescan their library.</td>
+                </tr>
+                <tr>
+                  <td><code>DESTINATION_EXISTS</code></td>
+                  <td>Saving a downloaded file to disk.</td>
+                  <td>A file with identical name already exists in target folder and collision renaming failed. Choose a different download folder or rename the local file.</td>
+                </tr>
+                <tr>
+                  <td><code>IO_ERROR</code></td>
+                  <td>Reading or writing files from filesystem.</td>
+                  <td>Insufficient filesystem permissions or disk full. Ensure the application has read access to shared folders and write access to the download path.</td>
+                </tr>
+                <tr>
+                  <td><code>BUSY</code></td>
+                  <td>Issuing rapid group joins or policy changes.</td>
+                  <td>Another asynchronous lifecycle operation is currently active in the <code>policyQueue</code>. Await completion before issuing another state change.</td>
+                </tr>
+                <tr>
+                  <td><code>PROTOCOL_ERROR</code></td>
+                  <td>Receiving malformed wire payloads.</td>
+                  <td>Version mismatch between clients or signaling server. Ensure all participants run compatible versions of <code>p2p-multiple-groups</code>.</td>
+                </tr>
+                <tr>
+                  <td><code>FORBIDDEN</code></td>
+                  <td>Accessing file or joining unauthorized group.</td>
+                  <td>The file access grant was revoked for your group by the hosting peer, or your node lacks permission.</td>
+                </tr>
+                <tr>
+                  <td><code>INVITATION_REQUIRED</code></td>
+                  <td>Automatic re-joining upon application launch.</td>
+                  <td>The group's credentials were not saved (e.g. remembered mode was disabled) and memory cache expired. Re-paste the invitation JSON to join.</td>
+                </tr>
+                <tr>
+                  <td><code>INVALID_INPUT</code></td>
+                  <td>Submitting form data or changing settings.</td>
+                  <td>Validation failure (e.g., display name contains invalid characters, empty group ID, or attempting to toggle <code>relayOnly</code> while groups are active).</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="diagnosing-nat-turn">
+          <h2>2. Diagnosing Symmetric NAT & TURN Traversal</h2>
+          <p>When two peers behind symmetric NATs attempt to connect, direct UDP hole punching fails because symmetric NATs assign unique, unpredictable external port mappings for each destination IP/port tuple.</p>
+
+          <h3>Symptoms</h3>
+          <ul>
+            <li>Peer status remains stuck on <code>connecting</code>.</li>
+            <li>Active transfer rows fail immediately with <code>UNREACHABLE: ICE connection failed</code>.</li>
+            <li><code>links</code> count in the Active Group details panel remains at <code>0</code>.</li>
+          </ul>
+
+          <h3>Solution: Verify Coturn TURN Configuration</h3>
+          <p>Ensure the signaling server has access to a working Coturn TURN relay:</p>
+          <ol>
+            <li>Verify <code>P2P_MULTIPLE_GROUPS_TURN_HOST</code> and <code>P2P_MULTIPLE_GROUPS_TURN_SECRET</code> are properly configured in <code>.env</code>.</li>
+            <li>Inspect browser or terminal console for <code>ice-config</code> events received from the signaling server.</li>
+            <li>Test TURN reachability using <code>turnutils_uclient</code>:
+              <pre><code class="language-bash">turnutils_uclient -u testuser -w testsecret turn.yourdomain.com</code></pre>
+            </li>
+            <li>If issues persist on enterprise networks with strict UDP firewalls, ensure Coturn is listening on port <code>443</code> over TCP and TLS.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="headless-linux-keychain">
+          <h2>3. Headless Linux & Keychain Recovery</h2>
+          <p>On Linux systems without desktop environments (such as CI runners, Docker containers, or minimal server distributions), Electron's <code>safeStorage</code> API cannot connect to the Secret Service DBus daemon (<code>org.freedesktop.secrets</code>).</p>
+
+          <h3>Symptoms</h3>
+          <ul>
+            <li>Error logged: <code>[CredentialStore] Hardware keychain unavailable, falling back to memory cache</code>.</li>
+            <li>Group credentials are forgotten after closing the application.</li>
+          </ul>
+
+          <h3>Resolution</h3>
+          <ol>
+            <li><strong>Enable Session Memory Mode</strong>: Uncheck <strong>Remember invitation securely</strong> when joining groups. Credentials will remain active in memory for the duration of the session.</li>
+            <li><strong>Install Secret Service Daemon (for headless Linux)</strong>:
+              <pre><code class="language-bash"># Install gnome-keyring and dbus-x11
+sudo apt-get install -y gnome-keyring dbus-x11
+
+# Initialize DBus session before launching Electron
+eval $(dbus-launch --sh-syntax)
+echo "" | gnome-keyring-daemon --unlock</code></pre>
+            </li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="profile-corruption-recovery">
+          <h2>4. Profile Corruption Recovery & Backups</h2>
+          <p>The application maintains automatic backups of your configuration to prevent data loss.</p>
+
+          <h3>Profile File Locations</h3>
+          <ul>
+            <li><strong>Windows</strong>: <code>%APPDATA%\p2p-multiple-groups\</code></li>
+            <li><strong>macOS</strong>: <code>~/Library/Application Support/p2p-multiple-groups/</code></li>
+            <li><strong>Linux</strong>: <code>~/.config/p2p-multiple-groups/</code></li>
+          </ul>
+
+          <h3>Primary Storage Files</h3>
+          <ul>
+            <li><code>peer-state.json</code>: Active V2 state file containing your persistent <code>peerId</code>, <code>displayName</code>, joined groups, and shared library entries.</li>
+            <li><code>peer-state.v1.backup.json</code>: Automatic backup created during migration from legacy profiles.</li>
+            <li><code>credentials.enc</code>: OS-encrypted group access tokens.</li>
+          </ul>
+
+          <h3>Recovery Procedure</h3>
+          <p>If <code>peer-state.json</code> becomes corrupted (e.g. sudden power loss during write):</p>
+          <ol>
+            <li>Close the application.</li>
+            <li>Navigate to your application data directory.</li>
+            <li>If <code>peer-state.json.tmp</code> exists, delete it.</li>
+            <li>If <code>peer-state.v1.backup.json</code> exists, copy it over <code>peer-state.json</code>.</li>
+            <li>Restart the application. The store will automatically re-migrate and restore your identity and group configurations.</li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="06-signaling-and-ops.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">06. Signaling Operations</span>
+          </a>
+          <a href="../theory/01-distributed-topology.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Section →</span>
+            <span class="footer-nav-title">01. Distributed Topology</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#error-code-encyclopedia" class="toc-link">1. Error Codes</a></li>
+          <li><a href="#diagnosing-nat-turn" class="toc-link">2. Diagnosing NAT</a></li>
+          <li><a href="#headless-linux-keychain" class="toc-link">3. Headless Linux</a></li>
+          <li><a href="#profile-corruption-recovery" class="toc-link">4. Profile Recovery</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

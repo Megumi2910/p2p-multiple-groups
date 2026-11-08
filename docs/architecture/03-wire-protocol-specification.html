@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>03. Wire Protocol Specification — Architecture — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item active"><a href="03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Architecture & Internals</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>03. Wire Protocol Specification</span>
+        </nav>
+
+        <h1>Architecture: Wire Protocol Specification</h1>
+        <p class="lead-paragraph">
+          This document provides the formal wire protocol specifications for <strong>Signaling V2</strong>, <strong>Overlay Control V2</strong>, and <strong>Transfer Control V2</strong>, as implemented in <code>src/shared/p2p-wire.ts</code>.
+        </p>
+
+        <hr>
+
+        <section id="framing-and-limits">
+          <h2>1. Framing, Channel Labeling & Buffer Limits</h2>
+          <p>
+            All control messages across WebSocket and WebRTC data channels are serialized as UTF-8 encoded JSON payloads. Binary transfer chunks are transmitted as raw ArrayBuffer slices.
+          </p>
+
+          <h3>Protocol Size Constants</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Constant</th>
+                  <th>Value</th>
+                  <th>Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Max Signaling Message</td>
+                  <td><code>MAX_SIGNALING_MESSAGE_SIZE</code></td>
+                  <td>128 KiB (131,072 B)</td>
+                  <td>Bounds incoming WebSocket frame allocations.</td>
+                </tr>
+                <tr>
+                  <td>Max Control Message</td>
+                  <td><code>MAX_CONTROL_MESSAGE_SIZE</code></td>
+                  <td>16 KiB (16,384 B)</td>
+                  <td>Bounds SCTP control channel payloads.</td>
+                </tr>
+                <tr>
+                  <td>Max Transfer Control</td>
+                  <td><code>MAX_TRANSFER_CONTROL_SIZE</code></td>
+                  <td>1 KiB (1,024 B)</td>
+                  <td>Bounds transfer signaling control overhead.</td>
+                </tr>
+                <tr>
+                  <td>Max Transfer Chunk</td>
+                  <td><code>MAX_TRANSFER_CHUNK_SIZE</code></td>
+                  <td>16 KiB (16,384 B)</td>
+                  <td>Raw binary chunk MTU alignment.</td>
+                </tr>
+                <tr>
+                  <td>Max Catalog Batch</td>
+                  <td><code>MAX_CATALOG_BATCH_ENTRIES</code></td>
+                  <td>32 entries</td>
+                  <td>Bounds catalog publication batch sizes.</td>
+                </tr>
+                <tr>
+                  <td>Max Search Results</td>
+                  <td><code>MAX_SEARCH_RESULTS_ENTRIES</code></td>
+                  <td>16 entries</td>
+                  <td>Bounds incremental search results frames.</td>
+                </tr>
+                <tr>
+                  <td>Max Query Length</td>
+                  <td><code>MAX_SEARCH_QUERY_LENGTH</code></td>
+                  <td>120 characters</td>
+                  <td>Prevents regex and memory exhaustion.</td>
+                </tr>
+                <tr>
+                  <td>Freshness Lease Duration</td>
+                  <td><code>ROSTER_FRESHNESS_LEASE_MS</code></td>
+                  <td>6,000 ms</td>
+                  <td>Authoritative membership validity window.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>WebRTC Data Channel Naming Convention</h3>
+          <ol>
+            <li><strong>Multiplexed Control Channel</strong>:
+              <div class="math-display">Label = "p2p-multiple-groups-control-v2"</div>
+            </li>
+            <li><strong>Dedicated File Transfer Channel</strong>:
+              <div class="math-display">Label = "p2p-multiple-groups-file-v2:" || groupId || ":" || transferId</div>
+            </li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="signaling-protocol-v2">
+          <h2>2. Signaling Protocol V2 (WebSocket)</h2>
+          <p>Signaling coordinates initial group admission, roster broadcasts, and ICE candidate negotiation.</p>
+
+          <div class="tabs-container">
+            <div class="tab-nav">
+              <button class="tab-btn active" type="button">Client -> Server Messages</button>
+              <button class="tab-btn" type="button">Server -> Client Messages</button>
+            </div>
+            <div class="tab-pane active">
+              <h4>1. register</h4>
+              <p>Initial handshake when establishing the physical WebSocket link:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'register',
+  peerId: string,         // UUIDv4
+  displayName: string     // 1-32 characters
+}</code></pre>
+
+              <h4>2. join-group</h4>
+              <p>Join a specific virtual group on this signaling server:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'join-group',
+  groupId: string,        // 1-32 chars alphanumeric/dash/underscore
+  token: string,          // Secret access token
+  supernodeEligible: boolean
+}</code></pre>
+
+              <h4>3. leave-group</h4>
+              <p>Gracefully unregister from a virtual group:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'leave-group',
+  groupId: string
+}</code></pre>
+
+              <h4>4. eligibility</h4>
+              <p>Update election candidate status in an active group:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'eligibility',
+  groupId: string,
+  supernodeEligible: boolean
+}</code></pre>
+
+              <h4>5. signal</h4>
+              <p>Exchange SDP offers, answers, or ICE candidates targeted to a specific peer:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'signal',
+  groupId: string,
+  targetPeerId: string,
+  targetSessionId: string,
+  connectionId: string,
+  kind: 'request-offer' | 'offer' | 'answer' | 'candidate',
+  payload: unknown
+}</code></pre>
+            </div>
+            <div class="tab-pane">
+              <h4>1. welcome</h4>
+              <p>Sent immediately upon successful WebSocket upgrade and registration:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'welcome',
+  sessionId: string,      // Transient connection UUID
+  iceConfig: SignalingIceConfig
+}</code></pre>
+
+              <h4>2. group-joined</h4>
+              <p>Confirmed admission to a virtual group:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'group-joined',
+  groupId: string,
+  membershipId: string,   // Ephemeral membership UUID
+  epoch: string,          // Server session UUID
+  revision: number,       // Monotonic revision counter
+  peers: SignalingRosterPeerV2[]
+}</code></pre>
+
+              <h4>3. roster</h4>
+              <p>Authoritative group membership broadcast (triggers supernode re-election):</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'roster',
+  groupId: string,
+  epoch: string,
+  revision: number,
+  peers: Array&lt;{
+    peerId: string,
+    sessionId: string,
+    membershipId: string,
+    joinOrder: number,
+    displayName: string,
+    supernodeEligible: boolean
+  }&gt;
+}</code></pre>
+
+              <h4>4. error</h4>
+              <p>Authentication failure or invalid operation:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'error',
+  groupId?: string,
+  code: string,           // e.g. "AUTH_FAILED", "INVALID_INPUT"
+  message: string
+}</code></pre>
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="overlay-control-v2">
+          <h2>3. Overlay Control Protocol V2 (SCTP Data Channel)</h2>
+          <p>Control messages flow directly between peers over <code>p2p-multiple-groups-control-v2</code>.</p>
+
+          <div class="tabs-container">
+            <div class="tab-nav">
+              <button class="tab-btn active" type="button">Heartbeat</button>
+              <button class="tab-btn" type="button">Catalog Index</button>
+              <button class="tab-btn" type="button">Search Routing</button>
+            </div>
+            <div class="tab-pane active">
+              <h4>ping / pong</h4>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'ping' | 'pong',
+  groupId: string,
+  epoch: string,
+  revision: number,
+  senderMembershipId: string
+}</code></pre>
+            </div>
+            <div class="tab-pane">
+              <h4>catalog-begin</h4>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'catalog-begin',
+  groupId: string,
+  epoch: string,
+  revision: number,
+  senderMembershipId: string,
+  generation: number,
+  count: number           // Total expected files
+}</code></pre>
+
+              <h4>catalog-batch</h4>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'catalog-batch',
+  groupId: string,
+  epoch: string,
+  revision: number,
+  senderMembershipId: string,
+  generation: number,
+  entries: Array&lt;{
+    fileId: string,
+    name: string,
+    size: number,
+    sha256: string,
+    groupKeys?: string[]
+  }&gt;
+}</code></pre>
+
+              <h4>catalog-end</h4>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'catalog-end',
+  groupId: string,
+  epoch: string,
+  revision: number,
+  senderMembershipId: string,
+  generation: number
+}</code></pre>
+
+              <h4>catalog-ack</h4>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'catalog-ack',
+  groupId: string,
+  epoch: string,
+  revision: number,
+  senderMembershipId: string,
+  generation: number
+}</code></pre>
+            </div>
+            <div class="tab-pane">
+              <h4>search</h4>
+              <p>Dispatched by leaf to primary supernode:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'search',
+  groupId: string,
+  epoch: string,
+  revision: number,
+  senderMembershipId: string,
+  queryId: string,        // UUID
+  query: string,          // &lt;= 120 chars
+  ttl: number             // Initial hop limit
+}</code></pre>
+
+              <h4>search-forward</h4>
+              <p>Forwarded by primary supernode to standby supernode:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'search-forward',
+  groupId: string,
+  epoch: string,
+  revision: number,
+  senderMembershipId: string,
+  queryId: string,
+  query: string,
+  originPeerId: string,
+  originMembershipId: string,
+  ttl: number
+}</code></pre>
+
+              <h4>search-results</h4>
+              <p>Batched matches returned to querying peer:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'search-results',
+  groupId: string,
+  epoch: string,
+  revision: number,
+  senderMembershipId: string,
+  responderPeerId: string,
+  responderMembershipId: string,
+  queryId: string,
+  originPeerId: string,
+  originMembershipId: string,
+  entries: Array&lt;{
+    ownerPeerId: string,
+    ownerSessionId: string,
+    ownerMembershipId: string,
+    file: { fileId: string, name: string, size: number, sha256: string }
+  }&gt;,
+  done: boolean,
+  partial: boolean
+}</code></pre>
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="transfer-control-v2">
+          <h2>4. Transfer Control Protocol V2</h2>
+          <p>Transfer control messages govern individual file streams over dedicated data channels (<code>p2p-multiple-groups-file-v2:&lt;groupId&gt;:&lt;transferId&gt;</code>):</p>
+
+          <pre><code class="language-typescript">export type TransferControlMessageV2 =
+  | {
+      v: 2,
+      type: 'request',
+      groupId: string,
+      transferId: string,
+      epoch: string,
+      requesterMembershipId: string,
+      ownerMembershipId: string,
+      fileId: string,
+      size: number,
+      sha256: string
+    }
+  | {
+      v: 2,
+      type: 'accepted',
+      groupId: string,
+      transferId: string,
+      epoch: string,
+      requesterMembershipId: string,
+      ownerMembershipId: string,
+      fileId: string,
+      size: number,
+      sha256: string
+    }
+  | {
+      v: 2,
+      type: 'ack',
+      groupId: string,
+      transferId: string,
+      receivedBytes: number
+    }
+  | {
+      v: 2,
+      type: 'end',
+      groupId: string,
+      transferId: string,
+      size: number,
+      sha256: string
+    }
+  | {
+      v: 2,
+      type: 'verified',
+      groupId: string,
+      transferId: string
+    }
+  | {
+      v: 2,
+      type: 'cancel',
+      groupId: string,
+      transferId: string
+    }
+  | {
+      v: 2,
+      type: 'error',
+      groupId: string,
+      transferId: string,
+      code: string
+    }</code></pre>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="02-peer-engine-lifecycle.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">02. PeerEngine Lifecycle</span>
+          </a>
+          <a href="04-storage-and-persistence.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">04. Storage & Migration</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#framing-and-limits" class="toc-link">1. Framing & Limits</a></li>
+          <li><a href="#signaling-protocol-v2" class="toc-link">2. Signaling Protocol V2</a></li>
+          <li><a href="#overlay-control-v2" class="toc-link">3. Overlay Control V2</a></li>
+          <li><a href="#transfer-control-v2" class="toc-link">4. Transfer Control V2</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

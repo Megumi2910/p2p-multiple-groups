@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import type { P2pFileMetadata, P2pSearchResult } from '../../shared/p2p.ts'
+import type { P2pFileMetadata, MultiGroupSearchResult, GroupKey } from '../../shared/p2p.ts'
 import {
   MAX_SEARCH_RESULTS_ENTRIES,
-  type OverlayCatalogBatchMessage,
-  type OverlayCatalogBeginMessage,
-  type OverlayCatalogEndMessage,
-  type WireSearchResultEntry
+  type OverlayCatalogBatchMessageV2,
+  type OverlayCatalogBeginMessageV2,
+  type OverlayCatalogEndMessageV2,
+  type WireSearchResultEntryV2
 } from '../../shared/p2p-wire.ts'
 
 export const MAX_CACHED_QUERIES = 256
@@ -28,47 +28,43 @@ interface StagedCatalogue {
   timer: NodeJS.Timeout
 }
 
-interface CachedQuery {
-  originPeerId: string
-  queryId: string
-  timestamp: number
+function normalizeQuery(raw: string): string[] {
+  return raw
+    .normalize('NFKC')
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length > 0)
 }
 
-export function normalizeQuery(query: string): string[] {
-  const normalized = query.normalize('NFKC').toLowerCase().trim()
-  return normalized.split(/\s+/).filter((t) => t.length > 0)
-}
-
-export function matchesQuery(fileName: string, tokens: readonly string[]): boolean {
-  if (tokens.length === 0) return false
-  const normalizedName = fileName.normalize('NFKC').toLowerCase()
-  return tokens.every((token) => normalizedName.includes(token))
+function matchesQuery(fileName: string, queryTokens: string[]): boolean {
+  if (queryTokens.length === 0) return false
+  const lowerName = fileName.normalize('NFKC').toLowerCase()
+  return queryTokens.every((token) => lowerName.includes(token))
 }
 
 export class SupernodeIndexManager {
   private readonly ownerCatalogues = new Map<string, OwnerCatalogue>() // peerId -> OwnerCatalogue
   private readonly staging = new Map<string, StagedCatalogue>() // peerId -> StagedCatalogue
-  private readonly queryCache = new Map<string, CachedQuery>() // "originPeerId:queryId" -> CachedQuery
-
-  constructor() {}
+  private readonly queryCache = new Map<string, { originPeerId: string; queryId: string; timestamp: number }>()
 
   handleCatalogBegin(
     ownerPeerId: string,
     ownerSessionId: string,
-    msg: OverlayCatalogBeginMessage,
+    msg: OverlayCatalogBeginMessageV2,
     ownerMembershipId?: string
   ): boolean {
-    const existing = this.staging.get(ownerPeerId)
-    if (existing) {
-      clearTimeout(existing.timer)
+    const existingStaged = this.staging.get(ownerPeerId)
+    if (existingStaged) {
+      clearTimeout(existingStaged.timer)
       this.staging.delete(ownerPeerId)
     }
 
     if (msg.count === 0) {
-      // Withdrawing all files
       this.ownerCatalogues.set(ownerPeerId, {
         peerId: ownerPeerId,
         sessionId: ownerSessionId,
+        membershipId: ownerMembershipId || msg.senderMembershipId || ownerSessionId,
         generation: msg.generation,
         entries: []
       })
@@ -91,11 +87,9 @@ export class SupernodeIndexManager {
 
   handleCatalogBatch(
     ownerPeerId: string,
-    arg2: string | OverlayCatalogBatchMessage,
-    arg3?: OverlayCatalogBatchMessage
+    _ownerSessionId: string,
+    msg: OverlayCatalogBatchMessageV2
   ): void {
-    const msg = (typeof arg2 === 'string' ? arg3 : arg2) as OverlayCatalogBatchMessage
-    if (!msg) return
     const staged = this.staging.get(ownerPeerId)
     if (!staged || staged.generation !== msg.generation) {
       return
@@ -110,7 +104,7 @@ export class SupernodeIndexManager {
   handleCatalogEnd(
     ownerPeerId: string,
     ownerSessionId: string,
-    msg: OverlayCatalogEndMessage,
+    msg: OverlayCatalogEndMessageV2,
     ownerMembershipId?: string
   ): boolean {
     const staged = this.staging.get(ownerPeerId)
@@ -122,14 +116,10 @@ export class SupernodeIndexManager {
     this.staging.delete(ownerPeerId)
 
     if (staged.entries.length !== staged.count) {
-      // Partial / mismatched batch count rejected
       return false
     }
 
-    const senderMembershipId =
-      msg && typeof msg === 'object' && 'senderMembershipId' in msg && typeof (msg as Record<string, unknown>).senderMembershipId === 'string'
-        ? ((msg as Record<string, unknown>).senderMembershipId as string)
-        : ownerSessionId
+    const senderMembershipId = ownerMembershipId || msg.senderMembershipId || ownerSessionId
 
     this.ownerCatalogues.set(ownerPeerId, {
       peerId: ownerPeerId,
@@ -172,13 +162,12 @@ export class SupernodeIndexManager {
     originPeerId: string,
     queryId: string
   ): {
-    entries: WireSearchResultEntry[]
+    entries: WireSearchResultEntryV2[]
     isNewQuery: boolean
   } {
     const cacheKey = `${originPeerId}:${queryId}`
     const now = Date.now()
 
-    // Clean expired query cache
     for (const [key, item] of this.queryCache.entries()) {
       if (now - item.timestamp > QUERY_CACHE_TTL_MS) {
         this.queryCache.delete(key)
@@ -205,7 +194,7 @@ export class SupernodeIndexManager {
       return { entries: [], isNewQuery: true }
     }
 
-    const matchedEntries: WireSearchResultEntry[] = []
+    const matchedEntries: WireSearchResultEntryV2[] = []
 
     for (const catalogue of this.ownerCatalogues.values()) {
       for (const file of catalogue.entries) {
@@ -215,7 +204,7 @@ export class SupernodeIndexManager {
             ownerSessionId: catalogue.sessionId,
             ownerMembershipId: catalogue.membershipId || catalogue.sessionId,
             file
-          } as unknown as WireSearchResultEntry)
+          })
           if (matchedEntries.length >= MAX_SEARCH_RESULTS) {
             return { entries: matchedEntries, isNewQuery: true }
           }
@@ -226,9 +215,9 @@ export class SupernodeIndexManager {
     return { entries: matchedEntries, isNewQuery: true }
   }
 
-  splitResultBatches(allEntries: WireSearchResultEntry[]): WireSearchResultEntry[][] {
+  splitResultBatches(allEntries: WireSearchResultEntryV2[]): WireSearchResultEntryV2[][] {
     if (allEntries.length === 0) return []
-    const batches: WireSearchResultEntry[][] = []
+    const batches: WireSearchResultEntryV2[][] = []
 
     for (let i = 0; i < allEntries.length; i += MAX_SEARCH_RESULTS_ENTRIES) {
       batches.push(allEntries.slice(i, i + MAX_SEARCH_RESULTS_ENTRIES))
@@ -248,8 +237,8 @@ export class SupernodeIndexManager {
 }
 
 export class SearchResultsTracker {
-  private readonly resultsMap = new Map<string, P2pSearchResult>() // resultId -> P2pSearchResult
-  private readonly seenFiles = new Set<string>() // "ownerSessionId:fileId"
+  private readonly resultsMap = new Map<string, MultiGroupSearchResult>()
+  private readonly seenFiles = new Set<string>()
   private activeQueryId: string | null = null
   private activeQueryText = ''
 
@@ -262,8 +251,9 @@ export class SearchResultsTracker {
 
   addBatch(
     queryId: string,
-    entries: readonly WireSearchResultEntry[],
-    ownerNames: (peerId: string) => string
+    entries: readonly WireSearchResultEntryV2[],
+    ownerNames: (peerId: string) => string,
+    groupKey: GroupKey = ''
   ): boolean {
     if (this.activeQueryId !== queryId) {
       return false
@@ -278,18 +268,16 @@ export class SearchResultsTracker {
       if (!this.seenFiles.has(dedupKey)) {
         this.seenFiles.add(dedupKey)
         const resultId = randomUUID()
-        const ownerMembershipId =
-          'ownerMembershipId' in entry && typeof (entry as Record<string, unknown>).ownerMembershipId === 'string'
-            ? ((entry as Record<string, unknown>).ownerMembershipId as string)
-            : entry.ownerSessionId
+        const ownerMembershipId = entry.ownerMembershipId || ''
         this.resultsMap.set(resultId, {
           resultId,
+          groupKey,
           ownerPeerId: entry.ownerPeerId,
           ownerSessionId: entry.ownerSessionId,
           ownerMembershipId,
           ownerName: ownerNames(entry.ownerPeerId) || `Peer-${entry.ownerPeerId.slice(0, 6)}`,
           file: entry.file
-        } as unknown as P2pSearchResult)
+        })
         addedAny = true
       }
     }
@@ -297,20 +285,23 @@ export class SearchResultsTracker {
     return addedAny
   }
 
-  getResults(): P2pSearchResult[] {
+  getResults(): MultiGroupSearchResult[] {
     return Array.from(this.resultsMap.values())
   }
 
-  resolveResult(resultId: string): (P2pSearchResult & { ownerMembershipId?: string }) | undefined {
-    return this.resultsMap.get(resultId) as (P2pSearchResult & { ownerMembershipId?: string }) | undefined
+  resolveResult(resultId: string): MultiGroupSearchResult | undefined {
+    return this.resultsMap.get(resultId)
   }
 
   pruneExpiredOwners(validIncarnations: Map<string, { sessionId: string; membershipId: string }>): boolean {
     let pruned = false
     for (const [resultId, result] of this.resultsMap.entries()) {
       const valid = validIncarnations.get(result.ownerPeerId)
-      const resMembership = 'ownerMembershipId' in result ? (result as any).ownerMembershipId : result.ownerSessionId
-      if (!valid || valid.sessionId !== result.ownerSessionId || (valid.membershipId && resMembership && valid.membershipId !== resMembership)) {
+      if (
+        !valid ||
+        valid.sessionId !== result.ownerSessionId ||
+        (valid.membershipId && result.ownerMembershipId && valid.membershipId !== result.ownerMembershipId)
+      ) {
         this.resultsMap.delete(resultId)
         this.seenFiles.delete(`${result.ownerSessionId}:${result.file.fileId}`)
         pruned = true
@@ -318,6 +309,7 @@ export class SearchResultsTracker {
     }
     return pruned
   }
+
   clear(): void {
     this.activeQueryId = null
     this.activeQueryText = ''

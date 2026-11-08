@@ -12,7 +12,7 @@ import { usePeerState } from './features/network/usePeerState.ts'
 type View = 'home' | 'search' | 'library' | 'transfers' | 'network' | 'appearance'
 
 function getBridge() {
-  return window.p2p || window.kazaa
+  return window.p2p
 }
 
 export default function App(): React.ReactElement {
@@ -41,8 +41,8 @@ export default function App(): React.ReactElement {
     let isSubscribed = true
     const b = getBridge()
 
-    if (!b || typeof b.getTheme !== 'function') {
-      setInitError('p2p-multiple-groups initialization failed. Please relaunch the application.')
+    if (!b) {
+      setInitError('Shell bridge unavailable. Ensure preload script loaded properly.')
       setIsThemeLoading(false)
       return
     }
@@ -54,10 +54,10 @@ export default function App(): React.ReactElement {
           setIsThemeLoading(false)
         }
       })
-      .catch((err) => {
-        console.error('[App] Failed to read initial theme:', err)
+      .catch((error) => {
+        console.error('[renderer] Failed to load initial theme:', error)
         if (isSubscribed) {
-          setInitError('p2p-multiple-groups initialization failed. Please relaunch the application.')
+          setThemeErrorMessage('Failed to load appearance preferences')
           setIsThemeLoading(false)
         }
       })
@@ -68,12 +68,12 @@ export default function App(): React.ReactElement {
   }, [])
 
   const openPalette = useCallback((): void => {
-    if (document.activeElement instanceof HTMLElement) {
-      lastActiveElementRef.current = document.activeElement
+    if (!isPaletteOpen) {
+      lastActiveElementRef.current = document.activeElement as HTMLElement | null
     }
-    setOpenRequest((prev) => prev + 1)
+    setOpenRequest((c) => c + 1)
     setIsPaletteOpen(true)
-  }, [])
+  }, [isPaletteOpen])
 
   const navigateTo = useCallback((view: View): void => {
     setCurrentView(view)
@@ -86,18 +86,17 @@ export default function App(): React.ReactElement {
   // Subscribe to native menu commands
   useEffect(() => {
     const b = getBridge()
-    if (!b || typeof b.onCommand !== 'function') {
-      return
-    }
+    if (!b) return
 
     const unsubscribe = b.onCommand((command: ShellCommand) => {
-      if (command === 'open-command-palette') {
-        openPalette()
-      } else if (command === 'open-appearance') {
-        if (!isSavingThemeRef.current) {
+      switch (command) {
+        case 'open-command-palette':
+          openPalette()
+          break
+        case 'open-appearance':
           setIsPaletteOpen(false)
           navigateTo('appearance')
-        }
+          break
       }
     })
 
@@ -106,11 +105,29 @@ export default function App(): React.ReactElement {
     }
   }, [openPalette, navigateTo])
 
+  // Keyboard shortcut listener for Command Palette (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      const modifier = isMac ? event.metaKey : event.ctrlKey
+      if (modifier && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        openPalette()
+      }
+      if (modifier && event.key === ',') {
+        event.preventDefault()
+        setIsPaletteOpen(false)
+        navigateTo('appearance')
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isMac, openPalette, navigateTo])
+
   const persistTheme = async (theme: ThemePreference): Promise<void> => {
     const b = getBridge()
-    if (!b) {
-      throw new Error('Bridge unavailable')
-    }
+    if (!b || isSavingThemeRef.current) return
+
     isSavingThemeRef.current = true
     setIsThemeSaving(true)
     setThemeErrorMessage(null)
@@ -118,21 +135,23 @@ export default function App(): React.ReactElement {
     try {
       const savedTheme = await b.setTheme(theme)
       setCurrentTheme(savedTheme)
-      setIsThemeSaving(false)
+    } catch (error) {
+      console.error('[renderer] Failed to save theme:', error)
+      setThemeErrorMessage('Failed to save appearance settings. Please try again.')
+      throw error
+    } finally {
       isSavingThemeRef.current = false
-    } catch (err) {
       setIsThemeSaving(false)
-      isSavingThemeRef.current = false
-      setThemeErrorMessage('Could not save appearance. Your previous setting is unchanged.')
-      throw err
     }
   }
 
   const handlePaletteClose = (): void => {
     setIsPaletteOpen(false)
     requestAnimationFrame(() => {
-      if (lastActiveElementRef.current && lastActiveElementRef.current.isConnected) {
+      if (lastActiveElementRef.current && lastActiveElementRef.current.isConnected && typeof lastActiveElementRef.current.focus === 'function') {
         lastActiveElementRef.current.focus()
+      } else {
+        workspaceHeadingRef.current?.focus()
       }
     })
   }
@@ -141,48 +160,44 @@ export default function App(): React.ReactElement {
     switch (id) {
       case 'navigate-home':
         navigateTo('home')
-        return
+        break
       case 'navigate-search':
         navigateTo('search')
-        return
+        break
       case 'navigate-library':
         navigateTo('library')
-        return
+        break
       case 'navigate-transfers':
         navigateTo('transfers')
-        return
+        break
       case 'navigate-network':
         navigateTo('network')
-        return
+        break
       case 'open-appearance':
         navigateTo('appearance')
-        return
+        break
       case 'theme-system':
         await persistTheme('system')
-        return
+        break
       case 'theme-light':
         await persistTheme('light')
-        return
+        break
       case 'theme-dark':
         await persistTheme('dark')
-        return
+        break
     }
   }
 
   if (initError) {
     return (
-      <div className="launch-error-container" role="alert">
-        <h1 className="launch-error-title">Initialization Error</h1>
-        <p className="launch-error-msg">{initError}</p>
+      <div className="fatal-error-screen" role="alert">
+        <h1 className="fatal-error-title">Startup Error</h1>
+        <p className="fatal-error-message">{initError}</p>
       </div>
     )
   }
 
-  const isNetworkConnected =
-    peer.state.groups.some((g) => g.network.status === 'connected') ||
-    peer.state.network.status === 'connected' ||
-    peer.state.network.status === 'degraded' ||
-    peer.state.network.status === 'recovering'
+  const isNetworkConnected = peer.state.groups.some((g) => g.network.status === 'connected')
 
   const activeTransfersCount = peer.state.transfers.filter(
     (t) => t.state === 'transferring' || t.state === 'connecting' || t.state === 'verifying'
@@ -261,8 +276,7 @@ export default function App(): React.ReactElement {
                 className="action-row-btn"
                 onClick={() => navigateTo('search')}
               >
-                <span className="action-row-label">Search files</span>
-                <span className="shortcut-badge">Browse</span>
+                <span className="action-row-label">Search Files</span>
               </button>
 
               <button
@@ -270,8 +284,18 @@ export default function App(): React.ReactElement {
                 className="action-row-btn"
                 onClick={() => navigateTo('library')}
               >
-                <span className="action-row-label">Share files</span>
-                <span className="shortcut-badge">Library</span>
+                <span className="action-row-label">Library</span>
+              </button>
+
+              <button
+                type="button"
+                className="action-row-btn"
+                onClick={() => navigateTo('transfers')}
+              >
+                <span className="action-row-label">Transfers</span>
+                {activeTransfersCount > 0 && (
+                  <span className="badge badge-source-count">{activeTransfersCount} active</span>
+                )}
               </button>
 
               <button
@@ -279,17 +303,19 @@ export default function App(): React.ReactElement {
                 className="action-row-btn"
                 onClick={() => navigateTo('network')}
               >
-                <span className="action-row-label">Manage groups</span>
-                <span className="shortcut-badge">{isNetworkConnected ? `${peer.state.groups.length} Active` : 'Offline'}</span>
+                <span className="action-row-label">Network & Groups</span>
+                <span className={`badge ${isNetworkConnected ? 'badge-connected' : 'badge-connecting'}`}>
+                  {peer.state.groups.length > 0 ? `${peer.state.groups.length} Groups` : 'Offline'}
+                </span>
               </button>
 
               <button
                 type="button"
                 className="action-row-btn"
                 onClick={openPalette}
-                aria-label={`Open commands (${modifierLabel}+K)`}
+                aria-label={`Command Palette (${modifierLabel}+K)`}
               >
-                <span className="action-row-label">Open commands</span>
+                <span className="action-row-label">Command Palette</span>
                 <span className="shortcut-badge">{modifierLabel}+K</span>
               </button>
 
@@ -312,7 +338,7 @@ export default function App(): React.ReactElement {
             groups={peer.state.groups}
             selectedGroupKey={peer.selectedGroupKey}
             onSelectGroup={peer.setSelectedGroupKey}
-            search={peer.state.search}
+            search={peer.state.groups.find((g) => g.groupKey === peer.selectedGroupKey)?.search}
             isNetworkConnected={isNetworkConnected}
             onSearch={peer.search}
             onDownload={peer.download}
@@ -338,9 +364,14 @@ export default function App(): React.ReactElement {
             transfers={peer.state.transfers}
             groups={peer.state.groups}
             onCancelTransfer={peer.cancelTransfer}
-            onSearchAgain={(filename) => {
+            onSearchAgain={(filename, groupKey) => {
               navigateTo('search')
-              void peer.search(filename)
+              if (groupKey) {
+                peer.setSelectedGroupKey(groupKey)
+                void peer.search(groupKey, filename)
+              } else if (peer.selectedGroupKey) {
+                void peer.search(peer.selectedGroupKey, filename)
+              }
             }}
           />
         )}
@@ -352,17 +383,16 @@ export default function App(): React.ReactElement {
             selectedGroupKey={peer.selectedGroupKey}
             onSelectGroup={peer.setSelectedGroupKey}
             identity={peer.state.identity}
+            defaultSignalingUrl={peer.state.defaultSignalingUrl}
+            onCreateGroup={peer.createGroup}
             onJoinGroup={peer.joinGroup}
             onLeaveGroup={peer.leaveGroup}
+            onRotateGroupInvite={peer.rotateGroupInvite}
+            onRemoveGroupMember={peer.removeGroupMember}
             onSetGroupAutoJoin={peer.setGroupAutoJoin}
-            onSetGroupEligibility={peer.setSupernodeEligible}
+            onSetGroupEligibility={peer.setGroupEligibility}
             onForgetGroup={peer.forgetGroup}
             onDisconnectAll={peer.disconnectAll}
-            network={peer.state.network}
-            recoveryEvents={peer.state.recoveryEvents}
-            onConnect={peer.connect}
-            onDisconnect={peer.disconnect}
-            onSetEligibility={peer.setSupernodeEligible}
           />
         )}
 

@@ -1,37 +1,36 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IPC_CHANNELS,
-  type KazaaApi,
   type P2pApi,
   type ShellCommand,
   type ThemePreference
 } from '../shared/contracts.ts'
 import type {
   ActionResult,
-  ConnectOptions,
+  CreateGroupOptions,
   GroupKey,
   JoinGroupOptions,
-  KazaaP2pApi,
   MultiGroupP2pState,
-  P2pMultipleGroupsP2pApi,
-  P2pState
+  P2pMultipleGroupsP2pApi
 } from '../shared/p2p.ts'
 
-const p2pApi: P2pMultipleGroupsP2pApi & KazaaP2pApi = {
-  getState(): Promise<any> {
+const p2pApi: P2pMultipleGroupsP2pApi = {
+  getState(): Promise<MultiGroupP2pState> {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_GET_STATE)
   },
 
-  onState(listener: (state: any) => void): () => void {
-    const wrapped = (_event: IpcRendererEvent, state: any): void => {
+  onState(listener: (state: MultiGroupP2pState) => void): () => void {
+    const wrapped = (_event: IpcRendererEvent, state: MultiGroupP2pState): void => {
       listener(state)
     }
     ipcRenderer.on(IPC_CHANNELS.P2P_V2_STATE, wrapped)
-    ipcRenderer.on(IPC_CHANNELS.P2P_STATE, wrapped)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.P2P_V2_STATE, wrapped)
-      ipcRenderer.removeListener(IPC_CHANNELS.P2P_STATE, wrapped)
     }
+  },
+
+  createGroup(options: CreateGroupOptions): Promise<ActionResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_CREATE_GROUP, options)
   },
 
   joinGroup(options: JoinGroupOptions): Promise<ActionResult> {
@@ -46,8 +45,20 @@ const p2pApi: P2pMultipleGroupsP2pApi & KazaaP2pApi = {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_LEAVE_GROUP, groupKey)
   },
 
+  rotateGroupInvite(groupKey: GroupKey): Promise<ActionResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_ROTATE_GROUP_INVITE, groupKey)
+  },
+
+  removeGroupMember(groupKey: GroupKey, targetPeerId: string): Promise<ActionResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_REMOVE_GROUP_MEMBER, groupKey, targetPeerId)
+  },
+
   setGroupAutoJoin(groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult> {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_SET_GROUP_AUTO_JOIN, groupKey, autoJoin)
+  },
+
+  setGroupEligibility(groupKey: GroupKey, eligible: boolean): Promise<ActionResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_SET_GROUP_ELIGIBILITY, groupKey, eligible)
   },
 
   forgetGroup(groupKey: GroupKey): Promise<ActionResult> {
@@ -58,15 +69,8 @@ const p2pApi: P2pMultipleGroupsP2pApi & KazaaP2pApi = {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_DISCONNECT_ALL)
   },
 
-  setSupernodeEligible(arg1: unknown, arg2?: unknown): Promise<ActionResult> {
-    if (typeof arg1 === 'string' && typeof arg2 === 'boolean') {
-      return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_SET_GROUP_ELIGIBILITY, arg1, arg2)
-    }
-    return ipcRenderer.invoke(IPC_CHANNELS.P2P_ELIGIBILITY, Boolean(arg1))
-  },
-
-  addFiles(groupKey?: GroupKey | null): Promise<ActionResult> {
-    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_ADD_FILES, groupKey || null)
+  addFiles(groupKey: GroupKey | null): Promise<ActionResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_ADD_FILES, groupKey)
   },
 
   rescanLibrary(): Promise<ActionResult> {
@@ -81,35 +85,20 @@ const p2pApi: P2pMultipleGroupsP2pApi & KazaaP2pApi = {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_SET_FILE_GROUPS, fileId, groupKeys)
   },
 
-  search(arg1: string, arg2?: string): Promise<ActionResult> {
-    if (arg2 !== undefined) {
-      return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_SEARCH, arg1, arg2)
-    }
-    return ipcRenderer.invoke(IPC_CHANNELS.P2P_SEARCH, arg1)
+  search(groupKey: GroupKey, query: string): Promise<ActionResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_SEARCH, groupKey, query)
   },
 
-  download(arg1: string, arg2?: string): Promise<ActionResult> {
-    if (arg2 !== undefined) {
-      return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_DOWNLOAD, arg1, arg2)
-    }
-    return ipcRenderer.invoke(IPC_CHANNELS.P2P_DOWNLOAD, arg1)
+  download(groupKey: GroupKey, resultId: string): Promise<ActionResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_DOWNLOAD, groupKey, resultId)
   },
 
   cancelTransfer(transferId: string): Promise<ActionResult> {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_CANCEL_TRANSFER, transferId)
-  },
-
-  // Legacy compatibility methods
-  connect(options: ConnectOptions): Promise<ActionResult> {
-    return ipcRenderer.invoke(IPC_CHANNELS.P2P_CONNECT, options)
-  },
-
-  disconnect(): Promise<ActionResult> {
-    return ipcRenderer.invoke(IPC_CHANNELS.P2P_DISCONNECT)
   }
 }
 
-const api: P2pApi & KazaaApi = {
+const api: P2pApi = {
   isMac: process.platform === 'darwin',
   getTheme(): Promise<ThemePreference> {
     return ipcRenderer.invoke(IPC_CHANNELS.THEME_GET)
@@ -129,6 +118,4 @@ const api: P2pApi & KazaaApi = {
   p2p: p2pApi
 }
 
-// Expose primary window.p2p and compatibility facade window.kazaa
 contextBridge.exposeInMainWorld('p2p', api)
-contextBridge.exposeInMainWorld('kazaa', api)

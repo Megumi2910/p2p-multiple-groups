@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto'
-import type { SignalingRosterPeer } from '../../shared/p2p-wire.ts'
+import type { SignalingRosterPeerV2 } from '../../shared/p2p-wire.ts'
 import type { P2pRecoveryEvent, P2pRecoveryEventType, P2pRole } from '../../shared/p2p.ts'
 
 export interface ElectionResult {
-  electedSupernodes: SignalingRosterPeer[]
-  eligibleCandidates: SignalingRosterPeer[]
+  electedSupernodes: SignalingRosterPeerV2[]
+  eligibleCandidates: SignalingRosterPeerV2[]
 }
 
-export function electSupernodes(peers: readonly SignalingRosterPeer[]): ElectionResult {
+export function electSupernodes(peers: readonly SignalingRosterPeerV2[]): ElectionResult {
   const eligible = peers.filter((p) => p.supernodeEligible)
   // Sort ascending by joinOrder, then lexical peerId
   eligible.sort((a, b) => {
@@ -25,15 +25,15 @@ export function electSupernodes(peers: readonly SignalingRosterPeer[]): Election
 
 export function calculatePeerRole(
   peerId: string,
-  electedSupernodes: readonly SignalingRosterPeer[]
+  electedSupernodes: readonly SignalingRosterPeerV2[]
 ): P2pRole {
   return electedSupernodes.some((s) => s.peerId === peerId) ? 'supernode' : 'ordinary'
 }
 
 export function selectSupernodesForPeer(
   peerId: string,
-  electedSupernodes: readonly SignalingRosterPeer[]
-): { primary: SignalingRosterPeer | null; standby: SignalingRosterPeer | null } {
+  electedSupernodes: readonly SignalingRosterPeerV2[]
+): { primary: SignalingRosterPeerV2 | null; standby: SignalingRosterPeerV2 | null } {
   if (electedSupernodes.length === 0) {
     return { primary: null, standby: null }
   }

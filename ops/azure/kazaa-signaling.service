@@ -11,7 +11,7 @@ WorkingDirectory=/home/kazaa/app
 # Point to the user-level Node 24 installation
 ExecStart=/home/kazaa/.local/bin/node services/signaling/index.ts
 
-# Root-owned, mode 0600 environment file with room and TURN secrets
+# Root-owned, mode 0600 environment file with group and TURN secrets
 EnvironmentFile=/etc/kazaa/signaling.env
 
 # Restart policy

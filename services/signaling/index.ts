@@ -1,3 +1,7 @@
+try {
+  process.loadEnvFile?.('.env')
+} catch {}
+
 import { createSignalingServer } from './server.ts'
 import { loadSignalingOptions } from './config.ts'
 

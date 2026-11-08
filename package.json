@@ -20,6 +20,9 @@
     "build": "npm run typecheck && electron-vite build",
     "signal:start": "node --env-file-if-exists=.env services/signaling/index.ts",
     "signal:invite": "node --env-file-if-exists=.env scripts/create-invite.ts",
+    "docker:build": "docker build -t p2p-multiple-groups-signaling .",
+    "docker:up": "docker compose --env-file .env up -d --build",
+    "docker:down": "docker compose down",
     "docs:screenshots": "node scripts/capture-docs-screenshots.ts",
     "docs:open": "node scripts/open-docs.js"
   },

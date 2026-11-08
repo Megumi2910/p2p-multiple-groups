@@ -1,19 +1,18 @@
 import { describe, it, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {
   createMultiGroupPeerStore,
-  migratePeerStateV1,
   validatePersistedStateV2,
   type PersistedGroupV2,
   type PersistedPeerStateV2
 } from '../src/main/p2p/peer-store.ts'
 import { makeGroupKey } from '../src/shared/p2p.ts'
 
-describe('PeerStore V2 Schema & Migration', () => {
+describe('PeerStore V2 Schema & Persistence', () => {
   let tempDir: string
 
   beforeEach(async () => {
@@ -22,61 +21,6 @@ describe('PeerStore V2 Schema & Migration', () => {
 
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {})
-  })
-
-  it('migrates valid v1 profile to v2, creating a group and granting existing files', () => {
-    const peerId = randomUUID()
-    const fileId = randomUUID()
-    const v1Data = {
-      version: 1,
-      peerId,
-      displayName: 'Alice',
-      supernodeEligible: true,
-      signalingUrl: 'ws://127.0.0.1:8787/signal',
-      roomId: 'room-alpha',
-      sharedFiles: [{ fileId, path: '/shared/song.mp3' }]
-    }
-
-    const { state, notices } = migratePeerStateV1(v1Data, '/path/to/peer-state.json')
-    assert.equal(state.version, 2)
-    assert.equal(state.peerId, peerId)
-    assert.equal(state.displayName, 'Alice')
-    assert.equal(state.relayOnly, false)
-    assert.equal(state.groups.length, 1)
-
-    const expectedGroupKey = makeGroupKey('ws://127.0.0.1:8787/signal', 'room-alpha')
-    assert.equal(state.groups[0].groupKey, expectedGroupKey)
-    assert.equal(state.groups[0].signalingUrl, 'ws://127.0.0.1:8787/signal')
-    assert.equal(state.groups[0].groupId, 'room-alpha')
-    assert.equal(state.groups[0].supernodeEligible, true)
-    assert.equal(state.groups[0].autoJoin, false)
-    assert.equal(state.groups[0].credentialCiphertext, null)
-
-    assert.equal(state.sharedFiles.length, 1)
-    assert.equal(state.sharedFiles[0].fileId, fileId)
-    assert.deepEqual(state.sharedFiles[0].groupKeys, [expectedGroupKey])
-    assert.equal(notices.length, 0)
-  })
-
-  it('migrates v1 profile with empty connection params without creating groups', () => {
-    const peerId = randomUUID()
-    const fileId = randomUUID()
-    const v1Data = {
-      version: 1,
-      peerId,
-      displayName: 'Bob',
-      supernodeEligible: false,
-      signalingUrl: '',
-      roomId: '',
-      sharedFiles: [{ fileId, path: '/shared/doc.pdf' }]
-    }
-
-    const { state, notices } = migratePeerStateV1(v1Data, '/path/to/peer-state.json')
-    assert.equal(state.version, 2)
-    assert.equal(state.groups.length, 0)
-    assert.equal(state.sharedFiles.length, 1)
-    assert.deepEqual(state.sharedFiles[0].groupKeys, [])
-    assert.ok(notices.length > 0)
   })
 
   it('validates v2 schema, rejecting invalid groupKey or duplicate entries', () => {
@@ -119,6 +63,20 @@ describe('PeerStore V2 Schema & Migration', () => {
       )
     })
 
+    // Duplicate shared file IDs rejected
+    assert.throws(() => {
+      validatePersistedStateV2(
+        {
+          ...validV2,
+          sharedFiles: [
+            validV2.sharedFiles[0],
+            { fileId: validV2.sharedFiles[0].fileId, path: '/path/file2.txt', groupKeys: [] }
+          ]
+        },
+        'test.json'
+      )
+    })
+
     // Duplicate shared file paths rejected
     assert.throws(() => {
       validatePersistedStateV2(
@@ -134,66 +92,25 @@ describe('PeerStore V2 Schema & Migration', () => {
     })
   })
 
-  it('performs on-disk upgrade with exclusive v1 backup creation', async () => {
+  it('rejects unsupported legacy version 1 on load', async () => {
     const peerId = randomUUID()
     const stateFile = join(tempDir, 'peer-state.json')
-    const backupFile = join(tempDir, 'peer-state.v1.backup.json')
-
-    const v1Raw = JSON.stringify(
-      {
-        version: 1,
-        peerId,
-        displayName: 'Dave',
-        supernodeEligible: true,
-        signalingUrl: 'ws://127.0.0.1:8787/signal',
-        roomId: 'room-dave',
-        sharedFiles: [{ fileId: randomUUID(), path: '/dave/file.bin' }]
-      },
-      null,
-      2
-    )
-
-    await writeFile(stateFile, v1Raw, 'utf-8')
-
-    // Open store: should migrate to v2 and create backup
-    const store = await createMultiGroupPeerStore(tempDir)
-    const current = store.get()
-    assert.equal(current.version, 2)
-    assert.equal(current.peerId, peerId)
-    assert.equal(current.displayName, 'Dave')
-    assert.equal(current.groups.length, 1)
-
-    // Verify backup exists and matches original v1 raw bytes
-    const backupContent = await readFile(backupFile, 'utf-8')
-    assert.equal(backupContent, v1Raw)
-
-    // Re-opening store is idempotent and does not error on existing identical backup
-    const storeReopened = await createMultiGroupPeerStore(tempDir)
-    assert.equal(storeReopened.get().peerId, peerId)
-  })
-
-  it('rejects upgrade when a conflicting backup file with different content exists', async () => {
-    const peerId = randomUUID()
-    const stateFile = join(tempDir, 'peer-state.json')
-    const backupFile = join(tempDir, 'peer-state.v1.backup.json')
 
     const v1Raw = JSON.stringify({
       version: 1,
       peerId,
-      displayName: 'Eve',
+      displayName: 'LegacyUser',
       supernodeEligible: true,
       signalingUrl: 'ws://127.0.0.1:8787/signal',
-      roomId: 'room-eve',
+      legacyRoom: 'room-alpha',
       sharedFiles: []
     })
 
     await writeFile(stateFile, v1Raw, 'utf-8')
-    // Pre-create conflicting backup
-    await writeFile(backupFile, '{"different":"backup"}', 'utf-8')
 
     await assert.rejects(
       async () => createMultiGroupPeerStore(tempDir),
-      (err: Error) => err.message.includes('Conflicting backup exists')
+      (err: Error) => err.message.includes('unsupported version 1')
     )
   })
 

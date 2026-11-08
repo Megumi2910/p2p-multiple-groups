@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>02. Shared, Preload &amp; Signaling — Code Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item active"><a href="02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network &amp; Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library &amp; Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search &amp; Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers &amp; Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting &amp; FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays &amp; Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT &amp; WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control &amp; SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model &amp; Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture &amp; Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage &amp; Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations &amp; DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud &amp; Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Source Code &amp; Syntax</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>02. Shared, Preload &amp; Signaling</span>
+        </nav>
+
+        <h1>Phần 2: Mã Nguồn Tầng Giao Tiếp Chung, Preload Bridge &amp; Signaling Server</h1>
+        <p class="lead-paragraph">
+          Mổ xẻ chi tiết kiến trúc đóng gói build bundler, hợp đồng IPC, bộ tiền kiểm định Zero-Trust, giao thức tầng dây nhị phân, cầu nối an ninh Preload và máy chủ định tuyến Signaling Server.
+        </p>
+
+        <div class="callout callout-note">
+          <div class="callout-icon">💡</div>
+          <div class="callout-content">
+            <div class="callout-title">Phạm vi module trong chương này</div>
+            <p>
+              Các file được phân tích chuyên sâu: <code>electron.vite.config.ts</code>, <code>src/shared/contracts.ts</code>, <code>src/shared/p2p.ts</code>, <code>src/shared/p2p-wire.ts</code>, <code>src/preload/index.ts</code>, <code>services/signaling/config.ts</code>, <code>services/signaling/server.ts</code>, và <code>scripts/create-invite.ts</code>.
+            </p>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 1 -->
+        <section id="electron-vite-config">
+          <h2>1. Cấu hình Build &amp; Bundler (<code>electron.vite.config.ts</code>)</h2>
+          <p>
+            File <code>electron.vite.config.ts</code> là trung tâm điều phối toàn bộ việc biên dịch 3 tiến trình Electron thông qua một file cấu hình duy nhất:
+          </p>
+
+          <pre><code class="language-typescript">// electron.vite.config.ts:19-51
+export default defineConfig(({ command }) =&gt; {
+  const isDev = command === 'serve'
+
+  return {
+    main: {
+      build: {
+        rollupOptions: {
+          output: {
+            format: 'es',              // Tiến trình chính xuất ra chuẩn ES Module
+            entryFileNames: 'index.js'
+          }
+        }
+      }
+    },
+    preload: {
+      build: {
+        rollupOptions: {
+          output: {
+            format: 'cjs',             // Preload script xuất ra chuẩn CommonJS
+            entryFileNames: 'index.cjs'
+          }
+        }
+      }
+    },
+    renderer: {
+      plugins: [react(), kazaaCsp(isDev)],
+      server: {
+        host: '127.0.0.1',             // Khóa chặt loopback cục bộ
+        port: 5173,
+        strictPort: true               // Không tự ý nhảy sang port khác nếu 5173 bận
+      }
+    }
+  }
+})</code></pre>
+
+          <h3>1.1. Plugin <code>kazaaCsp(isDev)</code> và cơ chế tiêm biến bảo mật <code>%KAZAA_CSP%</code></h3>
+          <p>
+            Trong <code>src/renderer/index.html</code>, thẻ <code>&lt;meta&gt;</code> được định nghĩa sẵn một placeholder <code>%KAZAA_CSP%</code>. Plugin tùy biến <code>kazaaCsp</code> sử dụng hook <code>transformIndexHtml</code> của Vite để thay thế placeholder này tùy theo môi trường:
+          </p>
+
+          <pre><code class="language-typescript">// electron.vite.config.ts:5-17
+function kazaaCsp(isDev: boolean): Plugin {
+  // 1. Môi trường phát triển: Cần kết nối WebSocket HMR tới Vite Server
+  const devCsp =
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:5173; object-src 'none'; base-uri 'none'; form-action 'none'"
+
+  // 2. Môi trường phân phối (Production): CẤM HOÀN TOÀN MỌI KẾT NỐI MẠNG TỪ GIAO DIỆN
+  const prodCsp =
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+
+  return {
+    name: 'kazaa-csp',
+    transformIndexHtml(html: string): string {
+      return html.replace('%KAZAA_CSP%', isDev ? devCsp : prodCsp)
+    }
+  }
+}</code></pre>
+
+          <div class="callout callout-warning">
+            <div class="callout-icon">🛡️</div>
+            <div class="callout-content">
+              <div class="callout-title">Tại sao Production lại đặt `connect-src 'none'`?</div>
+              <p>
+                Giao diện React chạy trong sandbox của Chromium. Khi đặt <code>connect-src 'none'</code>, trình duyệt sẽ chặn đứng hoàn toàn mọi lời gọi <code>fetch()</code>, <code>XMLHttpRequest</code>, hay <code>new WebSocket()</code> từ giao diện. Dù có kẻ tấn công chèn mã XSS, mã độc cũng không thể bí mật tuồn dữ liệu người dùng ra ngoài Internet!
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <section id="shared-contracts">
+          <h2>2. Sổ đăng ký Hợp đồng IPC (<code>src/shared/contracts.ts</code>)</h2>
+          <p>
+            File <code>src/shared/contracts.ts</code> quy định danh mục toàn bộ các kênh liên lạc giữa tiến trình Renderer và Main Process:
+          </p>
+
+          <pre><code class="language-typescript">// src/shared/contracts.ts:22-57
+export const IPC_CHANNELS = {
+  THEME_GET: 'kazaa:theme:get',
+  THEME_SET: 'kazaa:theme:set',
+  COMMAND: 'kazaa:command',
+
+  // Kênh cũ V1 (Legacy) duy trì khả năng tương thích ngược
+  P2P_GET_STATE: 'kazaa:p2p:get-state',
+  P2P_STATE: 'kazaa:p2p:state',
+  P2P_CONNECT: 'kazaa:p2p:connect',
+  P2P_DISCONNECT: 'kazaa:p2p:disconnect',
+  P2P_ELIGIBILITY: 'kazaa:p2p:eligibility',
+
+  // Kênh mới V2: Đa nhóm độc lập (Multi-Group Scoped Channels)
+  P2P_V2_GET_STATE: 'p2p:getState',
+  P2P_V2_STATE: 'p2p:state',
+  P2P_V2_JOIN_GROUP: 'p2p:joinGroup',
+  P2P_V2_RESUME_GROUP: 'p2p:resumeGroup',
+  P2P_V2_LEAVE_GROUP: 'p2p:leaveGroup',
+  P2P_V2_SET_GROUP_AUTO_JOIN: 'p2p:setGroupAutoJoin',
+  P2P_V2_SET_GROUP_ELIGIBILITY: 'p2p:setGroupEligibility',
+  P2P_V2_FORGET_GROUP: 'p2p:forgetGroup',
+  P2P_V2_DISCONNECT_ALL: 'p2p:disconnectAll',
+  P2P_V2_ADD_FILES: 'p2p:addFiles',
+  P2P_V2_RESCAN_LIBRARY: 'p2p:rescanLibrary',
+  P2P_V2_REMOVE_FILE: 'p2p:removeFile',
+  P2P_V2_SET_FILE_GROUPS: 'p2p:setFileGroups',
+  P2P_V2_SEARCH: 'p2p:search',
+  P2P_V2_DOWNLOAD: 'p2p:download',
+  P2P_V2_CANCEL_TRANSFER: 'p2p:cancelTransfer'
+} as const</code></pre>
+
+          <p>
+            Nhờ khai báo <code>as const</code>, các chuỗi tên kênh trở thành Literal Types bất biến, giúp TypeScript phát hiện lỗi gõ sai kênh IPC ngay khi đang code.
+          </p>
+        </section>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <section id="shared-p2p">
+          <h2>3. Kiểu miền dữ liệu &amp; Bộ tiền kiểm định đầu vào (<code>src/shared/p2p.ts</code>)</h2>
+
+          <h3>3.1. Mã lỗi chuẩn <code>P2pErrorCode</code> và <code>ActionResult</code></h3>
+          <p>
+            Mọi thao tác trong hệ thống đều trả về kiểu phân biệt <code>ActionResult</code> với 14 mã lỗi định danh thống nhất:
+          </p>
+          <pre><code class="language-typescript">// src/shared/p2p.ts:1-18
+export type P2pErrorCode =
+  | 'INVALID_INPUT'        // Tham số sai cú pháp hoặc vượt giới hạn
+  | 'AUTH_FAILED'          // Sai token mật mã nhóm
+  | 'DISCONNECTED'         // Mất kết nối tới Signaling Server hoặc peer
+  | 'NO_SUPERNODE'         // Nhóm chưa bầu chọn được Supernode đại diện
+  | 'UNREACHABLE'          // Không thể xuyên thủng NAT để tạo kênh WebRTC
+  | 'NOT_FOUND'            // Không tìm thấy file hoặc nhóm yêu cầu
+  | 'FILE_CHANGED'         // File chia sẻ bị thay đổi trong lúc đang truyền
+  | 'DESTINATION_EXISTS'   // Tên file tải về đã tồn tại trên đĩa máy nhận
+  | 'IO_ERROR'             // Lỗi đọc/ghi ổ cứng cục bộ
+  | 'BUSY'                 // Hệ thống đang bận thực thi tác vụ khác
+  | 'PROTOCOL_ERROR'       // Gói tin sai cấu trúc giao thức
+  | 'FORBIDDEN'            // Quyền truy cập bị từ chối
+  | 'INVITATION_REQUIRED'  // Chưa nạp mã mời của nhóm
+
+export type ActionResult&lt;T = void&gt; =
+  | { ok: true; data: T }
+  | { ok: false; code: P2pErrorCode; message: string }</code></pre>
+
+          <h3>3.2. Cấu trúc và kỹ thuật tuần tự hóa <code>GroupKey</code></h3>
+          <p>
+            Để hỗ trợ đa nhóm trên nhiều máy chủ khác nhau mà không bao giờ bị trùng lặp định danh, hệ thống gom cặp <code>[signalingUrl, groupId]</code> thành một chuỗi JSON chuẩn:
+          </p>
+          <pre><code class="language-typescript">// src/shared/p2p.ts:34-56
+export type GroupKey = string
+
+export function makeGroupKey(signalingUrl: string, groupId: string): GroupKey {
+  return JSON.stringify([signalingUrl, groupId])
+}
+
+export function parseGroupKey(key: string): { signalingUrl: string; groupId: string } | null {
+  if (typeof key !== 'string') return null
+  try {
+    const parsed = JSON.parse(key) as unknown
+    if (
+      Array.isArray(parsed) &amp;&amp;
+      parsed.length === 2 &amp;&amp;
+      typeof parsed[0] === 'string' &amp;&amp;
+      typeof parsed[1] === 'string'
+    ) {
+      return { signalingUrl: parsed[0], groupId: parsed[1] }
+    }
+  } catch {
+    // Không quăng lỗi, trả về null nếu format sai
+  }
+  return null
+}</code></pre>
+
+          <h3>3.3. Các hàm tiền kiểm định nghiêm ngặt (Zero-Trust Input Validators)</h3>
+          <ul>
+            <li><strong><code>validateSignalingUrl</code></strong>: Chỉ cho phép <code>wss:</code> (hoặc <code>ws:</code> trên loopback cục bộ), bắt buộc pathname là <code>/signal</code>, cấm credentials và query parameters.</li>
+            <li><strong><code>validateGroupId</code></strong>: Khớp biểu thức <code>/^[A-Za-z0-9_-]{1,32}$/</code>.</li>
+            <li><strong><code>validateToken</code></strong>: Khớp Regex 43 ký tự base64url, giải mã bằng <code>atob</code> để bảo đảm chính xác **32 bytes dữ liệu nhị phân (256 bits entropy)** và kiểm tra tính chuẩn tắc (Canonical representation).</li>
+            <li><strong><code>validateDisplayName</code></strong>: Giới hạn 1 đến 40 ký tự, loại bỏ khoảng trắng thừa và cấm ký tự điều khiển ẩn <code>[\u0000-\u001F\u007F]</code>.</li>
+            <li><strong><code>validateGroupInvitation</code></strong>: Hỗ trợ tự động chuyển đổi mã mời phiên bản cũ V1 sang cấu trúc V2.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <section id="shared-p2p-wire">
+          <h2>4. Giao thức tầng dây &amp; Runtime Type Guards (<code>src/shared/p2p-wire.ts</code>)</h2>
+
+          <h3>4.1. Hằng số kích thước và thời hạn thuê (Lease Invariants)</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Hằng số</th>
+                  <th>Giá trị</th>
+                  <th>Mục đích sử dụng</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>MAX_SIGNALING_MESSAGE_SIZE</code></td>
+                  <td>131,072 bytes (128 KiB)</td>
+                  <td>Giới hạn tối đa của một gói tin WebSocket Signaling.</td>
+                </tr>
+                <tr>
+                  <td><code>MAX_CONTROL_MESSAGE_SIZE</code></td>
+                  <td>16,384 bytes (16 KiB)</td>
+                  <td>Giới hạn kích thước gói tin điều khiển trên kênh Control WebRTC.</td>
+                </tr>
+                <tr>
+                  <td><code>MAX_TRANSFER_CHUNK_SIZE</code></td>
+                  <td>16,384 bytes (16 KiB)</td>
+                  <td>Kích thước chuẩn của một khối dữ liệu file truyền qua SCTP.</td>
+                </tr>
+                <tr>
+                  <td><code>ROSTER_FRESHNESS_LEASE_MS</code></td>
+                  <td>6,000 ms (6 giây)</td>
+                  <td>Thời hạn hiệu lực của quyền Supernode nếu mất kết nối tới Signaling Server.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>4.2. Helper nhãn kênh dữ liệu WebRTC</h3>
+          <p>
+            Mỗi lượt tải file mở một kênh dữ liệu riêng biệt để chống tắc nghẽn đường truyền điều khiển:
+          </p>
+          <pre><code class="language-typescript">// src/shared/p2p-wire.ts:15-31
+export function makeFileChannelLabelV2(groupId: string, transferId: string): string {
+  return `p2p-multiple-groups-file-v2:${groupId}:${transferId}`
+}</code></pre>
+
+          <h3>4.3. Type Guards phòng vệ tầng dây</h3>
+          <p>
+            Hàm <code>isServerSignalingMessageV2</code> kiểm tra cấu trúc từng trường của dữ liệu JSON nhận từ mạng trước khi cho phép mã nguồn tiếp cận:
+          </p>
+          <pre><code class="language-typescript">// src/shared/p2p-wire.ts
+export function isServerSignalingMessageV2(val: unknown): val is ServerSignalingMessageV2 {
+  if (!val || typeof val !== 'object') return false
+  const msg = val as Record&lt;string, unknown&gt;
+  if (msg.v !== 2 || typeof msg.type !== 'string') return false
+  // Kiểm tra chi tiết từng nhánh thông điệp: welcome, group-joined, roster, signal...
+  return true
+}</code></pre>
+        </section>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <section id="preload-bridge">
+          <h2>5. Cửa khẩu An ninh Preload Script (<code>src/preload/index.ts</code>)</h2>
+
+          <h3>5.1. Cơ chế đóng gói hàm IPC và Cleanup Closures</h3>
+          <p>
+            File <code>src/preload/index.ts</code> đóng gói <code>ipcRenderer.invoke</code> thành các phương thức typed rõ ràng và tạo các bộ lắng nghe sự kiện có khả năng dọn dẹp bộ nhớ:
+          </p>
+
+          <pre><code class="language-typescript">// src/preload/index.ts:25-35
+onState(listener: (state: any) =&gt; void): () =&gt; void {
+  const wrapped = (_event: IpcRendererEvent, state: any): void =&gt; {
+    listener(state)
+  }
+  ipcRenderer.on(IPC_CHANNELS.P2P_V2_STATE, wrapped)
+  ipcRenderer.on(IPC_CHANNELS.P2P_STATE, wrapped)
+
+  // Trả về hàm hủy đăng ký (Cleanup Closure)
+  return () =&gt; {
+    ipcRenderer.removeListener(IPC_CHANNELS.P2P_V2_STATE, wrapped)
+    ipcRenderer.removeListener(IPC_CHANNELS.P2P_STATE, wrapped)
+  }
+}</code></pre>
+
+          <h3>5.2. Kỹ thuật định tuyến chữ ký kép (Dual-Signature Routing)</h3>
+          <p>
+            Preload tự động phát hiện số lượng tham số để hỗ trợ cả lệnh gọi V2 và V1:
+          </p>
+          <pre><code class="language-typescript">// src/preload/index.ts:84-96
+search(arg1: string, arg2?: string): Promise&lt;ActionResult&gt; {
+  if (arg2 !== undefined) {
+    // V2: search(groupKey, query)
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_SEARCH, arg1, arg2)
+  }
+  // V1: search(query)
+  return ipcRenderer.invoke(IPC_CHANNELS.P2P_SEARCH, arg1)
+}</code></pre>
+
+          <h3>5.3. Cô lập hoàn toàn môi trường với <code>contextBridge.exposeInMainWorld</code></h3>
+          <p>
+            Hàm <code>contextBridge.exposeInMainWorld('p2p', api)</code> đóng băng đối tượng API, ngăn chặn mã giao diện React truy cập vào Node.js runtime hoặc sửa đổi các hàm hệ thống.
+          </p>
+        </section>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <section id="signaling-service">
+          <h2>6. Dịch vụ Máy chủ Signaling &amp; Công cụ CLI (<code>services/signaling/*</code>, <code>scripts/create-invite.ts</code>)</h2>
+
+          <h3>6.1. Phân giải cấu hình đa nguồn <code>loadSignalingOptions</code> trong <code>config.ts</code></h3>
+          <p>
+            Đọc cấu hình từ biến môi trường với thứ tự ưu tiên: <code>P2P_MULTIPLE_GROUPS_*</code> &gt; <code>KAZAA_*</code> &gt; Biến Cloud mặc định (<code>PORT</code>, <code>RENDER</code>). Thẩm định tính duy nhất của từng nhóm thông qua hai tập hợp <code>seenGroupIds</code> và <code>seenTokens</code>.
+          </p>
+
+          <h3>6.2. Bộ điều phối <code>createSignalingServer</code> trong <code>server.ts</code></h3>
+          <ul>
+            <li><strong>Điểm cuối HTTP <code>/healthz</code></strong>: Trả về <code>200 OK</code> cho các bộ kiểm tra sức khỏe của hạ tầng Cloud.</li>
+            <li><strong>Token-Bucket Rate Limiter</strong>: Mỗi socket được cấp tối đa 60 token, hồi phục 30 token/giây, chặn đứng các cuộc tấn công DoS làm tràn ngập tin nhắn.</li>
+            <li><strong>So sánh hằng thời gian <code>timingSafeEqual</code></strong>: So sánh buffer token nhóm bằng hàm <code>timingSafeEqual</code> để loại bỏ hoàn toàn nguy cơ Timing Attack.</li>
+            <li><strong>Chứng thực TURN RFC 5766 HMAC-SHA1</strong>: Tự động sinh username và mật khẩu tạm thời có thời hạn 24 giờ cho các peer cần xuyên NAT qua relay TURN.</li>
+            <li><strong>Quét nhịp tim (Heartbeat Sweep)</strong>: Định kỳ mỗi 15 giây ping kiểm tra kết nối. Nếu socket không phản hồi sau 35 giây, server chủ động đóng kết nối và thông báo cập nhật danh sách thành viên (roster) cho các node còn lại.</li>
+          </ul>
+
+          <h3>6.3. Điểm khởi động dịch vụ và Trình tạo mã mời <code>scripts/create-invite.ts</code></h3>
+          <p>
+            Lệnh CLI <code>npm run signal:invite -- --group-id=nhom-a</code> tự động phân tích tham số dòng lệnh và in ra chuỗi JSON lời mời nhóm tiêu chuẩn:
+          </p>
+          <pre><code class="language-json">{
+  "version": 2,
+  "signalingUrl": "ws://127.0.0.1:8787/signal",
+  "groupId": "nhom-a",
+  "token": "43-character-base64url-token..."
+}</code></pre>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="01-js-ts-react-syntax-in-codebase.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">01. JS/TS &amp; React Syntax</span>
+          </a>
+          <a href="03-main-process-and-p2p-engine-code.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">03. Main &amp; P2P Engine Code</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#electron-vite-config" class="toc-link">1. Cấu hình Build &amp; Bundler</a></li>
+          <li><a href="#shared-contracts" class="toc-link">2. Hợp đồng IPC Contracts</a></li>
+          <li><a href="#shared-p2p" class="toc-link">3. Kiểu miền dữ liệu &amp; Validators</a></li>
+          <li><a href="#shared-p2p-wire" class="toc-link">4. Giao thức tầng dây Wire Specs</a></li>
+          <li><a href="#preload-bridge" class="toc-link">5. Cửa khẩu Preload Bridge</a></li>
+          <li><a href="#signaling-service" class="toc-link">6. Máy chủ Signaling &amp; CLI</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System &amp; Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

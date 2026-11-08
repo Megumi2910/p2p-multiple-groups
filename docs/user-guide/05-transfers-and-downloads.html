@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>05. Transfers & Flow Control — User Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          
+          <li class="nav-item"><a href="02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item active"><a href="05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>User Guide</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>05. Transfers & Downloads</span>
+        </nav>
+
+        <h1>User Guide: Transfers & Downloads</h1>
+        <p class="lead-paragraph">
+          The <strong>Transfers</strong> view provides end-to-end monitoring and flow management for active and completed file transfers. It displays stream progress, throughput metrics, transport routes (Direct vs TURN Relay), and cryptographic verification receipts.
+        </p>
+
+        <hr>
+
+        <section id="transfers-interface">
+          <h2>1. Transfers Interface</h2>
+          <p>The screen is split into <strong>Active Transfers</strong> and <strong>Completed Transfers</strong>:</p>
+
+          <figure class="doc-image-figure">
+            <img src="../assets/transfers-view.png" alt="Transfers view displaying active file streams, throughput rates, network paths, and completed transfer receipts">
+            <figcaption>Figure 1: Transfers view displaying active file streams, throughput rates, network paths, and completed transfer receipts. (Click image to zoom)</figcaption>
+          </figure>
+
+          <h3>Visible Telemetry</h3>
+          <ul>
+            <li><strong>File Name</strong>: Name of the resource being uploaded or downloaded.</li>
+            <li><strong>Direction</strong>: Inbound (Download) or Outbound (Upload) arrow indicator.</li>
+            <li><strong>Group Badge</strong>: Virtual group through which the transfer capability was negotiated.</li>
+            <li><strong>Size & Progress</strong>: Byte-level transfer count, percentage progress bar, and real-time chunk throughput (KiB/s or MiB/s).</li>
+            <li><strong>Transport Path</strong>: Route classification: <code>Direct</code> (P2P host-to-host) or <code>Relayed (TURN)</code>.</li>
+            <li><strong>Status / Action</strong>: Current lifecycle state and interactive controls (<code>Cancel</code>, <code>Search Again</code>).</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <section id="initiating-a-download">
+          <h2>2. Initiating a Download</h2>
+          <ol>
+            <li>From the <a href="04-search-and-discovery.html">Search</a> view, click <strong>Download</strong> on a desired file result.</li>
+            <li>A destination prompt allows you to choose where to save the file on your local storage drive (defaults to your operating system's configured <code>Downloads</code> directory).</li>
+            <li>The client negotiates a dedicated binary WebRTC data channel with the peer offering the file:
+              <pre><code class="language-text">p2p-multiple-groups-file-v2:&lt;fileId&gt;:&lt;groupKey&gt;</code></pre>
+            </li>
+            <li>The transfer appears immediately in the Active Transfers table.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="flow-control-monitoring">
+          <h2>3. Real-Time Flow Control & Monitoring</h2>
+          <p>Transfers are divided into uniform 16 KiB binary chunks over WebRTC SCTP data channels:</p>
+
+          <h3>Visual Indicators</h3>
+          <ul>
+            <li><strong>Connecting</strong>: Awaiting WebRTC data channel handshake and capability token verification from the remote peer.</li>
+            <li><strong>Transferring</strong>: Inflight binary chunk stream. The progress bar updates every 256 KiB cumulative window acknowledgement.</li>
+            <li><strong>Verifying</strong>: All payload bytes received; local worker is calculating and checking the final SHA-256 cryptographic digest.</li>
+            <li><strong>Completed</strong>: Hash confirmed valid; file staged and published to destination.</li>
+            <li><strong>Failed</strong>: Transfer terminated due to network timeout, remote rejection, or hash mismatch.</li>
+          </ul>
+
+          <h3>Direct vs Relayed Route Inspection</h3>
+          <p>The <strong>Path</strong> column reveals the physical transport topology established during ICE candidate gathering:</p>
+          <ul>
+            <li><strong>Direct</strong>: Traffic flows peer-to-peer over local UDP/TCP without traversing third-party relays. Offers maximum bandwidth and lowest latency.</li>
+            <li><strong>Relayed (TURN)</strong>: Traffic is proxied through an authoritative Coturn TURN server. This occurs when both peers reside behind restrictive symmetric NATs or when one peer has enabled <strong>Privacy Mode</strong> (<code>relayOnly</code>).</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <section id="integrity-and-safety">
+          <h2>4. Integrity Verification & Filesystem Safety</h2>
+          <p><code>p2p-multiple-groups</code> adheres to zero-trust storage invariants to prevent corrupted or malicious writes:</p>
+
+          <h3>1. Atomic Staging via Temporary Files</h3>
+          <p>Inbound downloads are never written directly to the target destination filename:</p>
+          <ol>
+            <li>Bytes stream into a temporary file named:
+              <pre><code class="language-text">&lt;targetDirectory&gt;/.tmp.&lt;transferId&gt;</code></pre>
+            </li>
+            <li>The operating system hides dot-prefixed temporary files from standard file listings.</li>
+            <li>If a transfer is cancelled or fails, the temporary file is immediately unlinked and removed.</li>
+            <li>Only when all bytes have arrived <strong>and</strong> the calculated SHA-256 matches the catalog advertisement is the temporary file atomically renamed to the final filename using <code>fs.rename()</code>.</li>
+          </ol>
+
+          <h3>2. Path Traversal Sanitation</h3>
+          <p>Peer-provided filenames are strictly sanitized before filesystem operations:</p>
+          <ul>
+            <li>All directory separators (<code>/</code>, <code>\</code>), null bytes (<code>\0</code>), and relative path traversal tokens (<code>..</code>) are stripped via <code>sanitizeDestinationFileName</code>.</li>
+            <li>Files cannot escape the designated destination directory.</li>
+          </ul>
+
+          <h3>3. Collision Protection</h3>
+          <p>If a file with the target name already exists at the destination, the client automatically renames the downloaded file with a numeric increment (e.g., <code>report (1).pdf</code>), preventing accidental overwriting of existing local data.</p>
+        </section>
+
+        <hr>
+
+        <section id="cancelling-transfers">
+          <h2>5. Cancelling an Inflight Transfer</h2>
+          <p>You can terminate a transfer at any time:</p>
+          <ol>
+            <li>Locate the active transfer row in the <strong>Active Transfers</strong> section.</li>
+            <li>Click <strong>Cancel</strong>.</li>
+            <li>The client immediately sends a <code>cancel</code> transfer control message to the peer, resets the SCTP stream, aborts local disk I/O, and removes the incomplete <code>.tmp.&lt;transferId&gt;</code> file.</li>
+            <li>The transfer row transitions to the <strong>Completed Transfers</strong> table with status <code>cancelled</code>.</li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="04-search-and-discovery.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">04. Search & Discovery</span>
+          </a>
+          <a href="06-signaling-and-ops.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">06. Signaling Operations</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#transfers-interface" class="toc-link">1. Transfers Interface</a></li>
+          <li><a href="#initiating-a-download" class="toc-link">2. Initiating a Download</a></li>
+          <li><a href="#flow-control-monitoring" class="toc-link">3. Flow Control</a></li>
+          <li><a href="#integrity-and-safety" class="toc-link">4. Integrity & Safety</a></li>
+          <li><a href="#cancelling-transfers" class="toc-link">5. Cancelling Transfers</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>04. Renderer UI &amp; Inquiry Q&amp;A — Code Guide — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item active"><a href="04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network &amp; Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library &amp; Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search &amp; Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers &amp; Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting &amp; FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays &amp; Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT &amp; WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control &amp; SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model &amp; Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture &amp; Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage &amp; Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations &amp; DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud &amp; Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Source Code &amp; Syntax</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>04. Renderer UI &amp; Inquiry Q&amp;A</span>
+        </nav>
+
+        <h1>Phần 4: Giao Diện Người Dùng React Renderer, Bảng Tra Cứu &amp; Bộ Đề Vấn Đáp (Inquiry Test)</h1>
+        <p class="lead-paragraph">
+          Mổ xẻ kiến trúc giao diện React 19 sandboxed, custom hook quản lý trạng thái đơn điệu, cơ chế gom cụm Swarm tìm kiếm, bảng tra cứu nhanh 30+ vị trí code trọng yếu, cùng ngân hàng 32 câu hỏi vấn đáp chuyên sâu phục vụ bảo vệ đồ án và phản biện kỹ thuật.
+        </p>
+
+        <div class="callout callout-note">
+          <div class="callout-icon">💡</div>
+          <div class="callout-content">
+            <div class="callout-title">Nội dung cốt lõi của phần này</div>
+            <p>
+              Tài liệu bao gồm: (1) Walkthrough chi tiết từng file trong <code>src/renderer/src/</code>; (2) Bảng tra cứu ánh xạ 30+ cơ chế phân tán đến từng file và hàm cụ thể; (3) 32 câu hỏi &amp; trả lời mẫu cho Inquiry Test / Viva Defense chia làm 4 nhóm A, B, C, D.
+            </p>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 1 -->
+        <section id="renderer-bootstrap-and-hook">
+          <h2>1. Khởi động Renderer &amp; Custom Hook Quản lý State</h2>
+
+          <h3>1.1. Mở rộng giao diện toàn cục <code>Window</code> trong <code>env.d.ts</code></h3>
+          <p>
+            Trong TypeScript, đối tượng <code>window</code> của trình duyệt mặc định chỉ chứa các hàm Web API tiêu chuẩn (<code>document</code>, <code>fetch</code>). Để TypeScript nhận diện các phương thức do Preload Script tiêm vào qua <code>contextBridge</code>, file <code>src/renderer/src/env.d.ts</code> áp dụng kỹ thuật <strong>Declaration Merging</strong>:
+          </p>
+          <pre><code class="language-typescript">// src/renderer/src/env.d.ts:1-9
+/// &lt;reference types="vite/client" /&gt;
+import type { KazaaApi, P2pApi } from '../../shared/contracts.ts'
+
+declare global {
+  interface Window {
+    p2p: P2pApi
+    kazaa: KazaaApi
+  }
+}</code></pre>
+          <p>
+            Nhờ khối khai báo này, mọi React component trong giao diện có thể gọi <code>window.p2p.joinGroup(...)</code> hoặc <code>window.kazaa.getTheme()</code> với đầy đủ hỗ trợ tự động gợi ý mã (IntelliSense) và kiểm tra kiểu tĩnh mà không cần ép kiểu <code>(window as any)</code>.
+          </p>
+
+          <h3>1.2. Điểm gắn kết React 19 trong <code>main.tsx</code></h3>
+          <p>
+            File <code>src/renderer/src/main.tsx</code> sử dụng API <code>ReactDOM.createRoot</code> của React 19 kết hợp chế độ kiểm tra nghiêm ngặt <code>&lt;React.StrictMode&gt;</code>:
+          </p>
+          <pre><code class="language-typescript">// src/renderer/src/main.tsx:6-13
+const rootElement = document.getElementById('root')
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    &lt;React.StrictMode&gt;
+      &lt;App /&gt;
+    &lt;/React.StrictMode&gt;
+  )
+}</code></pre>
+
+          <h3>1.3. Custom Hook <code>usePeerState</code> (<code>src/renderer/src/features/network/usePeerState.ts</code>)</h3>
+          <p>
+            Hook <code>usePeerState</code> là cầu nối dữ liệu duy nhất giữa toàn bộ giao diện React và cỗ máy P2P chạy ngầm dưới Main Process:
+          </p>
+          <ul>
+            <li><strong>Khởi tạo State ban đầu</strong>: Gọi <code>bridge.p2p.getState()</code> ngay khi component mount để lấy dữ liệu snapshot đầu tiên.</li>
+            <li><strong>Lắng nghe sự kiện đẩy qua IPC</strong>: Gọi <code>bridge.p2p.onState(applyState)</code> để nhận các cập nhật trạng thái mới nhất từ Main Process.</li>
+            <li><strong>Kiểm tra tính đơn điệu Revision (Monotonic Invariant)</strong>:
+              <pre><code class="language-typescript">// usePeerState.ts:63 &amp; 83-88
+const lastRevisionRef = useRef(0)
+
+const applyState = (incoming: CombinedPeerState) =&gt; {
+  if (incoming.revision &gt;= lastRevisionRef.current) {
+    lastRevisionRef.current = incoming.revision
+    setState(incoming)
+  }
+}</code></pre>
+              Dùng <code>useRef</code> lưu số revision gần nhất. Nếu một gói tin IPC bị trễ đến sau một gói tin có revision cao hơn, gói tin trễ sẽ bị bỏ qua, triệt tiêu hiện tượng giật lùi giao diện.
+            </li>
+            <li><strong>Tự động chọn nhóm mặc định (Auto Group Selection)</strong>:
+              <pre><code class="language-typescript">// usePeerState.ts:66-74
+useEffect(() =&gt; {
+  if (state.groups.length &gt; 0) {
+    if (!selectedGroupKey || !state.groups.some((g) =&gt; g.groupKey === selectedGroupKey)) {
+      setSelectedGroupKey(state.groups[0].groupKey)
+    }
+  } else {
+    setSelectedGroupKey(null)
+  }
+}, [state.groups, selectedGroupKey])</code></pre>
+            </li>
+            <li><strong>Gói gọn các hàm Action trong <code>useCallback</code></strong>: Các hàm <code>joinGroup</code>, <code>leaveGroup</code>, <code>search</code>, <code>download</code> được bọc trong <code>useCallback</code> với dependency rỗng <code>[]</code> để giữ nguyên tham chiếu hàm, giúp các component con không bị re-render vô ích.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <section id="renderer-views">
+          <h2>2. Khung Ứng dụng &amp; Các Phân hệ Chức năng</h2>
+
+          <h3>2.1. Vỏ bọc trung tâm <code>App.tsx</code></h3>
+          <p>
+            <code>src/renderer/src/App.tsx</code> đóng vai trò là Application Shell:
+          </p>
+          <ul>
+            <li><strong>Điều hướng tab view (<code>currentView</code>)</strong>: Quản lý hiển thị giữa các phân hệ: <code>'network' | 'library' | 'search' | 'transfers' | 'appearance'</code>.</li>
+            <li><strong>Đồng bộ Theme với DOM</strong>: Lắng nghe thay đổi theme và gán trực tiếp vào thuộc tính của thẻ gốc <code>&lt;html&gt;</code>:
+              <pre><code class="language-typescript">document.documentElement.setAttribute('data-theme', appliedTheme)</code></pre>
+            </li>
+            <li><strong>Lắng nghe phím tắt toàn cục</strong>: <code>Ctrl+K</code> (hoặc <code>Cmd+K</code> trên macOS) mở Command Palette; <code>Ctrl+,</code> mở Appearance.</li>
+            <li><strong>Quản lý tiêu điểm hỗ trợ tiếp cận (Accessibility Focus Management)</strong>:
+              <pre><code class="language-typescript">const workspaceHeadingRef = useRef&lt;HTMLHeadingElement&gt;(null)
+// Khi đổi tab view, tự động focus vào thẻ h1 của view mới:
+workspaceHeadingRef.current?.focus()</code></pre>
+            </li>
+          </ul>
+
+          <h3>2.2. Phân hệ mạng <code>Network.tsx</code></h3>
+          <p>
+            Nằm tại <code>src/renderer/src/features/network/Network.tsx</code>:
+          </p>
+          <ul>
+            <li><strong>Giải mã mã mời nhóm</strong>: Khi người dùng dán chuỗi JSON lời mời vào textarea, hàm <code>parseGroupInvitation(inviteInput)</code> tự động phát hiện mã mời V2 hoặc V1 cũ, kiểm tra URL, GroupId, Token và hiển thị cảnh báo nếu mã mời không hợp lệ.</li>
+            <li><strong>Bảng danh sách thành viên (Roster Table)</strong>: Hiển thị các node trong nhóm, vai trò đắc cử (<code>supernode</code> với huy hiệu nổi bật hoặc <code>ordinary</code>), trạng thái kết nối WebRTC (<code>direct</code> hay <code>relay</code>), và nút gạt cho phép node tự ứng cử làm Supernode.</li>
+          </ul>
+
+          <h3>2.3. Phân hệ thư viện <code>Library.tsx</code></h3>
+          <p>
+            Nằm tại <code>src/renderer/src/features/library/Library.tsx</code>:
+          </p>
+          <ul>
+            <li><strong>Định dạng dung lượng chuẩn (<code>formatBytes</code>)</strong>: Chuyển đổi số byte nhị phân thành <code>KiB</code>, <code>MiB</code>, <code>GiB</code> dễ đọc.</li>
+            <li><strong>Thao tác tập tin</strong>: Gọi <code>onAddFiles</code> (mở hộp thoại native OS), <code>onRescan</code> (quét lại thư mục) và <code>onRemoveFile</code>.</li>
+            <li><strong>Cấp quyền truy cập theo nhóm (Fine-Grained Group Grants)</strong>: Mỗi hàng file hiển thị danh sách các checkbox tương ứng với các nhóm mà node đang tham gia. Khi tick hoặc bỏ tick, hàm <code>onSetFileGroups(fileId, newGroupKeys)</code> gửi danh sách khóa nhóm mới xuống Main Process để cập nhật quyền truy cập ngay lập tức.</li>
+          </ul>
+
+          <h3>2.4. Phân hệ tìm kiếm <code>Search.tsx</code></h3>
+          <p>
+            Nằm tại <code>src/renderer/src/features/search/Search.tsx</code>:
+          </p>
+          <ul>
+            <li><strong>Bộ chọn phạm vi nhóm (Group Scope Selector)</strong>: Cho phép người dùng chọn tìm kiếm trong một nhóm cụ thể hoặc tìm kiếm trên nhóm hiện tại.</li>
+            <li><strong>Gom nhóm Swarm (Swarm Aggregation)</strong>: Gom các kết quả trùng mã băm và kích thước vào một đối tượng <code>GroupedResult</code>:
+              <pre><code class="language-typescript">// Search.tsx:102-118
+const groupedMap = new Map&lt;string, GroupedResult&gt;()
+for (const item of currentSearch.results) {
+  const key = `${item.file.sha256}:${item.file.size}`
+  let group = groupedMap.get(key)
+  if (!group) {
+    group = {
+      groupKey: key,
+      sha256: item.file.sha256,
+      size: item.file.size,
+      primaryName: item.file.name,
+      sources: [],
+      selectedSourceIndex: 0
+    }
+    groupedMap.set(key, group)
+  }
+  group.sources.push(item)
+}</code></pre>
+            </li>
+            <li><strong>Lựa chọn node tải (Source Selection)</strong>: Người dùng có thể chọn tải file từ node nào trong danh sách các node cùng sở hữu file đó thông qua dropdown menu nguồn tải.</li>
+          </ul>
+
+          <h3>2.5. Phân hệ truyền file <code>Transfers.tsx</code></h3>
+          <p>
+            Nằm tại <code>src/renderer/src/features/transfers/Transfers.tsx</code>:
+          </p>
+          <ul>
+            <li><strong>Phân chia 2 vùng hiển thị</strong>: <code>activeTransfers</code> (đang truyền) và <code>completedTransfers</code> (kết thúc, lỗi, hoặc hủy).</li>
+            <li><strong>Thanh tiến trình thực tế</strong>: Tính phần trăm <code>% = (transferredBytes / totalBytes) * 100</code>.</li>
+            <li><strong>Huy hiệu đường truyền</strong>: Hiển thị rõ <code>Direct</code> (xuyên NAT thành công) hoặc <code>Relayed (TURN)</code> (đi qua máy chủ chuyển tiếp).</li>
+            <li><strong>Thao tác điều khiển</strong>: Hỗ trợ nút Cancel hủy truyền tức thì và nút Search Again tìm nguồn tải mới nếu lượt tải thất bại.</li>
+          </ul>
+
+          <h3>2.6. Bảng điều khiển lệnh <code>CommandPalette.tsx</code> &amp; <code>Appearance.tsx</code></h3>
+          <ul>
+            <li><strong><code>Appearance.tsx</code></strong>: Cho phép người dùng chọn giữa 3 giao diện: <code>System Default</code>, <code>Dark Theme</code>, hoặc <code>Light Theme</code>.</li>
+            <li><strong><code>CommandPalette.tsx</code></strong>: Modal điều khiển nhanh sử dụng thẻ <code>&lt;dialog&gt;</code> native của HTML5:
+              <pre><code class="language-typescript">// CommandPalette.tsx:21 &amp; 45
+const dialogRef = useRef&lt;HTMLDialogElement&gt;(null)
+dialogRef.current?.showModal()</code></pre>
+              Hỗ trợ lọc lệnh thông minh bằng hàm <code>filterCommands(query)</code>, điều hướng bằng phím mũi tên <code>ArrowUp</code> / <code>ArrowDown</code>, kích hoạt bằng <code>Enter</code> và đóng bằng <code>Escape</code>.
+            </li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <section id="bang-tra-cuu-vi-tri-code">
+          <h2>3. Bảng tra cứu nhanh vị trí 30+ cơ chế cốt lõi trong Codebase</h2>
+          <p>
+            Bảng tra cứu dưới đây là "kim chỉ nam" giúp bạn định vị chính xác từng file và hàm then chốt khi kiểm tra code thực tế hoặc bảo vệ đồ án:
+          </p>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cơ chế kỹ thuật</th>
+                  <th>File mã nguồn</th>
+                  <th>Hàm / Lớp / Định danh</th>
+                  <th>Dòng code then chốt</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Bầu chọn Supernode theo joinOrder</strong></td>
+                  <td><code>src/main/p2p/election.ts</code></td>
+                  <td><code>electSupernodes</code></td>
+                  <td>Lọc <code>supernodeEligible</code>, sắp xếp <code>a.joinOrder - b.joinOrder</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Băm phân tán Rendezvous (HRW)</strong></td>
+                  <td><code>src/main/p2p/election.ts</code></td>
+                  <td><code>selectSupernodesForPeer</code></td>
+                  <td><code>createHash('sha256').update(`${peerId}:${s.peerId}`)</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Vòng đệm sự kiện phục hồi (100 item)</strong></td>
+                  <td><code>src/main/p2p/election.ts</code></td>
+                  <td><code>RecoveryEventRingBuffer</code></td>
+                  <td><code>this.events.unshift(event); if (len &gt; 100) pop()</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Khóa đơn phiên (Single Instance)</strong></td>
+                  <td><code>src/main/index.ts</code></td>
+                  <td><code>app.requestSingleInstanceLock</code></td>
+                  <td>Thoát ứng dụng nếu có phiên bản khác đang chạy</td>
+                </tr>
+                <tr>
+                  <td><strong>Thẩm định an ninh IPC 4 tầng</strong></td>
+                  <td><code>src/main/index.ts</code></td>
+                  <td><code>validateSender</code></td>
+                  <td>Kiểm tra window, webContents, parent===null, origin match</td>
+                </tr>
+                <tr>
+                  <td><strong>Bộ đệm trễ IPC 200ms (Throttle)</strong></td>
+                  <td><code>src/main/index.ts</code></td>
+                  <td><code>dispatchStateToWindow</code></td>
+                  <td><code>setTimeout(..., 200)</code> gom snapshot trước khi gửi IPC</td>
+                </tr>
+                <tr>
+                  <td><strong>Đóng ứng dụng an toàn (Teardown 5s)</strong></td>
+                  <td><code>src/main/index.ts</code></td>
+                  <td>Sự kiện <code>before-quit</code></td>
+                  <td><code>Promise.race([peerEngine.dispose(), timeout5s])</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Di trú Profile Kazaa cũ</strong></td>
+                  <td><code>src/main/profile-migration.ts</code></td>
+                  <td><code>findLegacyProfileDirectory</code></td>
+                  <td>Dò tìm thư mục <code>Kazaa/kazaa</code> và sao chép an toàn</td>
+                </tr>
+                <tr>
+                  <td><strong>Két mã hóa phần cứng (DPAPI/Keychain)</strong></td>
+                  <td><code>src/main/p2p/credential-store.ts</code></td>
+                  <td><code>SafeCredentialStore</code></td>
+                  <td><code>safeStorage.encryptString</code>, phân quyền file <code>0o600</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Fallback lưu token trong RAM</strong></td>
+                  <td><code>src/main/p2p/credential-store.ts</code></td>
+                  <td><code>memoryCache</code></td>
+                  <td>Fallback khi <code>isEncryptionAvailable() === false</code> trên Linux</td>
+                </tr>
+                <tr>
+                  <td><strong>Nâng cấp trạng thái V1 lên V2</strong></td>
+                  <td><code>src/main/p2p/peer-store.ts</code></td>
+                  <td><code>migratePeerStateV1</code></td>
+                  <td>Tạo <code>peer-state.v1.backup.json</code> và nâng cấp cấu trúc</td>
+                </tr>
+                <tr>
+                  <td><strong>Ghi đĩa nguyên tử (.tmp rename)</strong></td>
+                  <td><code>src/main/p2p/peer-store.ts</code></td>
+                  <td><code>writeQueue</code></td>
+                  <td>Ghi ra <code>.tmp</code> rồi gọi <code>rename()</code> tráo đổi tức thì</td>
+                </tr>
+                <tr>
+                  <td><strong>Vân tay file siêu tốc (Không băm lại)</strong></td>
+                  <td><code>src/main/p2p/library.ts</code></td>
+                  <td><code>statFingerprint</code></td>
+                  <td>So sánh <code>{ size, mtimeMs, ino }</code> khi rescan thư viện</td>
+                </tr>
+                <tr>
+                  <td><strong>Hàng đợi băm file 2 luồng</strong></td>
+                  <td><code>src/main/p2p/library.ts</code></td>
+                  <td><code>MAX_CONCURRENT_HASHING</code></td>
+                  <td>Hạn mức 2 luồng song song tính SHA-256 dưới nền</td>
+                </tr>
+                <tr>
+                  <td><strong>Cấp quyền chia sẻ theo nhóm</strong></td>
+                  <td><code>src/main/p2p/library.ts</code></td>
+                  <td><code>setFileGroups</code></td>
+                  <td>Quản lý mảng <code>groupKeys: []</code> cho từng file</td>
+                </tr>
+                <tr>
+                  <td><strong>Bộ đệm gom danh mục Supernode (5s)</strong></td>
+                  <td><code>src/main/p2p/search-index.ts</code></td>
+                  <td><code>CATALOG_STAGING_TTL_MS</code></td>
+                  <td>Đặt timer 5,000 ms tự hủy bộ đệm nếu nhận dở dang</td>
+                </tr>
+                <tr>
+                  <td><strong>Tìm kiếm Unicode NFKC &amp; AND logic</strong></td>
+                  <td><code>src/main/p2p/search-index.ts</code></td>
+                  <td><code>matchesQuery</code></td>
+                  <td><code>fileName.normalize('NFKC')</code> &amp; <code>tokens.every(...)</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Bộ nhớ đệm tìm kiếm (Query Cache)</strong></td>
+                  <td><code>src/main/p2p/search-index.ts</code></td>
+                  <td><code>queryCache</code></td>
+                  <td>Lưu 256 kết quả tìm kiếm gần nhất trong 30 giây</td>
+                </tr>
+                <tr>
+                  <td><strong>Khử trùng kết quả tìm kiếm (200 item)</strong></td>
+                  <td><code>src/main/p2p/search-index.ts</code></td>
+                  <td><code>SearchResultsTracker</code></td>
+                  <td>Khóa <code>${ownerPeerId}:${fileId}</code>, giới hạn tối đa 200 bản ghi</td>
+                </tr>
+                <tr>
+                  <td><strong>Gom nhóm Swarm theo sha256 &amp; size</strong></td>
+                  <td><code>src/renderer/src/features/search/Search.tsx</code></td>
+                  <td><code>groupedMap</code></td>
+                  <td>Gom kết quả theo <code>${sha256}:${size}</code> để chọn node tải</td>
+                </tr>
+                <tr>
+                  <td><strong>Kiểm tra tính đơn điệu Revision</strong></td>
+                  <td><code>src/renderer/src/features/network/usePeerState.ts</code></td>
+                  <td><code>lastRevisionRef</code></td>
+                  <td><code>if (incoming.revision &gt;= lastRevisionRef.current)</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Kiểm tra đơn điệu (epoch, rev) mạng</strong></td>
+                  <td><code>src/main/p2p/signaling-client.ts</code></td>
+                  <td><code>handleMessage</code></td>
+                  <td>Hủy gói tin cũ có revision nhỏ hơn revision hiện tại</td>
+                </tr>
+                <tr>
+                  <td><strong>Tái kết nối lũy thừa có nhiễu (Jitter)</strong></td>
+                  <td><code>src/main/p2p/signaling-client.ts</code></td>
+                  <td><code>scheduleReconnect</code></td>
+                  <td>Tăng dần 1s, 2s, 4s, tối đa 30s kèm random Jitter</td>
+                </tr>
+                <tr>
+                  <td><strong>Gộp 1 kết nối WebRTC cho nhiều nhóm</strong></td>
+                  <td><code>src/main/p2p/transport.ts</code></td>
+                  <td><code>connections</code> Map</td>
+                  <td>1 <code>RTCPeerConnection</code> duy nhất giữa 2 peer bất kỳ</td>
+                </tr>
+                <tr>
+                  <td><strong>Giải quyết đụng độ Glare tất định</strong></td>
+                  <td><code>src/main/p2p/transport.ts</code></td>
+                  <td><code>initiateOrRequestConnection</code></td>
+                  <td><code>this.localPeerId &lt; remotePeer.peerId</code> chủ động tạo Offer</td>
+                </tr>
+                <tr>
+                  <td><strong>Phát khối 16 KiB qua Data Channel</strong></td>
+                  <td><code>src/main/p2p/transfers.ts</code></td>
+                  <td><code>CHUNK_SIZE = 16384</code></td>
+                  <td>Cắt nhỏ file thành từng khối 16 KiB truyền qua SCTP</td>
+                </tr>
+                <tr>
+                  <td><strong>Thu hồi quyền tức thì giữa chừng</strong></td>
+                  <td><code>src/main/p2p/transfers.ts</code></td>
+                  <td><code>isPeerAuthorized</code></td>
+                  <td>Kiểm tra quyền trước mỗi khối 16 KiB phát đi</td>
+                </tr>
+                <tr>
+                  <td><strong>Kiểm soát dòng chảy Backpressure</strong></td>
+                  <td><code>src/main/p2p/transfers.ts</code></td>
+                  <td><code>HIGH_WATER_BUFFER</code></td>
+                  <td>ACK sau 256 KiB; tạm dừng đọc đĩa nếu unacked &gt;= 512 KiB</td>
+                </tr>
+                <tr>
+                  <td><strong>Cam kết file nguyên tử bằng hard link</strong></td>
+                  <td><code>src/main/p2p/transfers.ts</code></td>
+                  <td><code>link(partPath, dest)</code></td>
+                  <td>Dùng <code>link()</code> tạo file đích, bắt lỗi <code>EEXIST</code> nếu trùng</td>
+                </tr>
+                <tr>
+                  <td><strong>Tuần tự hóa hàng đợi nuốt lỗi</strong></td>
+                  <td><code>src/main/p2p/engine.ts</code></td>
+                  <td><code>queueAction</code></td>
+                  <td><code>policyQueue = enqueued.then(() =&gt; {}, () =&gt; {})</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Giám sát thời hạn hiệu lực nhóm (6s)</strong></td>
+                  <td><code>src/main/p2p/engine.ts</code></td>
+                  <td><code>monitorTimer</code></td>
+                  <td>Chu kỳ 2s kiểm tra <code>ROSTER_FRESHNESS_LEASE_MS = 6000</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Token-Bucket Rate Limiter máy chủ</strong></td>
+                  <td><code>services/signaling/server.ts</code></td>
+                  <td><code>checkRateLimit</code></td>
+                  <td>Giỏ 60 token, hồi phục 30 token/giây chống DoS</td>
+                </tr>
+                <tr>
+                  <td><strong>So sánh hằng thời gian chống Timing</strong></td>
+                  <td><code>services/signaling/server.ts</code></td>
+                  <td><code>timingSafeEqual</code></td>
+                  <td>So sánh token bằng <code>timingSafeEqual</code> thay cho <code>===</code></td>
+                </tr>
+                <tr>
+                  <td><strong>Cấp chứng thực TURN RFC 5766</strong></td>
+                  <td><code>services/signaling/server.ts</code></td>
+                  <td><code>createHmac('sha1')</code></td>
+                  <td>Cấp username và password tạm thời hiệu lực 24 giờ</td>
+                </tr>
+                <tr>
+                  <td><strong>Dọn rác socket tự động với WeakMap</strong></td>
+                  <td><code>services/signaling/server.ts</code></td>
+                  <td><code>upgradeGroupIdMap</code></td>
+                  <td><code>new WeakMap&lt;WebSocket, string&gt;()</code> chống rò rỉ RAM</td>
+                </tr>
+                <tr>
+                  <td><strong>Tiêm CSP Dev vs Prod</strong></td>
+                  <td><code>electron.vite.config.ts</code></td>
+                  <td><code>kazaaCsp</code> plugin</td>
+                  <td>Dev cho phép <code>ws:</code>, Prod khóa cứng <code>connect-src 'none'</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <section id="bo-cau-hoi-van-dap-inquiry-test">
+          <h2>4. Bộ đề vấn đáp chuyên sâu (Inquiry Test / Viva Defense Q&amp;A Bank)</h2>
+          <p>
+            Dưới đây là bộ 32 câu hỏi và câu trả lời hoàn chỉnh được biên soạn đặc thù cho các buổi vấn đáp đồ án tốt nghiệp, phản biện kỹ thuật hoặc phỏng vấn Senior Engineer.
+          </p>
+
+          <!-- Group A -->
+          <h3>Nhóm A: Cú pháp JS, TypeScript &amp; React 19 (8 câu)</h3>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 1: Sự khác biệt cơ bản giữa `interface` và `type` trong TypeScript là gì? Tại sao trong project này `ActionResult` dùng `type` còn `GroupInvitation` dùng `interface`?</div>
+              <p>
+                <strong>Trả lời:</strong> <code>interface</code> dùng để định nghĩa hình dạng đối tượng (Object Shapes), hỗ trợ cơ chế hợp nhất khai báo (Declaration Merging) và kế thừa mở rộng (<code>extends</code>). Do đó, <code>GroupInvitation</code> hay <code>GroupRuntime</code> dùng <code>interface</code> vì chúng đại diện cho các thực thể có thể mở rộng thuộc tính.<br>
+                Ngược lại, <code>type</code> có khả năng biểu diễn các kiểu phức tạp hơn: Union Types (<code>A | B</code>), Primitive Aliases, Tuples, và Mapped Types. <code>ActionResult</code> bắt buộc phải là <code>type</code> vì nó là một Tagged Union (<code>{ ok: true } | { ok: false; code: ... }</code>).
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 2: Tagged / Discriminated Union hoạt động như thế nào trong `ActionResult` và các gói tin `ServerSignalingMessageV2`?</div>
+              <p>
+                <strong>Trả lời:</strong> Tagged Union là tập hợp các interface có chung một trường nhãn định danh (như <code>ok</code> hoặc <code>type</code>) mang kiểu Literal Type. Khi lập trình viên kiểm tra nhãn này (ví dụ <code>if (!res.ok)</code> hoặc <code>switch (msg.type)</code>), TypeScript tự động thực hiện <strong>Type Narrowing</strong>: bên trong khối đó, trình biên dịch nhận biết chính xác các trường đặc thù của kiểu dữ liệu mà không cần ép kiểu thủ công.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 3: Toán tử `as const` mang lại lợi ích gì trong định nghĩa `IPC_CHANNELS` và `COMMAND_DESCRIPTORS`?</div>
+              <p>
+                <strong>Trả lời:</strong> Khi không có <code>as const</code>, TypeScript suy diễn chuỗi thành kiểu <code>string</code> rộng. Khi thêm <code>as const</code>: (1) Mọi thuộc tính trở thành <code>readonly</code>; (2) Mọi giá trị chuỗi trở thành String Literal Type chính xác. Kết hợp với <code>typeof</code>, ta tự động trích xuất được kiểu dữ liệu chuẩn (như <code>CommandId = (typeof COMMAND_DESCRIPTORS)[number]['id']</code>), ngăn ngừa hoàn toàn lỗi gõ sai tên kênh IPC khi biên dịch.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 4: Phân tích cơ chế hoạt động của hàm `queueAction<T>` trong `src/main/p2p/engine.ts`. Tại sao phải gắn hai hàm rỗng `enqueued.then(() => {}, () => {})`?</div>
+              <p>
+                <strong>Trả lời:</strong> <code>queueAction</code> hiện thực hóa mẫu tuần tự hóa Promise (Promise Chain Serialization Pattern) để thực hiện tác vụ theo thứ tự và chống Race Condition. Hai hàm rỗng <code>enqueued.then(() =&gt; {}, () =&gt; {})</code> dùng để <strong>cô lập lỗi</strong>: nếu tác vụ A bị lỗi (rejected), hàm rỗng ở đuôi sẽ nuốt lỗi này cho chuỗi hàng đợi tổng <code>policyQueue</code>, giúp hàng đợi luôn trở về trạng thái Fulfilled. Tác vụ B xếp sau không bị hủy liên đới, trong khi người gọi tác vụ A vẫn nhận đủ kết quả lỗi qua Promise trả về.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 5: Tại sao trong `usePeerState.ts` và `App.tsx` lại sử dụng `useRef` cho `lastRevisionRef` và `isSavingThemeRef` thay vì dùng `useState`?</div>
+              <p>
+                <strong>Trả lời:</strong> Thay đổi giá trị <code>useState</code> sẽ kích hoạt React re-render lại giao diện. Trong khi đó, <code>lastRevisionRef</code> và <code>isSavingThemeRef</code> chỉ là các biến theo dõi kỹ thuật nội bộ (Internal State Trackers). Nếu dùng <code>useState</code> cho <code>lastRevisionRef</code>, mỗi khi mạng cập nhật revision, component sẽ bị re-render thừa dù giao diện không đổi. <code>ref.current</code> cho phép đọc/ghi giá trị mới ngay lập tức mà hoàn toàn không kích hoạt chu kỳ render.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 6: Trong hook `useEffect` của `usePeerState.ts`, tại sao bắt buộc phải trả về hàm Cleanup (`return () => unsubscribe()`)? Hậu quả nếu quên là gì?</div>
+              <p>
+                <strong>Trả lời:</strong> Hàm Cleanup được React tự động gọi khi component unmount hoặc trước khi chạy lại effect mới. Hàm này gọi <code>ipcRenderer.removeListener(...)</code> để hủy nhận tin từ Main Process. Nếu quên Cleanup, mỗi lần component mount lại, một listener mới sẽ được tạo thêm trong khi listener cũ vẫn nằm trong RAM, dẫn tới <strong>rò rỉ bộ nhớ (Memory Leak)</strong> và các callback bị gọi lặp lại nhiều lần gây sai lệch dữ liệu.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 7: Node.js 24 hỗ trợ tính năng Native Type Stripping. Điều này đòi hỏi quy tắc cú pháp gì trong mã nguồn TypeScript?</div>
+              <p>
+                <strong>Trả lời:</strong> Native Type Stripping cho phép Node.js chạy trực tiếp file <code>.ts</code> bằng cách thay thế các khai báo kiểu bằng khoảng trắng trong RAM mà không cần biên dịch sang <code>.js</code>. Cơ chế này đòi hỏi mã nguồn chỉ được chứa <strong>cú pháp có thể xóa bỏ hoàn toàn (Erasable Syntax)</strong>, được kiểm soát bởi <code>"erasableSyntaxOnly": true</code> trong <code>tsconfig.node.json</code>: (1) Mọi import chỉ dùng cho type bắt buộc phải viết <code>import type</code>; (2) Tuyệt đối không dùng TypeScript Enums hay constructor parameter properties.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 8: Điểm khác nhau giữa kiểu `any` và `unknown` trong TypeScript là gì? Dự án áp dụng `unknown` kết hợp User-Defined Type Guard như thế nào?</div>
+              <p>
+                <strong>Trả lời:</strong> <code>any</code> tắt hoàn toàn hệ thống kiểm tra kiểu, dễ gây crash lúc chạy. <code>unknown</code> là kiểu an toàn: TypeScript cấm thao tác trên biến <code>unknown</code> cho tới khi kiểu được thu hẹp. Dự án gán kiểu <code>unknown</code> cho toàn bộ dữ liệu nhận từ mạng WebSocket, file đĩa JSON và tham số IPC, sau đó dùng các hàm Type Guard (như <code>isThemePreference(val): val is ThemePreference</code>) kiểm tra giá trị bằng JS thuần. Khi Type Guard trả về <code>true</code>, TypeScript tự động ép kiểu biến đó về kiểu dữ liệu an toàn.
+              </p>
+            </div>
+          </div>
+
+          <!-- Group B -->
+          <h3>Nhóm B: Kiến trúc Electron 3 tiến trình &amp; Ranh giới bảo mật (8 câu)</h3>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 9: Trình bày kiến trúc 3 tiến trình của Electron trong dự án. Tại sao không để giao diện React kết nối mạng WebRTC trực tiếp?</div>
+              <p>
+                <strong>Trả lời:</strong> Ứng dụng gồm: (1) <strong>Main Process</strong>: Chạy Node.js toàn quyền, quản lý WebRTC (Werift), ghi đĩa, OS Keyring; (2) <strong>Preload Script</strong>: Tiêm API an toàn qua <code>contextBridge</code>; (3) <strong>Renderer Process</strong>: Giao diện React chạy trong sandbox Chromium.<br>
+                Không cho giao diện kết nối WebRTC trực tiếp vì Renderer là vùng không tin cậy (Untrusted Sandbox). Nếu mở mạng cho Renderer, bất kỳ lỗ hổng XSS nào từ tên file độc hại cũng có thể bị lợi dụng để tấn công máy tính hoặc bí mật đánh cắp dữ liệu. Khóa mạng ở Renderer giúp kiểm soát tập trung toàn bộ lưu lượng mạng ở Main Process.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 10: Phân tích 4 lớp kiểm tra an ninh trong hàm `validateSender(event)` tại `src/main/index.ts`.</div>
+              <p>
+                <strong>Trả lời:</strong>
+                (1) <strong>Window Liveness</strong>: Kiểm tra <code>mainWindow</code> đang tồn tại và chưa bị hủy (<code>!isDestroyed()</code>);<br>
+                (2) <strong>Sender Identity</strong>: So sánh <code>event.sender === mainWindow.webContents</code> để bảo đảm thông điệp xuất phát từ đúng cửa sổ chính;<br>
+                (3) <strong>Top-Level Frame</strong>: Kiểm tra <code>event.senderFrame.parent === null</code> chặn yêu cầu IPC từ các thẻ <code>&lt;iframe&gt;</code> lồng bên trong;<br>
+                (4) <strong>Origin Match</strong>: Môi trường dev bắt buộc origin là <code>http://127.0.0.1:5173/</code>; production bắt buộc khớp đường dẫn file HTML tĩnh nội bộ.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 11: Chính sách CSP của dự án được cấu hình như thế nào giữa môi trường Development và Production?</div>
+              <p>
+                <strong>Trả lời:</strong> Plugin <code>kazaaCsp</code> trong <code>electron.vite.config.ts</code> tiêm CSP động vào <code>index.html</code>:<br>
+                - <strong>Development</strong>: Cho phép <code>connect-src 'self' ws://127.0.0.1:5173</code> phục vụ Vite Hot Module Replacement (HMR) qua WebSocket nội bộ.<br>
+                - <strong>Production</strong>: Khóa cứng <code>connect-src 'none'</code>. Trình duyệt chặn đứng hoàn toàn mọi nỗ lực gọi <code>fetch</code>, <code>XMLHttpRequest</code>, hay mở WebSocket trực tiếp từ mã nguồn giao diện.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 12: Cơ chế `contextBridge.exposeInMainWorld` hoạt động ra sao và tại sao nó an toàn hơn việc gán trực tiếp vào `window`?</div>
+              <p>
+                <strong>Trả lời:</strong> Nếu gán trực tiếp API vào <code>window</code> trong môi trường tắt Context Isolation, mã trang web có thể truy cập prototype của Node.js để leo thang đặc quyền.<br>
+                <code>contextBridge.exposeInMainWorld</code> tạo một bản sao thu nhỏ (Proxy Membrane) bất biến trên <code>window.p2p</code>. Preload và Renderer chạy trên hai bối cảnh bộ nhớ hoàn toàn tách biệt. Mã giao diện không thể can thiệp vào các biến nội bộ của Preload hay sửa đổi hành vi các hàm IPC.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 13: `SafeCredentialStore` bảo vệ token bí mật của nhóm như thế nào trên các hệ điều hành khác nhau?</div>
+              <p>
+                <strong>Trả lời:</strong>
+                - <strong>Windows / macOS</strong>: Sử dụng module native <code>electron.safeStorage</code> mã hóa chuỗi token bằng Windows DPAPI hoặc macOS Keychain trước khi ghi đĩa. File mã hóa được ghi với quyền POSIX <code>0o600</code> (chỉ user hệ điều hành hiện tại được đọc/ghi).<br>
+                - <strong>Linux Headless</strong>: Nếu không có Desktop Keyring (<code>isEncryptionAvailable() === false</code>), hệ thống kích hoạt cơ chế fallback lưu tạm trong RAM (<code>memoryCache</code>) phục vụ kiểm thử và CI/CD mà không làm ứng dụng bị lỗi.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 14: Kỹ thuật ghi đĩa nguyên tử (Atomic File Write) qua file `.tmp` giải quyết rủi ro gì trong `peer-store.ts` và `theme-store.ts`?</div>
+              <p>
+                <strong>Trả lời:</strong> Nếu ghi dữ liệu trực tiếp vào file cấu hình, khi máy tính bị mất điện đột ngột hoặc tiến trình bị tắt ngang lúc ghi, file sẽ bị cụt hoặc rỗng (0 byte), khiến ứng dụng hỏng khởi động.<br>
+                Kỹ thuật ghi đĩa nguyên tử ghi dữ liệu mới hoàn chỉnh vào file tạm <code>.tmp</code> trước. Sau khi xả hoàn tất xuống đĩa, hệ thống gọi lệnh <code>rename()</code> của OS để tráo đổi tên file. Lệnh <code>rename()</code> ở cấp filesystem là một thao tác nguyên tử (Atomic Operation) — file hoặc giữ nguyên nội dung cũ, hoặc chuyển hoàn toàn sang nội dung mới.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 15: Tại sao cần hàm `sanitizeDestinationFileName` khi người dùng tải file về máy?</div>
+              <p>
+                <strong>Trả lời:</strong> Tên file do peer từ xa gửi tới là dữ liệu không đáng tin cậy. Kẻ tấn công có thể đặt tên file chứa chuỗi chuyển hướng thư mục như <code>../../../../Windows/System32/malicious.dll</code> (tấn công Path Traversal). Hàm <code>sanitizeDestinationFileName</code> loại bỏ các ký tự phân cách thư mục (<code>/</code> và <code>\</code>), cắt bỏ các chuỗi <code>..</code>, và chỉ giữ lại phần tên cơ sở an toàn (Basename) trước khi ghép vào thư mục lưu trữ.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 16: Cơ chế `app.requestSingleInstanceLock` hoạt động như thế nào và tại sao nó lại bắt buộc đối với ứng dụng này?</div>
+              <p>
+                <strong>Trả lời:</strong> Khi khởi động, ứng dụng xin hệ điều hành cấp khóa duy nhất qua <code>app.requestSingleInstanceLock()</code>. Nếu đã có phiên bản đang chạy, hàm trả về <code>false</code> và phiên bản thứ hai tự động thoát sau khi gửi tín hiệu chuyển focus về cửa sổ ban đầu.<br>
+                Cơ chế này bắt buộc vì ứng dụng sở hữu các tệp trạng thái đĩa (<code>peer-state.json</code>, <code>credentials.enc</code>). Nếu hai tiến trình chạy song song cùng truy cập và ghi đè, dữ liệu trạng thái P2P sẽ bị xung đột và hỏng cấu trúc.
+              </p>
+            </div>
+          </div>
+
+          <!-- Group C -->
+          <h3>Nhóm C: Signaling, Bầu chọn Supernode HRW &amp; Ghép kênh (8 câu)</h3>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 17: Cấu trúc của một `GroupKey` là gì? Tại sao không dùng mỗi `groupId` để định danh nhóm?</div>
+              <p>
+                <strong>Trả lời:</strong> <code>GroupKey</code> là chuỗi JSON tuần tự hóa: <code>JSON.stringify([signalingUrl, groupId])</code>.<br>
+                Không thể chỉ dùng mỗi <code>groupId</code> vì hệ thống hỗ trợ tham gia nhiều nhóm trên các máy chủ Signaling khác nhau. Hai cộng đồng độc lập có thể đặt trùng tên nhóm (ví dụ <code>general</code>). Việc kết hợp <code>signalingUrl</code> và <code>groupId</code> bảo đảm nhóm được định danh duy nhất trên toàn cầu, tránh gộp nhầm danh sách thành viên giữa hai máy chủ khác nhau.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 18: Trình bày thuật toán bầu chọn `electSupernodes` trong `src/main/p2p/election.ts`. Tiêu chí nào được ưu tiên hàng đầu?</div>
+              <p>
+                <strong>Trả lời:</strong> Mỗi nhóm chọn tối đa 2 Supernode theo quy trình:<br>
+                1. Lọc danh sách các node có <code>supernodeEligible === true</code>.<br>
+                2. Sắp xếp danh sách ứng viên theo hai tiêu chí:<br>
+                - <strong>Ưu tiên 1 (Hàng đầu)</strong>: Thứ tự vào nhóm (<code>joinOrder</code> nhỏ hơn đứng trước). Tiêu chí này ưu tiên các node đã vào mạng sớm và hoạt động lâu năm, tối đa hóa tính ổn định.<br>
+                - <strong>Ưu tiên 2 (Giải hòa điểm)</strong>: Nếu cùng <code>joinOrder</code>, so sánh thứ tự từ điển của <code>peerId</code> (<code>a.peerId.localeCompare(b.peerId)</code>).<br>
+                Hai ứng viên đứng đầu mảng sau khi sắp xếp sẽ đắc cử Supernode.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 19: Highest Random Weight (HRW) / Rendezvous Hashing giải quyết bài toán gì và hoạt động như thế nào trong `selectSupernodesForPeer`?</div>
+              <p>
+                <strong>Trả lời:</strong> Sau khi đã bầu ra các Supernode, các node bình thường cần kết nối và đồng bộ danh mục chia sẻ về Supernode nào để cân bằng tải và tối thiểu hóa sự xáo trộn (Minimal Churn) khi mạng biến động.<br>
+                HRW giải quyết việc này mà không cần bảng điều phối tập trung: Node tính điểm băm SHA-256 cho từng cặp: <code>hash = SHA256(peerId + ":" + supernodeId)</code>, sau đó sắp xếp giảm dần theo điểm băm. Supernode có điểm cao nhất trở thành <strong>Primary Supernode</strong>, và Supernode cao thứ hai trở thành <strong>Standby Supernode</strong>. Mọi node đều tính ra kết quả nhất quán mà không cần trao đổi thêm thông điệp mạng.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 20: Nguyên lý "Transport Pooling" trong `TransportManager` là gì? Lợi ích của nó đối với tài nguyên máy tính?</div>
+              <p>
+                <strong>Trả lời:</strong> Nguyên lý: <strong>Giữa hai máy tính bất kỳ, chỉ duy trì duy nhất MỘT đối tượng `RTCPeerConnection` WebRTC</strong>, bất kể hai người dùng đang cùng ở trong 1 nhóm hay 10 nhóm ảo khác nhau. Tất cả thông điệp điều khiển của mọi nhóm đều được ghép kênh (Multiplex) qua Data Channel chung <code>p2p-multiple-groups-control-v2</code>.<br>
+                Lợi ích: Tránh bắt tay DTLS/ICE lặp lại, tiết kiệm cổng mạng, giảm tải tiêu thụ CPU/RAM và tăng tốc độ kết nối tức thì khi tham gia thêm nhóm mới đã có sẵn bạn bè cùng nhóm cũ.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 21: Hiện tượng xung đột Glare trong WebRTC xảy ra khi nào và codebase giải quyết nó như thế nào?</div>
+              <p>
+                <strong>Trả lời:</strong> Glare xảy ra khi cả hai node phát hiện ra nhau gần như đồng thời qua Signaling Server, và cả hai cùng tạo SDP Offer gửi cho nhau, dẫn đến xung đột trạng thái WebRTC.<br>
+                Codebase giải quyết bằng quy tắc phân xử tất định: Trước khi tạo kết nối, hệ thống so sánh chuỗi định danh: <code>if (this.localPeerId &lt; remotePeer.peerId)</code>. Node có <code>peerId</code> nhỏ hơn về mặt từ điển sẽ nắm quyền chủ động tạo Offer; node có <code>peerId</code> lớn hơn sẽ ở vị thế thụ động gửi thông điệp yêu cầu hoặc chờ nhận Offer. Hiện tượng phát Offer đồng thời bị loại bỏ 100%.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 22: Máy chủ Signaling bảo vệ token gia nhập nhóm chống tấn công đo thời gian (Timing Attack) như thế nào?</div>
+              <p>
+                <strong>Trả lời:</strong> Nếu dùng <code>===</code> thông thường, JavaScript so sánh từng ký tự từ trái qua phải và ngắt ngay ở ký tự sai đầu tiên. Kẻ tấn công có thể đo thời gian phản hồi nano-giây để lần lượt dò ra từng ký tự của token bí mật.<br>
+                Máy chủ Signaling dùng hàm <code>timingSafeEqual(providedBuf, group.tokenBuffer)</code> từ <code>node:crypto</code>. Hàm này duyệt qua toàn bộ các byte trong mảng với thời gian chạy không đổi (hằng số thời gian), bất kể dữ liệu đúng hay sai ở vị trí nào, loại bỏ hoàn toàn khả năng rò rỉ khóa qua phân tích thời gian.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 23: Cơ chế Token-Bucket Rate Limiter trên máy chủ Signaling được cấu hình ra sao?</div>
+              <p>
+                <strong>Trả lời:</strong> Mỗi socket kết nối tới Signaling Server có một giỏ token độc lập: Sức chứa tối đa 60 token (Burst Capacity); tốc độ hồi phục 30 token/giây. Mỗi thông điệp gửi lên tiêu tốn 1 token. Khi hết token, máy chủ từ chối yêu cầu với mã lỗi <code>RATE_LIMITED</code>. Cơ chế này vừa cho phép client gửi các đợt tin ngắn dồn dập khi mới gia nhập mạng, vừa chặn đứng hành vi spam tin nhắn hoặc DoS làm nghẽn máy chủ.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 24: Thời hạn thuê `ROSTER_FRESHNESS_LEASE_MS = 6000` đóng vai trò gì trong tính nhất quán của mạng P2P?</div>
+              <p>
+                <strong>Trả lời:</strong> Trong hệ thống phân tán không có cơ sở dữ liệu chung, quyền Supernode chỉ có giá trị dựa trên bản xác nhận định kỳ từ Signaling Server. <code>ROSTER_FRESHNESS_LEASE_MS = 6000</code> (6 giây) là thời hạn hiệu lực tối đa của một bản snapshot thành viên. Bộ đếm <code>monitorTimer</code> chạy mỗi 2 giây: Nếu node không nhận được tín hiệu làm mới trong quá 6 giây (ví dụ máy chủ sập hoặc đứt mạng), quyền Supernode sẽ tự động hết hạn, buộc node hạ cấp vai trò về chế độ phục hồi an toàn, ngăn ngừa hiện tượng phân mảnh mạng (Split-Brain).
+              </p>
+            </div>
+          </div>
+
+          <!-- Group D -->
+          <h3>Nhóm D: Băm file, Chỉ mục tìm kiếm đảo &amp; Truyền file SCTP (8 câu)</h3>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 25: Kỹ thuật `statFingerprint` trong `LibraryManager` hoạt động như thế nào để tối ưu hóa hiệu năng khi khởi động hoặc quét lại thư viện?</div>
+              <p>
+                <strong>Trả lời:</strong> Đọc và băm SHA-256 các file dung lượng lớn tốn rất nhiều thời gian và gây nghẽn CPU. <code>LibraryManager</code> lưu trữ dấu vân tay filesystem gồm bộ ba: <code>{ size, mtimeMs, ino }</code>. Khi người dùng bấm "Rescan Library", hàm chỉ cần gọi lệnh <code>stat</code> nhanh của hệ điều hành để so sánh kích thước và thời điểm sửa đổi. Nếu các chỉ số không đổi, hệ thống tái sử dụng ngay mã băm SHA-256 đã lưu trước đó trong <code>peer-state.json</code>, giúp quét lại hàng nghìn file chỉ trong vài mili-giây.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 26: Tại sao dự án đặt hằng số `MAX_CONCURRENT_HASHING = 2` trong `src/main/p2p/library.ts`?</div>
+              <p>
+                <strong>Trả lời:</strong> Thuật toán băm SHA-256 tiêu tốn tài nguyên xử lý rất lớn. Nếu người dùng chọn chia sẻ cùng lúc 50 file lớn và hệ thống đồng thời băm cả 50 file, CPU máy tính sẽ bị quá tải 100%, làm giao diện Electron bị đơ và gián đoạn các luồng truyền dữ liệu WebRTC đang chạy. Bằng cách giới hạn tối đa 2 tác vụ băm song song và đưa các file còn lại vào hàng đợi <code>hashQueue</code>, ứng dụng luôn duy trì hiệu năng ổn định.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 27: Khi node hoạt động với vai trò Supernode, tại sao cần cơ chế Staging Buffer kèm bộ hẹn giờ 5 giây (`CATALOG_STAGING_TTL_MS = 5000`) khi nhận danh mục chia sẻ?</div>
+              <p>
+                <strong>Trả lời:</strong> Danh mục file được chia nhỏ thành nhiều gói tin (<code>catalog-begin</code>, các gói <code>catalog-batch</code>, và <code>catalog-end</code>). Supernode không cập nhật trực tiếp từng gói vào chỉ mục tìm kiếm chính để tránh trạng thái dữ liệu dở dang. Thay vào đó, nó đưa vào Staging Buffer và đặt timer 5 giây. Nếu node gửi bị ngắt mạng giữa chừng và không gửi gói <code>catalog-end</code>, timer 5 giây sẽ tự động kích hoạt và xóa sạch vùng nhớ tạm, ngăn chặn nguy cơ cạn kiệt bộ nhớ RAM của Supernode.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 28: Kỹ thuật tìm kiếm trong `matchesQuery` sử dụng chuẩn hóa Unicode NFKC và logic Boolean AND như thế nào?</div>
+              <p>
+                <strong>Trả lời:</strong> (1) <strong>Chuẩn hóa Unicode NFKC</strong>: Trong tiếng Việt, cùng một chữ có dấu có thể lưu dưới dạng dựng sẵn (Precomposed) hoặc tổ hợp (Decomposed). Hàm gọi <code>fileName.normalize('NFKC').toLowerCase()</code> để đưa toàn bộ tên file và từ khóa về cùng một biểu diễn nhị phân chuẩn tắc, loại bỏ lỗi tìm không thấy file do khác biệt bộ gõ.<br>
+                (2) <strong>Boolean AND</strong>: Chuỗi tìm kiếm được tách thành mảng các token. Hàm dùng <code>tokens.every((token) =&gt; normalizedName.includes(token))</code> — file chỉ được xem là trùng khớp nếu tên của nó chứa đầy đủ tất cả các từ khóa tìm kiếm.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 29: Cơ chế kiểm soát dòng chảy (Flow Control &amp; Backpressure) trong quá trình truyền file qua WebRTC Data Channel được thiết kế như thế nào?</div>
+              <p>
+                <strong>Trả lời:</strong> Để bảo vệ bộ đệm socket mạng không bị tràn RAM khi đọc file từ ổ SSD siêu tốc:<br>
+                1. File được cắt thành các khối nhỏ 16 KiB (<code>CHUNK_SIZE = 16384</code>).<br>
+                2. Bên nhận gửi thông điệp xác nhận tích lũy <code>ack</code> sau mỗi <strong>256 KiB</strong> dữ liệu nhận được.<br>
+                3. Bên gửi giám sát số byte chưa được xác nhận <code>unacked = offset - lastAckedBytes</code>.<br>
+                4. Nếu <code>unacked &gt;= 512 KiB</code> (<code>MAX_UNACK_BYTES</code>) hoặc bộ đệm socket vượt ngưỡng <code>256 KiB</code> (<code>HIGH_WATER_BUFFER</code>), luồng đọc đĩa lập tức tạm dừng (<code>stream.pause()</code>).<br>
+                5. Chỉ khi nhận được gói <code>ack</code> hoặc bộ đệm socket xả xuống dưới <code>128 KiB</code> (<code>LOW_WATER_BUFFER</code>), luồng đọc mới được tiếp tục (<code>stream.resume()</code>).
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 30: Cơ chế "Thu hồi quyền chia sẻ tức thì giữa chừng" (Mid-Transfer Revocation) hoạt động ở tầng code nào?</div>
+              <p>
+                <strong>Trả lời:</strong> Cơ chế này được cài đặt trực tiếp trong vòng lặp đọc file của máy gửi tại file <code>src/main/p2p/transfers.ts</code>. Trước khi đọc và phát đi từng khối nhị phân 16 KiB, máy gửi luôn gọi <code>isPeerAuthorized(groupId, remotePeerId, remoteSessionId, fileId)</code>. Nếu người dùng gỡ quyền nhóm trong giao diện Library khi file đang truyền dở, hàm kiểm tra sẽ trả về <code>false</code> ngay ở khối tiếp theo. Luồng phát dữ liệu lập tức bị hủy bỏ và gửi lỗi <code>FORBIDDEN</code> sang bên nhận, chặn đứng việc tải nốt phần còn lại.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 31: Quá trình cam kết file tải về (Atomic Commit) sử dụng lệnh `link()` và `unlink()` diễn ra như thế nào? Tại sao bắt buộc phải bắt lỗi `EEXIST`?</div>
+              <p>
+                <strong>Trả lời:</strong> Khi tải file: (1) Dữ liệu được ghi vào file tạm ẩn <code>.&lt;filename&gt;.tmp.&lt;transferId&gt;</code>; (2) Mã băm SHA-256 được tính toán theo luồng và so sánh với mã băm ban đầu khi hoàn tất; (3) Hệ thống gọi lệnh <code>link(partPath, destinationPath)</code> để tạo hard link nguyên tử.<br>
+                <strong>Bắt buộc bắt lỗi `EEXIST`</strong>: Nếu trên máy người dùng đã có sẵn file trùng tên, lệnh <code>link()</code> sẽ quẳng lỗi mã <code>EEXIST</code>. Hệ thống bắt mã lỗi này và hủy thao tác với mã <code>DESTINATION_EXISTS</code>, bảo đảm không bao giờ ghi đè làm mất dữ liệu quan trọng có sẵn của người dùng. Sau đó, lệnh <code>unlink(partPath)</code> được gọi để dọn dẹp file tạm.
+              </p>
+            </div>
+          </div>
+
+          <div class="callout callout-note">
+            <div class="callout-icon">❓</div>
+            <div class="callout-content">
+              <div class="callout-title">Câu 32: Phân hệ tìm kiếm `Search.tsx` thực hiện gom nhóm Swarm (Swarm Aggregation) như thế nào và người dùng được hưởng lợi gì từ cơ chế này?</div>
+              <p>
+                <strong>Trả lời:</strong> Khi nhiều peer cùng chia sẻ một file, kết quả tìm kiếm thô sẽ trả về nhiều bản ghi riêng rẽ. <code>Search.tsx</code> sử dụng <code>Map</code> gom các kết quả trùng mã băm SHA-256 và kích thước file theo khóa <code>${item.file.sha256}:${item.file.size}</code> thành một đối tượng <code>GroupedResult</code>.<br>
+                Lợi ích: (1) Giao diện hiển thị gọn gàng, mỗi file duy nhất chỉ chiếm một hàng; (2) Người dùng xem được toàn bộ danh sách các nguồn sở hữu (Sources) và có thể chủ động chọn tải từ peer có kết nối <code>Direct</code> tốc độ cao thay vì node phải đi vòng qua relay <code>TURN</code>.
+              </p>
+            </div>
+          </div>
+
+          <h3>Tóm tắt &amp; Lời khuyên trước khi bảo vệ vấn đáp</h3>
+          <ol>
+            <li><strong>Nắm chắc ranh giới bảo mật</strong>: Luôn nhấn mạnh sự tách biệt giữa 3 tiến trình, vai trò của <code>contextBridge</code> và bộ lọc 4 tầng của <code>validateSender</code>.</li>
+            <li><strong>Hiểu rõ bản chất toán học</strong>: Nắm vững công thức băm SHA-256 kết hợp giữa <code>peerId</code> và <code>supernodeId</code> trong thuật toán HRW và lý do tại sao nó vượt trội hơn Consistent Hash Ring về tính tối thiểu xáo trộn.</li>
+            <li><strong>Giải thích được cơ chế chống tràn bộ nhớ</strong>: Nhớ các con số quan trọng: chunk 16 KiB, ACK 256 KiB, trần đệm 512 KiB, thời hạn thuê 6000ms và bộ giới hạn 60 token của máy chủ Signaling.</li>
+            <li>Tự tin mở bảng tra cứu mã nguồn ở Mục 3 để dẫn chứng trực tiếp file và hàm khi ban giám khảo yêu cầu kiểm tra code thực tế!</li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="03-main-process-and-p2p-engine-code.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">03. Main &amp; P2P Engine Code</span>
+          </a>
+          <a href="../theory/01-distributed-topology.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">01. Distributed Topology</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#renderer-bootstrap-and-hook" class="toc-link">1. Renderer Bootstrap &amp; Hook</a></li>
+          <li><a href="#renderer-views" class="toc-link">2. Feature Views &amp; App Shell</a></li>
+          <li><a href="#bang-tra-cuu-vi-tri-code" class="toc-link">3. Bảng tra cứu vị trí code</a></li>
+          <li><a href="#bo-cau-hoi-van-dap-inquiry-test" class="toc-link">4. Bộ đề vấn đáp (Inquiry Test)</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System &amp; Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

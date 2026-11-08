@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>01. System Architecture Overview — Architecture — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item active"><a href="01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Architecture & Internals</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>01. System Architecture Overview</span>
+        </nav>
+
+        <h1>Architecture: System Overview & Process Layout</h1>
+        <p class="lead-paragraph">
+          This document details the multi-process execution topology of <strong><code>p2p-multiple-groups</code></strong>, the IPC bridge security boundary, and the dependency structure across runtime subsystems.
+        </p>
+
+        <hr>
+
+        <section id="multi-process-architecture">
+          <h2>1. Multi-Process Execution Architecture</h2>
+          <p>Electron executes the application across distinct OS processes to isolate low-level network and filesystem primitives from the graphical user interface:</p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+graph TD
+    subgraph SignalingCluster["Authoritative Signaling Service"]
+        WS_SRV["Signaling Server (ws)"]
+        COTURN["Coturn TURN/STUN Relay"]
+    end
+
+    subgraph MainProcess["Electron Main Process (Node.js)"]
+        ENTRY["Main Process Entry (src/main/index.ts)"]
+        ENGINE["PeerEngine (src/main/p2p/engine.ts)"]
+        TRANSPORT["TransportManager & Werift (src/main/p2p/transport.ts)"]
+        SIG_CLIENT["SignalingClient (src/main/p2p/signaling-client.ts)"]
+        STORE["MultiGroupPeerStore (src/main/p2p/peer-store.ts)"]
+        SAFE["SafeCredentialStore (src/main/p2p/credential-store.ts)"]
+        THEME["ThemeStore (src/main/theme-store.ts)"]
+
+        ENTRY --> ENGINE
+        ENTRY --> THEME
+        ENGINE --> STORE
+        ENGINE --> SAFE
+        ENGINE --> TRANSPORT
+        ENGINE --> SIG_CLIENT
+    end
+
+    subgraph PreloadBridge["Preload Security Boundary"]
+        PRELOAD["Preload Script (src/preload/index.ts)\ncontextBridge.exposeInMainWorld"]
+    end
+
+    subgraph RendererProcess["Chromium Renderer Process (Sandboxed)"]
+        REACT_APP["React 19 App (src/renderer/src/App.tsx)"]
+        HOOK["usePeerState (src/renderer/.../usePeerState.ts)"]
+        VIEWS["Views: Home | Network | Library | Search | Transfers | Appearance"]
+
+        REACT_APP --> HOOK
+        REACT_APP --> VIEWS
+    end
+
+    SIG_CLIENT <-->|"WebSocket (ws://...)"| WS_SRV
+    TRANSPORT <-->|"WebRTC SCTP / DTLS 1.2"| TRANSPORT
+    TRANSPORT -.->|"TURN Relay Traffic"| COTURN
+
+    ENGINE <==>|"IPC_CHANNELS (ipcMain / ipcRenderer)"| PRELOAD
+    PRELOAD <==>|"window.p2p / window.kazaa"| REACT_APP
+            </div>
+          </div>
+
+          <h3>Process Roles & Boundaries</h3>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Process</th>
+                  <th>Runtime Environment</th>
+                  <th>Responsibilities</th>
+                  <th>Constraints</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Main Process</strong></td>
+                  <td>Node.js 24 + Electron Host</td>
+                  <td>Lifecycle, single-instance lock, Werift WebRTC, disk persistence, OS keychain encryption, IPC dispatching.</td>
+                  <td>Full host system access; must never execute unvalidated renderer strings.</td>
+                </tr>
+                <tr>
+                  <td><strong>Preload Script</strong></td>
+                  <td>Isolated Context</td>
+                  <td>Bridges main and renderer processes using <code>contextBridge</code>. Exposes typed <code>window.p2p</code>.</td>
+                  <td>Cannot import external npm modules or mutate global prototypes.</td>
+                </tr>
+                <tr>
+                  <td><strong>Renderer Process</strong></td>
+                  <td>Chromium + React 19</td>
+                  <td>Workspace UI, user interactions, view switching, theme rendering, form validation.</td>
+                  <td>Sandboxed; strict CSP <code>connect-src 'none'</code>; zero Node.js access.</td>
+                </tr>
+                <tr>
+                  <td><strong>Signaling Service</strong></td>
+                  <td>Independent Node.js Process</td>
+                  <td>Authenticates group tokens, tracks roster membership, generates ephemeral TURN credentials, broadcasts SDP.</td>
+                  <td>Never inspects or stores file payloads; strictly metadata routing.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="ipc-contracts">
+          <h2>2. IPC Contract Architecture</h2>
+          <p>Communication between the sandboxed renderer and the main process is strictly mediated by the <code>IPC_CHANNELS</code> registry defined in <code>src/shared/contracts.ts</code>.</p>
+
+          <pre><code class="language-typescript">export const IPC_CHANNELS = {
+  THEME_GET: 'kazaa:theme:get',
+  THEME_SET: 'kazaa:theme:set',
+  COMMAND: 'kazaa:command',
+
+  // Scoped V2 P2P Channels
+  P2P_V2_GET_STATE: 'p2p:getState',
+  P2P_V2_STATE: 'p2p:state',
+  P2P_V2_JOIN_GROUP: 'p2p:joinGroup',
+  P2P_V2_RESUME_GROUP: 'p2p:resumeGroup',
+  P2P_V2_LEAVE_GROUP: 'p2p:leaveGroup',
+  P2P_V2_SET_GROUP_AUTO_JOIN: 'p2p:setGroupAutoJoin',
+  P2P_V2_SET_GROUP_ELIGIBILITY: 'p2p:setGroupEligibility',
+  P2P_V2_FORGET_GROUP: 'p2p:forgetGroup',
+  P2P_V2_DISCONNECT_ALL: 'p2p:disconnectAll',
+  P2P_V2_ADD_FILES: 'p2p:addFiles',
+  P2P_V2_RESCAN_LIBRARY: 'p2p:rescanLibrary',
+  P2P_V2_REMOVE_FILE: 'p2p:removeFile',
+  P2P_V2_SET_FILE_GROUPS: 'p2p:setFileGroups',
+  P2P_V2_SEARCH: 'p2p:search',
+  P2P_V2_DOWNLOAD: 'p2p:download',
+  P2P_V2_CANCEL_TRANSFER: 'p2p:cancelTransfer'
+} as const</code></pre>
+
+          <h3>Sender Validation Invariant (<code>validateSender</code>)</h3>
+          <p>Every single <code>ipcMain.handle</code> invocation executes <code>validateSender(event)</code> before evaluating logic:</p>
+          <ol>
+            <li>Rejects if main window is destroyed.</li>
+            <li>Asserts <code>event.sender === mainWindow.webContents</code>.</li>
+            <li>Asserts <code>event.senderFrame.parent === null</code> (blocks execution from embedded child frames).</li>
+            <li>Verifies frame origin (<code>http://127.0.0.1:5173</code> in development; <code>file:///.../out/renderer/index.html</code> in production).</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="state-synchronization">
+          <h2>3. Bidirectional State Synchronization</h2>
+          <p>State does not drift between processes:</p>
+          <ol>
+            <li><strong>Invoking Actions</strong>: The renderer invokes asynchronous actions via <code>window.p2p.p2p.*</code>. These map to <code>ipcRenderer.invoke(channel, ...args)</code>.</li>
+            <li><strong>Action Result Return</strong>: Every action returns a typed <code>ActionResult</code>:
+              <div class="math-display">ActionResult = { ok: true } | { ok: false, code: P2pErrorCode, message: string }</div>
+            </li>
+            <li><strong>Throttled State Publication</strong>: Engine mutations trigger state broadcasts. To avoid overwhelming the React render cycle during rapid chunk transfers or catalog publication, the main process coalesces snapshots using a 200 ms trailing throttle timer:
+              <pre><code class="language-typescript">function dispatchStateToWindow(state: MultiGroupP2pState &amp; P2pState): void {
+  pendingStateSnapshot = state
+  if (!stateThrottleTimer) {
+    stateThrottleTimer = setTimeout(() => {
+      stateThrottleTimer = null
+      if (pendingStateSnapshot && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.P2P_V2_STATE, pendingStateSnapshot)
+        pendingStateSnapshot = null
+      }
+    }, 200)
+  }
+}</code></pre>
+            </li>
+            <li><strong>Subscriber Ingestion</strong>: In the renderer, <code>usePeerState</code> subscribes to <code>p2p:state</code>, updating the top-level React state hook and propagating changes to the workspace views.</li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="../theory/06-security-and-threat-model.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Section</span>
+            <span class="footer-nav-title">06. Threat Model & Security</span>
+          </a>
+          <a href="02-peer-engine-lifecycle.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">02. PeerEngine Lifecycle</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#multi-process-architecture" class="toc-link">1. Multi-Process Layout</a></li>
+          <li><a href="#ipc-contracts" class="toc-link">2. IPC Contracts</a></li>
+          <li><a href="#state-synchronization" class="toc-link">3. State Synchronization</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

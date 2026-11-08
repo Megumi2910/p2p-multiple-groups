@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>02. PeerEngine Lifecycle & State Management — Architecture — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../theory/01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="../theory/02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="../theory/03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="../theory/04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="../theory/05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item"><a href="../theory/06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item active"><a href="02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Architecture & Internals</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>02. PeerEngine Lifecycle & State Management</span>
+        </nav>
+
+        <h1>Architecture: PeerEngine Lifecycle & State Management</h1>
+        <p class="lead-paragraph">
+          This document details the internal lifecycle state machines, the <code>GroupRuntime</code> data structure, queue-based concurrency management, and throttled state dispatching implemented in <code>src/main/p2p/engine.ts</code>.
+        </p>
+
+        <hr>
+
+        <section id="peerengine-architecture">
+          <h2>1. The <code>PeerEngine</code> Architecture</h2>
+          <p>The <code>PeerEngine</code> is the central coordinator of the P2P subsystem in the Electron main process. It manages:</p>
+          <ul>
+            <li><strong>Virtual Group Runtimes</strong> (<code>Map&lt;GroupKey, GroupRuntime&gt;</code>)</li>
+            <li><strong>Shared Transport Associations</strong> (<code>Map&lt;SignalingUrl, TransportManager&gt;</code>)</li>
+            <li><strong>Signaling Clients</strong> (<code>Map&lt;SignalingUrl, SignalingClient&gt;</code>)</li>
+            <li><strong>Local File Library & SHA-256 Hashing Pipeline</strong> (<code>LibraryManager</code>)</li>
+            <li><strong>Active & Historical Transfers</strong> (<code>TransferManager</code>)</li>
+            <li><strong>Persistent State & Encrypted Keychains</strong> (<code>MultiGroupPeerStore</code>, <code>SafeCredentialStore</code>)</li>
+          </ul>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+flowchart TD
+    subgraph EngineInstance["PeerEngine Instance"]
+        direction TB
+        PQ["policyQueue Concurrency Serializer\n(queueAction)"]
+        STORE[("MultiGroupPeerStore\npeer-state.json")]
+        CRED[("SafeCredentialStore\ncredentials.enc")]
+        LIB["LibraryManager\n(SHA-256 Catalog)"]
+        XFER["TransferManager\n(SCTP Flow Control)"]
+
+        subgraph Runtimes["Virtual Group Runtimes"]
+            RT1["GroupRuntime 1\n(engineering-team)"]
+            RT2["GroupRuntime 2\n(research-docs)"]
+        end
+
+        subgraph Transports["Transport Pools"]
+            TM["TransportManager\n(Pooled Werift WebRTC)"]
+            SIG["SignalingClient\n(WebSocket)"]
+        end
+
+        PQ --> Runtimes
+        Runtimes --> TM
+        Runtimes --> SIG
+        Runtimes --> XFER
+        XFER --> LIB
+        Runtimes --> STORE
+        Runtimes --> CRED
+    end
+
+    TIMER["Monitor Watchdog Timer\n(2000 ms tick)"] -->|Check Leases| Runtimes
+            </div>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="groupruntime-data-structure">
+          <h2>2. The <code>GroupRuntime</code> Data Structure</h2>
+          <p>Every joined or saved virtual group is managed by a dedicated in-memory <code>GroupRuntime</code> instance:</p>
+
+          <pre><code class="language-typescript">interface GroupRuntime {
+  groupKey: GroupKey                                // JSON string [signalingUrl, groupId]
+  groupId: string                                  // Room identifier
+  signalingUrl: string                             // WebSocket signaling URL
+  autoJoin: boolean                                // Re-join on app launch
+  supernodeEligible: boolean                       // Eligible for election
+  credentialStatus: 'memory' | 'stored' | 'required'
+  status: 'disconnected' | 'connecting' | 'connected' | 'degraded' | 'recovering' | 'error'
+  role: 'supernode' | 'ordinary'
+  epoch: string | null                             // Signaling server session UUID
+  membershipRevision: number                       // Monotonic roster revision counter
+  membershipId: string | null                      // Peer-group membership ID
+  primaryPeerId: string | null                     // HRW Primary Supernode
+  standbyPeerId: string | null                     // HRW Standby Supernode
+  message: string
+  members: SignalingRosterPeer[]                   // Active group roster
+  activeElectedSupernodes: string[]                // Current elected supernodes
+  lossDetectedTimestamp: number | null
+  supernodeIndex: SupernodeIndexManager            // In-memory inverted search index
+  searchResults: SearchResultsTracker              // Incoming search response aggregator
+  recoveryRing: RecoveryEventRingBuffer            // Ring buffer of last 100 failovers
+  searchQueryId: string | null
+  searchQueryText: string
+  searchStatus: 'idle' | 'searching' | 'complete' | 'partial' | 'error'
+  searchMessage: string | null
+  advertisedGeneration: number                     // Monotonic catalog generation counter
+  acknowledgedGeneration: number | null
+  lastRosterRenewedAt: number                      // Timestamp of last valid roster lease
+  isJoined: boolean                                // Currently handshaked with signaling
+}</code></pre>
+        </section>
+
+        <hr>
+
+        <section id="concurrency-serialization">
+          <h2>3. Concurrency Serialization (<code>policyQueue</code>)</h2>
+          <p>
+            State modifications in a distributed system cannot execute arbitrarily out of order. If a user rapidly clicks "Join Group", "Leave Group", and "Toggle Privacy Mode", concurrent promises could interleave socket setup and teardown, leaving lingering sockets or orphaned WebRTC channels.
+          </p>
+          <p>To eliminate race conditions without complex distributed locks, all group lifecycle mutations are serialized through a single internal promise chain called <code>policyQueue</code>:</p>
+
+          <pre><code class="language-typescript">let policyQueue: Promise&lt;void&gt; = Promise.resolve()
+
+function queueAction&lt;T&gt;(action: () => Promise&lt;T&gt;): Promise&lt;T&gt; {
+  const enqueued = policyQueue.then(() => {
+    if (isDisposed) {
+      return Promise.reject(new Error('Engine disposed'))
+    }
+    return action()
+  })
+  // Catch rejections so subsequent actions in the queue are not blocked
+  policyQueue = enqueued.then(
+    () => {},
+    () => {}
+  )
+  return enqueued
+}</code></pre>
+
+          <h3>Serialized Operations</h3>
+          <p>The following operations must pass through <code>queueAction</code>:</p>
+          <ol>
+            <li><code>joinGroup</code>: Validates invitation, persists group, connects signaling client, handshakes group.</li>
+            <li><code>resumeGroup</code>: Reconnects a previously saved group using remembered credentials.</li>
+            <li><code>leaveGroup</code>: Gracefully unregisters from signaling, tears down group SCTP streams.</li>
+            <li><code>forgetGroup</code>: Leaves group, permanently purges credentials, and atomically revokes all file grants.</li>
+            <li><code>disconnectAll</code>: Disconnects all active groups.</li>
+            <li><code>setRelayOnly</code>: Changes the ICE transport policy (enforces that all groups are disconnected first).</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="watchdog-recovery-loop">
+          <h2>4. Freshness Lease Watchdog & Recovery Loop</h2>
+          <p>The engine executes an active monitoring timer every <span class="math-inline">τ_hb = 2000 ms</span>:</p>
+
+          <pre><code class="language-typescript">const monitorTimer = setInterval(() => {
+  if (isDisposed) return
+  const now = Date.now()
+
+  for (const runtime of groups.values()) {
+    if (!runtime.isJoined) continue
+
+    // Check Roster Freshness Lease (6000 ms)
+    if (!hasFreshGroupAuthority(runtime)) {
+      expireGroupAuthority(runtime)
+    }
+
+    // Check Supernode Heartbeat Health
+    if (runtime.role === 'ordinary' && runtime.primaryPeerId) {
+      const transport = endpointTransports.get(runtime.signalingUrl)
+      const link = transport?.getLinkState(runtime.primaryPeerId)
+      if (link &amp;&amp; link.state !== 'open') {
+        promoteStandbySupernode(runtime, 'Link down to primary supernode')
+      }
+    }
+  }
+  publishState()
+}, 2000)</code></pre>
+
+          <p>If the signaling link drops or heartbeat responses cease, <code>expireGroupAuthority</code> halts active transfers and resets the group's index before state inconsistency can propagate.</p>
+        </section>
+
+        <hr>
+
+        <section id="throttled-state-dispatching">
+          <h2>5. Throttled State Dispatching</h2>
+          <p>
+            The engine maintains a subscriber pattern to update external consumers (such as the Electron UI window). When multiple chunks arrive in a single second, notifying the UI on every chunk would choke Chromium's rendering thread.
+          </p>
+          <p><code>PeerEngine</code> coalesces updates using a 200 ms trailing debounce window:</p>
+          <ol>
+            <li>When state changes, <code>publishState()</code> marks a dirty snapshot.</li>
+            <li>If <code>stateThrottleTimer</code> is active, the notification is deferred.</li>
+            <li>Once the 200 ms timer expires, the latest combined snapshot (<code>MultiGroupP2pState &amp; P2pState</code>) is pushed via <code>IPC_CHANNELS.P2P_V2_STATE</code> and the legacy <code>P2P_STATE</code> channel simultaneously.</li>
+          </ol>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="01-system-overview.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">01. System Overview</span>
+          </a>
+          <a href="03-wire-protocol-specification.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Chapter →</span>
+            <span class="footer-nav-title">03. Wire Protocol Specs</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#peerengine-architecture" class="toc-link">1. PeerEngine Architecture</a></li>
+          <li><a href="#groupruntime-data-structure" class="toc-link">2. GroupRuntime Structure</a></li>
+          <li><a href="#concurrency-serialization" class="toc-link">3. Concurrency Queue</a></li>
+          <li><a href="#watchdog-recovery-loop" class="toc-link">4. Watchdog Timer</a></li>
+          <li><a href="#throttled-state-dispatching" class="toc-link">5. Throttled Dispatch</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

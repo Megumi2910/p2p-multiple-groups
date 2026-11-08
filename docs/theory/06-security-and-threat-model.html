@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-root="../">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>06. Security Architecture & Threat Model — Theory — p2p-multiple-groups</title>
+  <link rel="stylesheet" href="../assets/docs.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="docs-header">
+    <div class="header-left">
+      <button class="menu-toggle" aria-label="Toggle navigation menu">☰</button>
+      <a href="../index.html" class="brand-link">
+        <div class="brand-logo">P2P</div>
+        <span>p2p-multiple-groups</span>
+        <span class="brand-badge">Docs</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="search-trigger" type="button" aria-label="Search documentation">
+        <span>🔍 Search docs...</span>
+        <span class="search-shortcut">Ctrl+K</span>
+      </button>
+      <button class="theme-toggle-btn" type="button" aria-label="Toggle theme">☀️</button>
+      <a href="https://github.com/your-org/p2p-multiple-groups" class="header-link-btn" target="_blank" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="docs-container">
+    <!-- Left Sidebar Navigation -->
+    <aside class="docs-sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">Overview</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html">🏠 Portal Hub</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Source Code &amp; Syntax</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../code-guide/01-js-ts-react-syntax-in-codebase.html">01. JS/TS &amp; React Syntax</a></li>
+          <li class="nav-item"><a href="../code-guide/02-shared-preload-and-signaling-code.html">02. Shared, Preload &amp; Signaling</a></li>
+          <li class="nav-item"><a href="../code-guide/03-main-process-and-p2p-engine-code.html">03. Main &amp; P2P Engine Code</a></li>
+          <li class="nav-item"><a href="../code-guide/04-renderer-ui-and-inquiry-qa.html">04. Renderer UI &amp; Inquiry Q&amp;A</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">User Guide</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../user-guide/00-js-ts-npm-fundamentals.html">00. JS, TS &amp; npm Guide</a></li>
+          <li class="nav-item"><a href="../user-guide/01-getting-started.html">01. Getting Started</a></li>
+          <li class="nav-item"><a href="../user-guide/02-network-and-groups.html">02. Network & Groups</a></li>
+          <li class="nav-item"><a href="../user-guide/03-library-and-sharing.html">03. Library & Sharing</a></li>
+          <li class="nav-item"><a href="../user-guide/04-search-and-discovery.html">04. Search & Discovery</a></li>
+          <li class="nav-item"><a href="../user-guide/05-transfers-and-downloads.html">05. Transfers & Downloads</a></li>
+          <li class="nav-item"><a href="../user-guide/06-signaling-and-ops.html">06. Signaling Operations</a></li>
+          <li class="nav-item"><a href="../user-guide/07-troubleshooting-and-faq.html">07. Troubleshooting & FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Distributed Theory</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="01-distributed-topology.html">01. Distributed Topology</a></li>
+          <li class="nav-item"><a href="02-election-and-consistent-hashing.html">02. HRW Election Math</a></li>
+          <li class="nav-item"><a href="03-virtual-overlays-and-consensus.html">03. Overlays & Consensus</a></li>
+          <li class="nav-item"><a href="04-nat-traversal-and-webrtc.html">04. NAT & WebRTC</a></li>
+          <li class="nav-item"><a href="05-flow-control-and-integrity.html">05. Flow Control & SHA-256</a></li>
+          <li class="nav-item active"><a href="06-security-and-threat-model.html">06. Threat Model & Security</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Architecture & Internals</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../architecture/01-system-overview.html">01. System Overview</a></li>
+          <li class="nav-item"><a href="../architecture/02-peer-engine-lifecycle.html">02. PeerEngine Lifecycle</a></li>
+          <li class="nav-item"><a href="../architecture/03-wire-protocol-specification.html">03. Wire Protocol Specs</a></li>
+          <li class="nav-item"><a href="../architecture/04-storage-and-persistence.html">04. Storage & Migration</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Operations & DevOps</div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../operations/01-cloud-deployment.html">01. Cloud & Coturn Setup</a></li>
+          <li class="nav-item"><a href="../operations/02-testing-and-verification.html">02. Testing Architecture</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center Content Viewport -->
+    <main class="docs-content-wrapper">
+      <article class="docs-article">
+        <!-- Breadcrumbs -->
+        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+          <a href="../index.html">Docs</a>
+          <span class="breadcrumb-separator">/</span>
+          <span>Distributed Theory</span>
+          <span class="breadcrumb-separator">/</span>
+          <span>06. Security Architecture & Threat Model</span>
+        </nav>
+
+        <h1>Theory: Security Architecture & Threat Model</h1>
+        <p class="lead-paragraph">
+          This document defines the formal threat model for <strong><code>p2p-multiple-groups</code></strong>, outlines cryptographic security invariants, and analyzes defense-in-depth mechanisms guarding against network adversaries, malicious peers, and local host exploits.
+        </p>
+
+        <hr>
+
+        <section id="threat-model">
+          <h2>1. Threat Model & Adversary Capabilities</h2>
+          <p>The system assumes a zero-trust model across the peer overlay:</p>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Adversary Persona</th>
+                  <th>Assumed Capabilities</th>
+                  <th>Out of Scope / Non-Goals</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Eavesdropping Network Adversary</strong></td>
+                  <td>Can observe, intercept, and modify raw UDP/TCP transit packets; operates malicious intermediary NAT/routers.</td>
+                  <td>Physical extraction of host device hardware secrets.</td>
+                </tr>
+                <tr>
+                  <td><strong>Rogue Group Member</strong></td>
+                  <td>Legitimate participant in Virtual Group <span class="math-inline">A</span>; attempts to discover or download files from Virtual Group <span class="math-inline">B</span> without credentials.</td>
+                  <td>Compromise of peer host OS kernel or supervisor privileges.</td>
+                </tr>
+                <tr>
+                  <td><strong>Malicious Signaling Host</strong></td>
+                  <td>Controls the signaling WebSocket server; attempts to read file transfers, forge peer identities, or spoof catalogs.</td>
+                  <td>Signaling host is trusted only for peer discovery and roster ordering, <strong>never</strong> for transfer contents.</td>
+                </tr>
+                <tr>
+                  <td><strong>Malicious Content Provider</strong></td>
+                  <td>Advertises valid metadata/hash for popular files but streams corrupted or trojaned bytes during download.</td>
+                  <td>Post-download execution analysis (antivirus scanning).</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr>
+
+        <section id="cryptographic-isolation">
+          <h2>2. Cryptographic Isolation Guarantees</h2>
+
+          <h3>Independent Group Token Boundaries</h3>
+          <p>Each virtual group requires a distinct cryptographic secret:</p>
+          <div class="math-display">
+            G_i = (groupId_i, K_i)
+          </div>
+          <p>Tokens <span class="math-inline">K_i</span> and <span class="math-inline">K_j</span> (<span class="math-inline">i ≠ j</span>) are mathematically uncorrelated:</p>
+          <ul>
+            <li>Possession of <span class="math-inline">K_i</span> grants access strictly to group <span class="math-inline">G_i</span>'s control channels and file catalogs.</li>
+            <li>A peer sharing a physical WebRTC SCTP association across multiple groups cannot infer catalog contents or initiate downloads in groups for which it lacks a valid token.</li>
+          </ul>
+
+          <h3>Constant-Time Token Verification</h3>
+          <p>
+            To defend against <strong>timing side-channel attacks</strong> where an attacker measures string comparison microsecond deltas to reconstruct secret tokens byte-by-byte, token checks employ constant-time comparison primitives:
+          </p>
+
+          <pre><code class="language-typescript">// Verified implementation pattern from services/signaling/server.ts
+function safeCompareTokens(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf-8')
+  const bufB = Buffer.from(b, 'utf-8')
+  if (bufA.length !== bufB.length) return false
+  return timingSafeEqual(bufA, bufB)
+}</code></pre>
+
+          <div class="math-display">
+            Time(compare(a, b)) = O(|a|)  (Independent of matching prefix length)
+          </div>
+
+          <h3>Dynamic Capability Grant Enforcement</h3>
+          <p>File access grants are verified dynamically on <strong>every single chunk dispatch</strong>:</p>
+          <ol>
+            <li>When an uploader prepares a 16 KiB binary chunk, it queries the local <code>LibraryManager</code>:
+              <pre><code class="language-typescript">const isAuthorized = library.isGranted(fileId, groupKey)</code></pre>
+            </li>
+            <li>If the user revokes the group's grant in the Library UI while a transfer is in progress, <code>isAuthorized</code> evaluates to <code>false</code> on the very next chunk dispatch.</li>
+            <li>The engine immediately sends <code>TransferControlMessageV2::error</code> with <code>FORBIDDEN</code> and resets the data channel.</li>
+            <li><strong>Leakage Prevention</strong>: No further file bytes escape the host machine once a grant is revoked.</li>
+          </ol>
+        </section>
+
+        <hr>
+
+        <section id="sandboxing-defense">
+          <h2>3. Sandboxing & Defense-in-Depth</h2>
+          <p>Desktop applications built with web technologies require multi-layered sandboxing to prevent Cross-Site Scripting (XSS) or untrusted network input from escalating into arbitrary code execution.</p>
+
+          <div class="mermaid-diagram-wrapper">
+            <div class="mermaid">
+flowchart TD
+    subgraph ChromiumSandbox["Chromium Renderer Process (Sandboxed)"]
+        UI["React 19 Desktop Interface"]
+        DOM["DOM Rendering Tree"]
+        NO_NODE["Zero Node.js Integration\n(window.process = undefined,\nwindow.require = undefined)"]
+        CSP["Content Security Policy:\nconnect-src 'none';\nscript-src 'self'"]
+    end
+
+    subgraph PreloadBoundary["Preload Execution Boundary"]
+        BRIDGE["contextBridge.exposeInMainWorld\n('kazaa', 'p2p')"]
+        SAN_INPUT["Input Sanitization & Deep Freeze"]
+    end
+
+    subgraph HostMain["Electron Host (Main Process)"]
+        IPC_VAL["validateSender(event)\n(Sender Frame & Origin Verification)"]
+        STORE["SafeCredentialStore\n(OS Keychains: DPAPI / Keychain / SecretService)"]
+        ENGINE["PeerEngine & Werift WebRTC"]
+        FS_IO["Disk I/O & Path Sanitization"]
+    end
+
+    DOM --> CSP
+    UI --> BRIDGE
+    BRIDGE -->|ipcRenderer.invoke| IPC_VAL
+    IPC_VAL --> ENGINE
+    IPC_VAL --> STORE
+    IPC_VAL --> FS_IO
+            </div>
+          </div>
+
+          <h3>1. Strict Content Security Policy (CSP)</h3>
+          <p>The production HTML document enforces a locked-down CSP:</p>
+          <pre><code class="language-html">&lt;meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'; object-src 'none'; media-src 'none'; frame-src 'none';" /&gt;</code></pre>
+
+          <ul>
+            <li><strong><code>connect-src 'none'</code></strong>: The renderer process is mathematically barred from making HTTP, WebSocket, or WebRTC connections. Even if an attacker injects malicious JavaScript into the DOM, that script cannot establish outbound command-and-control network channels.</li>
+            <li><strong><code>object-src 'none'</code></strong>: Disables plugins (Java, Flash).</li>
+            <li><strong><code>frame-src 'none'</code></strong>: Disables iframe nesting.</li>
+          </ul>
+
+          <h3>2. Node.js Context Isolation</h3>
+          <ul>
+            <li><code>contextIsolation: true</code></li>
+            <li><code>nodeIntegration: false</code></li>
+            <li><code>sandbox: true</code></li>
+          </ul>
+          <p>The global renderer scope lacks access to <code>process</code>, <code>Buffer</code>, <code>require()</code>, or filesystem primitives. Communication with native capabilities is strictly mediated by <code>window.p2p</code> via <code>contextBridge</code>.</p>
+
+          <h3>3. IPC Sender Origin Validation</h3>
+          <p>Every IPC handler in the main process verifies the caller's origin:</p>
+          <pre><code class="language-typescript">function validateSender(event: IpcMainInvokeEvent): void {
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Untrusted sender')
+  if (event.sender !== mainWindow.webContents) throw new Error('Untrusted sender')
+  const frame = event.senderFrame
+  if (!frame || frame.parent !== null) throw new Error('Untrusted sender')
+
+  if (isDev) {
+    if (new URL(frame.url).origin !== expectedDevOrigin) throw new Error('Untrusted origin')
+  } else {
+    if (frame.url !== productionHtmlUrl) throw new Error('Untrusted origin')
+  }
+}</code></pre>
+          <p>If an adversary spawns a child window or attempts cross-origin navigation, all IPC handlers immediately reject invocations.</p>
+
+          <h3>4. Filesystem Path Traversal Defense</h3>
+          <p>Inbound downloads sanitize remote filenames using <code>sanitizeDestinationFileName</code>:</p>
+          <ul>
+            <li>Strips null bytes (<code>\0</code>), path separators (<code>/</code>, <code>\</code>), and directory traversal markers (<code>..</code>).</li>
+            <li>Removes trailing spaces and periods that cause filesystem truncation exploits on Windows.</li>
+            <li>Defaults to <code>download</code> if sanitization empties the filename.</li>
+          </ul>
+
+          <h3>5. OS Keychain Hardware Protection</h3>
+          <p>Group tokens and credentials are never stored in plaintext configuration files. They are encrypted using <code>safeStorage</code>:</p>
+          <ul>
+            <li><strong>Windows</strong>: Encrypted with DPAPI using the logged-in Windows user's master key.</li>
+            <li><strong>macOS</strong>: Stored using Apple Keychain Services with application-scoped access controls.</li>
+            <li><strong>Linux</strong>: Stored using libsecret / Secret Service DBus daemon, preventing unauthorized processes from reading credential blobs.</li>
+          </ul>
+        </section>
+
+        <!-- Footer Navigation -->
+        <div class="docs-footer-nav">
+          <a href="05-flow-control-and-integrity.html" class="footer-nav-card prev">
+            <span class="footer-nav-label">← Previous Chapter</span>
+            <span class="footer-nav-title">05. Flow Control & SHA-256</span>
+          </a>
+          <a href="../architecture/01-system-overview.html" class="footer-nav-card next">
+            <span class="footer-nav-label">Next Section →</span>
+            <span class="footer-nav-title">01. System Architecture</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Table of Contents -->
+      <aside class="docs-toc">
+        <div class="toc-title">On This Page</div>
+        <ul class="toc-list">
+          <li><a href="#threat-model" class="toc-link">1. Threat Model</a></li>
+          <li><a href="#cryptographic-isolation" class="toc-link">2. Cryptographic Isolation</a></li>
+          <li><a href="#sandboxing-defense" class="toc-link">3. Sandboxing Defense</a></li>
+        </ul>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="docs-site-footer">
+    <p>p2p-multiple-groups — Distributed Hybrid Peer-to-Peer System & Signaling Network</p>
+  </footer>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

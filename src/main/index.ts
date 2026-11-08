@@ -1,3 +1,7 @@
+try {
+  process.loadEnvFile?.('.env')
+} catch {}
+
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, type IpcMainInvokeEvent } from 'electron'
 import { mkdirSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
@@ -8,16 +12,13 @@ import { prepareProfileDirectoryWithLock, type PrepareProfileResult } from './pr
 import {
   IPC_CHANNELS,
   isThemePreference,
-  type ShellCommand,
-  type ThemePreference
+  type ShellCommand
 } from '../shared/contracts.ts'
 import {
-  validateConnectOptions,
   validateJoinGroupOptions,
   type ActionResult,
   type MultiGroupP2pState,
-  type P2pErrorCode,
-  type P2pState
+  type P2pErrorCode
 } from '../shared/p2p.ts'
 import { createPeerEngine, type PeerEngine } from './p2p/engine.ts'
 import { sanitizeDestinationFileName } from './p2p/transfers.ts'
@@ -29,17 +30,16 @@ let themeStore: ThemeStore | null = null
 let peerEngine: PeerEngine | null = null
 let isIpcRegistered = false
 
-let pendingStateSnapshot: (MultiGroupP2pState & P2pState) | null = null
+let pendingStateSnapshot: MultiGroupP2pState | null = null
 let stateThrottleTimer: NodeJS.Timeout | null = null
 
-function dispatchStateToWindow(state: MultiGroupP2pState & P2pState): void {
+function dispatchStateToWindow(state: MultiGroupP2pState): void {
   pendingStateSnapshot = state
   if (!stateThrottleTimer) {
     stateThrottleTimer = setTimeout(() => {
       stateThrottleTimer = null
       if (pendingStateSnapshot && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.P2P_V2_STATE, pendingStateSnapshot)
-        mainWindow.webContents.send(IPC_CHANNELS.P2P_STATE, pendingStateSnapshot)
         pendingStateSnapshot = null
       }
     }, 200)
@@ -59,7 +59,11 @@ function mapToActionResult(error: unknown): ActionResult {
     'DESTINATION_EXISTS',
     'IO_ERROR',
     'BUSY',
-    'PROTOCOL_ERROR'
+    'PROTOCOL_ERROR',
+    'FORBIDDEN',
+    'INVITATION_REQUIRED',
+    'GROUP_EXISTS',
+    'GROUP_FULL'
   ]
 
   for (const code of knownCodes) {
@@ -124,7 +128,6 @@ function registerIpcHandlers(): void {
     if (!themeStore) {
       throw new Error('Theme store uninitialized')
     }
-
     try {
       const savedTheme = await themeStore.set(theme)
       nativeTheme.themeSource = savedTheme
@@ -142,10 +145,21 @@ function registerIpcHandlers(): void {
     return peerEngine.getState()
   })
 
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_CREATE_GROUP, async (event, options: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    try {
+      return await peerEngine.createGroup(options as any)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.P2P_V2_JOIN_GROUP, async (event, options: unknown) => {
     validateSender(event)
     if (!peerEngine) throw new Error('Peer engine uninitialized')
-    const check = validateJoinGroupOptions(options)
+    const defaultUrl = peerEngine.getState().defaultSignalingUrl
+    const check = validateJoinGroupOptions(options, defaultUrl)
     if (!check.valid) {
       return { ok: false, code: 'INVALID_INPUT', message: check.error }
     }
@@ -182,6 +196,32 @@ function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_ROTATE_GROUP_INVITE, async (event, groupKey: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof groupKey !== 'string' || !groupKey) {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Group key is required' }
+    }
+    try {
+      return await peerEngine.rotateGroupInvite(groupKey)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_REMOVE_GROUP_MEMBER, async (event, groupKey: unknown, targetPeerId: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof groupKey !== 'string' || typeof targetPeerId !== 'string') {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Group key and target peer ID are required' }
+    }
+    try {
+      return await peerEngine.removeGroupMember(groupKey, targetPeerId)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.P2P_V2_SET_GROUP_AUTO_JOIN, async (event, groupKey: unknown, autoJoin: unknown) => {
     validateSender(event)
     if (!peerEngine) throw new Error('Peer engine uninitialized')
@@ -202,7 +242,7 @@ function registerIpcHandlers(): void {
       return { ok: false, code: 'INVALID_INPUT', message: 'Invalid eligibility parameters' }
     }
     try {
-      return await peerEngine.setSupernodeEligible(groupKey, eligible)
+      return await peerEngine.setGroupEligibility(groupKey, eligible)
     } catch (err) {
       return mapToActionResult(err)
     }
@@ -335,151 +375,6 @@ function registerIpcHandlers(): void {
     }
     try {
       return await peerEngine.cancelTransfer(transferId)
-    } catch (err) {
-      return mapToActionResult(err)
-    }
-  })
-
-  // Legacy channels compatibility facade
-  ipcMain.handle(IPC_CHANNELS.P2P_GET_STATE, async (event) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    return peerEngine.getState()
-  })
-
-  ipcMain.handle(IPC_CHANNELS.P2P_CONNECT, async (event, options: unknown) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    const check = validateConnectOptions(options)
-    if (!check.valid) {
-      return { ok: false, code: 'INVALID_INPUT', message: check.error }
-    }
-    try {
-      await peerEngine.connect(check.value)
-      return { ok: true }
-    } catch (err) {
-      return mapToActionResult(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.P2P_DISCONNECT, async (event) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    try {
-      await peerEngine.disconnect()
-      return { ok: true }
-    } catch (err) {
-      return mapToActionResult(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.P2P_ELIGIBILITY, async (event, eligible: unknown) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    try {
-      await peerEngine.setSupernodeEligible(Boolean(eligible))
-      return { ok: true }
-    } catch (err) {
-      return mapToActionResult(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.P2P_ADD_FILES, async (event) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      return { ok: false, code: 'IO_ERROR', message: 'Main window unavailable' }
-    }
-    const dialogResult = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openFile', 'multiSelections']
-    })
-    if (dialogResult.canceled || dialogResult.filePaths.length === 0) {
-      return { ok: true }
-    }
-    try {
-      await peerEngine.addFiles(dialogResult.filePaths)
-      return { ok: true }
-    } catch (err) {
-      return mapToActionResult(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.P2P_RESCAN_LIBRARY, async (event) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    try {
-      await peerEngine.rescanLibrary()
-      return { ok: true }
-    } catch (err) {
-      return mapToActionResult(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.P2P_REMOVE_FILE, async (event, fileId: unknown) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    if (typeof fileId !== 'string') {
-      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid file ID' }
-    }
-    try {
-      await peerEngine.removeFile(fileId)
-      return { ok: true }
-    } catch (err) {
-      return mapToActionResult(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.P2P_SEARCH, async (event, query: unknown) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    if (typeof query !== 'string') {
-      return { ok: false, code: 'INVALID_INPUT', message: 'Query must be a string' }
-    }
-    try {
-      await peerEngine.search(query)
-      return { ok: true }
-    } catch (err) {
-      return mapToActionResult(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.P2P_DOWNLOAD, async (event, resultId: unknown) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      return { ok: false, code: 'IO_ERROR', message: 'Main window unavailable' }
-    }
-    if (typeof resultId !== 'string') {
-      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid result ID' }
-    }
-    const resolved = peerEngine.resolveSearchResult(resultId)
-    if (!resolved) {
-      return { ok: false, code: 'NOT_FOUND', message: 'Search result not found or expired' }
-    }
-    const defaultName = sanitizeDestinationFileName(resolved.file.name)
-    const saveResult = await dialog.showSaveDialog(mainWindow, {
-      defaultPath: defaultName
-    })
-    if (saveResult.canceled || !saveResult.filePath) {
-      return { ok: true }
-    }
-    try {
-      await peerEngine.download(resultId, saveResult.filePath)
-      return { ok: true }
-    } catch (err) {
-      return mapToActionResult(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.P2P_CANCEL_TRANSFER, async (event, transferId: unknown) => {
-    validateSender(event)
-    if (!peerEngine) throw new Error('Peer engine uninitialized')
-    if (typeof transferId !== 'string') {
-      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid transfer ID' }
-    }
-    try {
-      await peerEngine.cancelTransfer(transferId)
-      return { ok: true }
     } catch (err) {
       return mapToActionResult(err)
     }

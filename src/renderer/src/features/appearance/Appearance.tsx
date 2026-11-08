@@ -46,7 +46,7 @@ export const Appearance: React.FC<AppearanceProps> = ({
 
       <div className="preference-section">
         <p className="section-caption">
-          Select how Kazaa looks to you. Choose System to synchronize with your OS settings.
+          Select how p2p-multiple-groups looks to you. Choose System to synchronize with your OS settings.
         </p>
 
         <fieldset className="radio-group" disabled={isDisabled} aria-label="Appearance options">

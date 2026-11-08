@@ -4,10 +4,11 @@ import { mkdtemp, readFile, rm, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
+import { RTCPeerConnection } from 'werift'
+import { TransportManager, type TransportEvents } from '../src/main/p2p/transport.ts'
 import { createSignalingServer } from '../services/signaling/server.ts'
 import { createPeerEngine, type PeerEngine } from '../src/main/p2p/engine.ts'
 import { makeGroupKey, type MultiGroupP2pState, type P2pState } from '../src/shared/p2p.ts'
-
 function waitForEngineState(
   engine: PeerEngine,
   predicate: (state: MultiGroupP2pState & P2pState) => boolean,
@@ -376,27 +377,24 @@ describe('P2P Multi-Group Authorization & Security Boundaries', () => {
       const destAlpha = join(dlDir, 'revoked.bin')
       const destBeta = join(dlDir, 'safe.bin')
 
-      // Start Beta transfer (which must finish successfully)
-      const betaDlDone = waitForEngineState(
+      // 1. Start Alpha transfer and wait for it to be actively in-flight
+      await downloader.download(alphaKey, resAlpha.resultId, destAlpha)
+      await waitForEngineState(
         downloader,
         (s) => {
-          const t = s.transfers.find((tr) => tr.fileName === 'safe.bin' || tr.fileName === 'safe-beta.bin')
-          return t?.state === 'completed'
+          const t = s.transfers.find((tr) => tr.fileName === 'rev-alpha.bin' || tr.fileName === 'revoked.bin')
+          return t?.state === 'transferring'
         },
-        30000,
+        15000,
         undefined,
-        'beta-dl-done'
+        'alpha-transfer-in-flight'
       )
 
-      // Start Alpha transfer
-      await downloader.download(alphaKey, resAlpha.resultId, destAlpha)
-      await downloader.download(betaKey, resBeta.resultId, destBeta)
-
-      // Immediately revoke Alpha grant on uploader
+      // 2. Revoke Alpha grant mid-stream on uploader
       const uploaderAlphaEntry = uploader.getState().library.files.find((f) => f.name === 'rev-alpha.bin')!
       await uploader.setFileGroups(uploaderAlphaEntry.fileId, []) // Revoke from all groups!
 
-      // Expect Alpha transfer to fail or cancel on downloader
+      // 3. Expect Alpha transfer to fail or cancel on downloader
       await waitForEngineState(
         downloader,
         (s) => {
@@ -408,18 +406,441 @@ describe('P2P Multi-Group Authorization & Security Boundaries', () => {
         'alpha-transfer-aborted'
       )
 
-      // Beta transfer must continue and complete!
+      const abortedTransfer = downloader.getState().transfers.find((tr) => tr.fileName === 'revoked.bin' || tr.fileName === 'rev-alpha.bin')!
+      assert.ok(abortedTransfer, 'Aborted transfer must exist in history')
+      assert.equal(abortedTransfer.groupKey, alphaKey)
+      assert.equal(abortedTransfer.groupId, groupAlphaId)
+
+      // Alpha destination file MUST NOT exist (publication aborted)
+      await assert.rejects(async () => stat(destAlpha), (err: NodeJS.ErrnoException) => err.code === 'ENOENT')
+
+      // 4. Beta transfer continues/succeeds in separate group
+      const betaDlDone = waitForEngineState(
+        downloader,
+        (s) => {
+          const t = s.transfers.find((tr) => tr.fileName === 'safe.bin' || tr.fileName === 'safe-beta.bin')
+          return Boolean(t && t.state === 'completed')
+        },
+        30000,
+        (s) => {
+          const t = s.transfers.find((tr) => tr.fileName === 'safe.bin' || tr.fileName === 'safe-beta.bin')
+          if (t?.state === 'failed') return `Beta transfer failed: ${t.message}`
+          return null
+        },
+        'beta-dl-done'
+      )
+
+      await downloader.download(betaKey, resBeta.resultId, destBeta)
       await betaDlDone
+
       const betaBytes = await readFile(destBeta)
       assert.equal(betaBytes.length, payloadBeta.length)
       assert.equal(createHash('sha256').update(betaBytes).digest('hex'), resBeta.file.sha256)
 
-      // Alpha destination file MUST NOT exist (publication aborted)
-      await assert.rejects(async () => stat(destAlpha), (err: NodeJS.ErrnoException) => err.code === 'ENOENT')
+      const completedBeta = downloader.getState().transfers.find((tr) => tr.fileName === 'safe.bin' || tr.fileName === 'safe-beta.bin')!
+      assert.ok(completedBeta, 'Completed beta transfer must exist in history')
+      assert.equal(completedBeta.groupKey, betaKey)
+      assert.equal(completedBeta.groupId, groupBetaId)
     } finally {
       if (sn) await sn.dispose()
       if (uploader) await uploader.dispose()
       if (downloader) await downloader.dispose()
+      await server.close()
+      for (const d of tempDirs) {
+        await rm(d, { recursive: true, force: true }).catch(() => {})
+      }
+    }
+  })
+  it('synchronizes live grants dynamically with setFileGroups allowing immediate download without restart', async () => {
+    const groupAlphaId = `sync-alpha-${randomUUID().slice(0, 8)}`
+    const groupBetaId = `sync-beta-${randomUUID().slice(0, 8)}`
+    const tokenAlpha = Buffer.alloc(32, 221).toString('base64url')
+    const tokenBeta = Buffer.alloc(32, 222).toString('base64url')
+
+    const server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [
+        { groupId: groupAlphaId, token: tokenAlpha, name: 'Sync Alpha' },
+        { groupId: groupBetaId, token: tokenBeta, name: 'Sync Beta' }
+      ]
+    })
+
+    const signalUrl = `ws://127.0.0.1:${server.address.port}/signal`
+    const alphaKey = makeGroupKey(signalUrl, groupAlphaId)
+    const betaKey = makeGroupKey(signalUrl, groupBetaId)
+    const tempDirs: string[] = []
+
+    async function createEngine(name: string, isSupernode: boolean): Promise<PeerEngine> {
+      const dir = await mkdtemp(join(tmpdir(), `sync-p2p-${name}-`))
+      tempDirs.push(dir)
+      const engine = await createPeerEngine({ dataDirectory: dir })
+
+      await engine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId: groupAlphaId, token: tokenAlpha },
+        displayName: `${name}-Peer`,
+        supernodeEligible: isSupernode,
+        relayOnly: false,
+        rememberInvitation: false
+      })
+      await engine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId: groupBetaId, token: tokenBeta },
+        displayName: `${name}-Peer`,
+        supernodeEligible: isSupernode,
+        relayOnly: false,
+        rememberInvitation: false
+      })
+      return engine
+    }
+
+    let sn: PeerEngine | null = null
+    let uploader: PeerEngine | null = null
+    let downloader: PeerEngine | null = null
+
+    try {
+      sn = await createEngine('SN', true)
+      uploader = await createEngine('Uploader', false)
+      downloader = await createEngine('Downloader', false)
+
+      const snPeerId = sn.getState().identity.peerId
+      const waitForMesh = (eng: PeerEngine, name: string) =>
+        waitForEngineState(
+          eng,
+          (s) => {
+            const alphaGroup = s.groups.find((g) => g.groupKey === alphaKey)
+            const betaGroup = s.groups.find((g) => g.groupKey === betaKey)
+            if (!alphaGroup || !betaGroup) return false
+            if (alphaGroup.network.status !== 'connected' || betaGroup.network.status !== 'connected') return false
+            if (alphaGroup.network.members.length !== 3 || betaGroup.network.members.length !== 3) return false
+            if (s.identity.peerId !== snPeerId) {
+              return (
+                alphaGroup.network.links.some((l) => l.peerId === snPeerId && l.state === 'open') &&
+                betaGroup.network.links.some((l) => l.peerId === snPeerId && l.state === 'open')
+              )
+            }
+            return alphaGroup.network.links.filter((l) => l.state === 'open').length >= 2
+          },
+          25000,
+          undefined,
+          `${name}-mesh-ready`
+        )
+
+      await Promise.all([
+        waitForMesh(sn, 'sn'),
+        waitForMesh(uploader, 'uploader'),
+        waitForMesh(downloader, 'downloader')
+      ])
+
+      // Prepare file initially shared only in Alpha
+      const upDir = await mkdtemp(join(tmpdir(), 'up-sync-files-'))
+      tempDirs.push(upDir)
+
+      const payload = Buffer.alloc(64 * 1024, 88)
+      const filePath = join(upDir, 'dynamic-share.bin')
+      await writeFile(filePath, payload)
+
+      await uploader.addFiles(alphaKey, [filePath])
+
+      await waitForEngineState(
+        uploader,
+        (s) => {
+          const gA = s.groups.find((g) => g.groupKey === alphaKey)
+          return Boolean(
+            gA && gA.catalog.acknowledgedGeneration !== null &&
+            s.library.files.length === 1 &&
+            s.library.files[0].status === 'shared'
+          )
+        },
+        25000,
+        undefined,
+        'alpha-catalog-acknowledged'
+      )
+
+      const fileEntry = uploader.getState().library.files[0]
+      assert.deepEqual(fileEntry.groupKeys, [alphaKey])
+
+      // 1. Add file to Group Beta using setFileGroups
+      const setRes = await uploader.setFileGroups(fileEntry.fileId, [alphaKey, betaKey])
+      assert.equal(setRes.ok, true)
+
+      // Library on uploader immediately reflects the new grant without restart
+      const updatedUploaderEntry = uploader.getState().library.files.find((f) => f.fileId === fileEntry.fileId)!
+      assert.ok(updatedUploaderEntry.groupKeys.includes(betaKey), 'File must be granted to Beta')
+
+      // Wait for catalog in Beta to be acknowledged on uploader
+      await waitForEngineState(
+        uploader,
+        (s) => {
+          const gB = s.groups.find((g) => g.groupKey === betaKey)
+          return Boolean(gB && gB.catalog.acknowledgedGeneration !== null)
+        },
+        25000,
+        undefined,
+        'beta-catalog-acknowledged'
+      )
+
+      // 2. Downloader searches in Beta and finds the file immediately without restarting
+      const searchBetaDone = waitForEngineState(
+        downloader,
+        (s) => {
+          const g = s.groups.find((gr) => gr.groupKey === betaKey)
+          return Boolean(g && g.search.status === 'complete' && g.search.results.some((r) => r.file.name === 'dynamic-share.bin'))
+        },
+        25000,
+        undefined,
+        'search-beta-found'
+      )
+      await downloader.search(betaKey, 'dynamic')
+      await searchBetaDone
+
+      const resBeta = downloader.getState().groups.find((g) => g.groupKey === betaKey)!.search.results.find((r) => r.file.name === 'dynamic-share.bin')!
+
+      // 3. Download file in Beta and verify checksum
+      const dlDir = await mkdtemp(join(tmpdir(), 'dl-sync-files-'))
+      tempDirs.push(dlDir)
+      const destBeta = join(dlDir, 'downloaded-beta.bin')
+
+      const betaDlDone = waitForEngineState(
+        downloader,
+        (s) => {
+          const t = s.transfers.find((tr) => tr.fileName === 'dynamic-share.bin')
+          return t?.state === 'completed'
+        },
+        30000,
+        undefined,
+        'beta-dl-done'
+      )
+      await downloader.download(betaKey, resBeta.resultId, destBeta)
+      await betaDlDone
+
+      const downloadedBytes = await readFile(destBeta)
+      assert.equal(downloadedBytes.length, payload.length)
+      assert.equal(createHash('sha256').update(downloadedBytes).digest('hex'), resBeta.file.sha256)
+    } finally {
+      if (sn) await sn.dispose()
+      if (uploader) await uploader.dispose()
+      if (downloader) await downloader.dispose()
+      await server.close()
+      for (const d of tempDirs) {
+        await rm(d, { recursive: true, force: true }).catch(() => {})
+      }
+    }
+  })
+
+  it('rejects raw data channel attacks across legacy and invalid v2 context without leaking file bytes', async () => {
+    const groupAlphaId = `raw-alpha-${randomUUID().slice(0, 8)}`
+    const groupBetaId = `raw-beta-${randomUUID().slice(0, 8)}`
+    const tokenAlpha = Buffer.alloc(32, 231).toString('base64url')
+    const tokenBeta = Buffer.alloc(32, 232).toString('base64url')
+
+    const server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [
+        { groupId: groupAlphaId, token: tokenAlpha },
+        { groupId: groupBetaId, token: tokenBeta }
+      ]
+    })
+
+    const signalUrl = `ws://127.0.0.1:${server.address.port}/signal`
+    const alphaKey = makeGroupKey(signalUrl, groupAlphaId)
+    const betaKey = makeGroupKey(signalUrl, groupBetaId)
+    const tempDirs: string[] = []
+
+    // Capture attacker's RTCPeerConnection to open raw data channels
+    let attackerPc: RTCPeerConnection | null = null
+    const transportFactoryAttacker = (url: string, events: TransportEvents) =>
+      new TransportManager(events, {
+        connectionFactory: (config) => {
+          const pc = new RTCPeerConnection(config as unknown as object)
+          attackerPc = pc
+          return pc
+        }
+      })
+
+    const dirVictim = await mkdtemp(join(tmpdir(), 'victim-'))
+    const dirAttacker = await mkdtemp(join(tmpdir(), 'attacker-'))
+    tempDirs.push(dirVictim, dirAttacker)
+
+    let victimEngine: PeerEngine | null = null
+    let attackerEngine: PeerEngine | null = null
+
+    try {
+      victimEngine = await createPeerEngine({ dataDirectory: dirVictim })
+      attackerEngine = await createPeerEngine({
+        dataDirectory: dirAttacker,
+        transportFactory: transportFactoryAttacker
+      })
+
+      // Victim joins Alpha and shares a private file in Alpha only
+      await victimEngine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId: groupAlphaId, token: tokenAlpha },
+        displayName: 'Victim',
+        supernodeEligible: false,
+        relayOnly: false,
+        rememberInvitation: false
+      })
+
+      const upDir = await mkdtemp(join(tmpdir(), 'victim-up-'))
+      tempDirs.push(upDir)
+      const victimSecretPayload = Buffer.alloc(32 * 1024, 99)
+      const victimFilePath = join(upDir, 'secret-alpha.dat')
+      await writeFile(victimFilePath, victimSecretPayload)
+      await victimEngine.addFiles(alphaKey, [victimFilePath])
+
+      const victimFile = victimEngine.getState().library.files[0]
+      const victimFileId = victimFile.fileId
+
+      // Both join Beta to establish a valid shared physical WebRTC link
+      await victimEngine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId: groupBetaId, token: tokenBeta },
+        displayName: 'Victim',
+        supernodeEligible: false,
+        relayOnly: false,
+        rememberInvitation: false
+      })
+      await attackerEngine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId: groupBetaId, token: tokenBeta },
+        displayName: 'Attacker',
+        supernodeEligible: false,
+        relayOnly: false,
+        rememberInvitation: false
+      })
+
+      // Wait for physical connection between victim and attacker
+      await waitForEngineState(
+        victimEngine,
+        (s) => {
+          const gB = s.groups.find((g) => g.groupKey === betaKey)
+          return Boolean(gB && gB.network.links.some((l) => l.state === 'open'))
+        },
+        25000,
+        undefined,
+        'victim-attacker-link-open'
+      )
+
+      assert.ok(attackerPc, 'Attacker RTCPeerConnection must be captured')
+
+      // Helper to test an attack channel and assert it receives zero file bytes
+      async function testRawAttackChannel(
+        channelLabel: string,
+        requestPayload?: Record<string, unknown>
+      ): Promise<{ channelClosed: boolean; bytesReceived: number; errorReceived: boolean }> {
+        const dc = attackerPc!.createDataChannel(channelLabel)
+        let bytesReceived = 0
+        let errorReceived = false
+        const { promise: closedPromise, resolve: resolveClosed } = Promise.withResolvers<void>()
+
+        dc.onclose = () => {
+          resolveClosed()
+        }
+        dc.onmessage = (event) => {
+          if (Buffer.isBuffer(event.data)) {
+            bytesReceived += event.data.length
+          } else if (typeof event.data === 'string') {
+            try {
+              const msg = JSON.parse(event.data)
+              if (msg.type === 'error') {
+                errorReceived = true
+                resolveClosed()
+              }
+            } catch {}
+          }
+        }
+        dc.onopen = () => {
+          if (requestPayload) {
+            try {
+              dc.send(JSON.stringify(requestPayload))
+            } catch {}
+          }
+        }
+
+        // Wait up to 2 seconds for channel rejection/closure
+        const timer = setTimeout(() => resolveClosed(), 2000)
+        timer.unref?.()
+        await closedPromise
+        clearTimeout(timer)
+        const channelClosed = dc.readyState === 'closed' || dc.readyState === 'closing'
+        try { dc.close() } catch {}
+
+        return {
+          channelClosed,
+          bytesReceived,
+          errorReceived
+        }
+      }
+
+      // Attack 1: kazaa-file-v1:<uuid> legacy channel bypass
+      const res1 = await testRawAttackChannel(`kazaa-file-v1:${randomUUID()}`, {
+        v: 1,
+        type: 'request',
+        fileId: victimFileId
+      })
+      assert.equal(res1.bytesReceived, 0, 'Attack 1: legacy v1 channel must yield 0 bytes')
+
+      // Attack 2: v2 unknown group
+      const res2 = await testRawAttackChannel(`p2p-multiple-groups-file-v2:unknown-grp:${randomUUID()}`, {
+        v: 2,
+        type: 'request',
+        groupId: 'unknown-grp',
+        transferId: randomUUID(),
+        fileId: victimFileId
+      })
+      assert.equal(res2.bytesReceived, 0, 'Attack 2: unknown group channel must yield 0 bytes')
+
+      // Attack 3: v2 valid label for Alpha (attacker not in Alpha!)
+      const attack3TransferId = randomUUID()
+      const res3 = await testRawAttackChannel(`p2p-multiple-groups-file-v2:${groupAlphaId}:${attack3TransferId}`, {
+        v: 2,
+        type: 'request',
+        groupId: groupAlphaId,
+        transferId: attack3TransferId,
+        fileId: victimFileId,
+        epoch: 'random-epoch-id',
+        requesterMembershipId: 'fake-mem-id'
+      })
+      assert.equal(res3.bytesReceived, 0, 'Attack 3: unjoined group channel must yield 0 bytes')
+
+      // Attack 4: valid label for Beta, but mismatched payload groupId (Alpha)
+      const attack4TransferId = randomUUID()
+      const res4 = await testRawAttackChannel(`p2p-multiple-groups-file-v2:${groupBetaId}:${attack4TransferId}`, {
+        v: 2,
+        type: 'request',
+        groupId: groupAlphaId,
+        transferId: attack4TransferId,
+        fileId: victimFileId,
+        epoch: randomUUID(),
+        requesterMembershipId: randomUUID(),
+        ownerMembershipId: randomUUID(),
+        size: 0,
+        sha256: '0'.repeat(64)
+      })
+      assert.equal(res4.bytesReceived, 0, 'Attack 4: mismatched payload group must yield 0 bytes')
+
+      // Attack 5: valid label for Beta, but fake epoch
+      const attack5TransferId = randomUUID()
+      const res5 = await testRawAttackChannel(`p2p-multiple-groups-file-v2:${groupBetaId}:${attack5TransferId}`, {
+        v: 2,
+        type: 'request',
+        groupId: groupBetaId,
+        transferId: attack5TransferId,
+        fileId: victimFileId,
+        epoch: '00000000-0000-4000-8000-000000000099',
+        requesterMembershipId: randomUUID(),
+        ownerMembershipId: randomUUID(),
+        size: 0,
+        sha256: '0'.repeat(64)
+      })
+      assert.equal(res5.bytesReceived, 0, 'Attack 5: fake epoch must yield 0 bytes')
+
+      // Ensure that shared physical connection remains intact and healthy for legitimate operations
+      assert.equal(
+        victimEngine.getState().groups.find((g) => g.groupKey === betaKey)?.network.status,
+        'connected'
+      )
+    } finally {
+      if (victimEngine) await victimEngine.dispose()
+      if (attackerEngine) await attackerEngine.dispose()
       await server.close()
       for (const d of tempDirs) {
         await rm(d, { recursive: true, force: true }).catch(() => {})

@@ -20,7 +20,8 @@ import {
   type SignalingIceConfig,
   type SignalingRosterPeer,
   type SignalingRosterPeerV2,
-  MAX_CONTROL_MESSAGE_SIZE
+  MAX_CONTROL_MESSAGE_SIZE,
+  ROSTER_FRESHNESS_LEASE_MS
 } from '../../shared/p2p-wire.ts'
 
 export type LegacyOnFileChannelCallback = (fromPeerId: string, transferId: string, channel: RTCDataChannel) => void
@@ -72,6 +73,7 @@ interface GroupContext {
   revision: number
   peers: Map<string, SignalingRosterPeerV2>
   fresh: boolean
+  renewedAt: number
 }
 
 export class TransportManager {
@@ -109,6 +111,9 @@ export class TransportManager {
     this.relayOnly = relayOnly
   }
 
+  setRelayOnly(relayOnly: boolean): void {
+    this.relayOnly = relayOnly
+  }
   updateGroupContext(
     groupId: string,
     epoch: string,
@@ -130,10 +135,25 @@ export class TransportManager {
       epoch,
       revision,
       peers: peerMap,
-      fresh
+      fresh,
+      renewedAt: fresh ? Date.now() : 0
     })
 
     this.reconcileConnections()
+  }
+
+  setGroupFreshness(groupId: string, fresh: boolean): void {
+    const ctx = this.groupContexts.get(groupId)
+    if (ctx) {
+      ctx.fresh = fresh
+      ctx.renewedAt = fresh ? Date.now() : 0
+    }
+  }
+
+  isGroupFresh(groupId: string): boolean {
+    const ctx = this.groupContexts.get(groupId)
+    if (!ctx) return false
+    return ctx.fresh && Date.now() - ctx.renewedAt <= ROSTER_FRESHNESS_LEASE_MS
   }
 
   removeGroupContext(groupId: string): void {
@@ -292,7 +312,8 @@ export class TransportManager {
     if (this.isDisposed || !this.localPeerId) return
 
     const shared = remotePeer.groups.slice().sort()
-    const chosenGroupId = shared[0] || ''
+    const freshShared = shared.filter((g) => this.isGroupFresh(g))
+    const chosenGroupId = freshShared[0] || shared[0] || ''
     const connectionId = randomUUID()
 
     if (this.localPeerId < remotePeer.peerId) {
@@ -394,6 +415,7 @@ export class TransportManager {
         void this.cleanupRecord(record, 'failed')
       }
     }, 20000)
+    record.attemptTimer.unref()
 
     // Handle ICE candidates
     pc.onicecandidate = (event) => {
@@ -407,7 +429,10 @@ export class TransportManager {
       record.candidateCount++
 
       const shared = this.getSharedGroups(remotePeerId)
-      const sigGroupId = record.negotiationGroupId || shared[0]
+      const freshShared = shared.filter((g) => this.isGroupFresh(g))
+      const sigGroupId = (record.negotiationGroupId && this.isGroupFresh(record.negotiationGroupId))
+        ? record.negotiationGroupId
+        : freshShared[0] || record.negotiationGroupId || shared[0]
 
       this.events.onSendSignal({
         groupId: sigGroupId,
@@ -428,6 +453,14 @@ export class TransportManager {
       } else if (channel.label.startsWith(FILE_CHANNEL_LABEL_PREFIX_V2)) {
         const parsed = parseFileChannelLabelV2(channel.label)
         if (parsed) {
+          if (!this.isGroupFresh(parsed.groupId)) {
+            try {
+              channel.close()
+            } catch {
+              // ignore
+            }
+            return
+          }
           record.activeFileChannels.set(parsed.transferId, channel)
           channel.onclose = () => {
             record.activeFileChannels.delete(parsed.transferId)
@@ -479,7 +512,10 @@ export class TransportManager {
           if (record.attemptId !== connectionId) return
           await pc.setLocalDescription(offer)
           const shared = this.getSharedGroups(remotePeerId)
-          const sigGroupId = record.negotiationGroupId || shared[0]
+          const freshShared = shared.filter((g) => this.isGroupFresh(g))
+          const sigGroupId = (record.negotiationGroupId && this.isGroupFresh(record.negotiationGroupId))
+            ? record.negotiationGroupId
+            : freshShared[0] || record.negotiationGroupId || shared[0]
 
           this.events.onSendSignal({
             groupId: sigGroupId,
@@ -627,6 +663,7 @@ export class TransportManager {
 
         const groupCtx = this.groupContexts.get(parsed.groupId)
         if (!groupCtx) return
+        if (!this.isGroupFresh(parsed.groupId)) return
         if (parsed.epoch !== groupCtx.epoch) return
         const sender = groupCtx.peers.get(record.peerId)
         if (!sender || sender.membershipId !== parsed.senderMembershipId) return
@@ -706,6 +743,9 @@ export class TransportManager {
 
     if (arg6 !== undefined) {
       groupId = arg1
+      if (!this.isGroupFresh(groupId)) {
+        return
+      }
       fromPeerId = arg2
       fromSessionId = arg3
       connectionId = arg4
@@ -751,7 +791,10 @@ export class TransportManager {
         await newRecord.pc.setRemoteDescription(offerPayload)
         const answer = await newRecord.pc.createAnswer()
         await newRecord.pc.setLocalDescription(answer)
-        const chosenGroupId = groupId || sharedGroups[0]
+        const freshShared = sharedGroups.filter((g) => this.isGroupFresh(g))
+        const chosenGroupId = (groupId && this.isGroupFresh(groupId))
+          ? groupId
+          : freshShared[0] || groupId || sharedGroups[0]
         this.events.onSendSignal({
           groupId: chosenGroupId,
           targetPeerId: fromPeerId,
@@ -792,6 +835,10 @@ export class TransportManager {
     let message: OverlayControlMessage | OverlayControlMessageV2
 
     if (arg3 !== undefined) {
+      const groupId = arg1
+      if (!this.isGroupFresh(groupId)) {
+        return false
+      }
       targetPeerId = arg2 as string
       message = arg3
     } else {
@@ -812,6 +859,57 @@ export class TransportManager {
     }
   }
 
+  async waitForLinkOpen(peerId: string, timeoutMs: number = 10000): Promise<void> {
+    if (this.isDisposed) {
+      throw new Error('Cannot wait for link: transport is disposed')
+    }
+    const record = this.connections.get(peerId)
+    if (record?.state === 'failed') {
+      throw new Error(`Peer ${peerId} link is not available`)
+    }
+    if (record?.state === 'open') {
+      return
+    }
+
+    const initialSessionId = record?.sessionId
+    const { promise, resolve, reject } = Promise.withResolvers<void>()
+    let settled = false
+
+    const cleanup = () => {
+      if (settled) return
+      settled = true
+      clearInterval(checkInterval)
+      clearTimeout(timeout)
+    }
+
+    const timeout = setTimeout(() => {
+      cleanup()
+      reject(new Error(`Timeout (${timeoutMs}ms) waiting for peer ${peerId} link to open`))
+    }, timeoutMs)
+    timeout.unref?.()
+
+    const checkInterval = setInterval(() => {
+      if (this.isDisposed) {
+        cleanup()
+        reject(new Error(`Transport disposed while waiting for peer ${peerId} link`))
+        return
+      }
+      const cur = this.connections.get(peerId)
+      if (cur?.state === 'failed' || (initialSessionId && !cur) || (initialSessionId && cur && cur.sessionId !== initialSessionId)) {
+        cleanup()
+        reject(new Error(`Peer ${peerId} link failed`))
+        return
+      }
+      if (cur?.state === 'open') {
+        cleanup()
+        resolve()
+      }
+    }, 50)
+    checkInterval.unref?.()
+
+    return promise
+  }
+
   async openFileChannel(arg1: string, arg2: string, arg3?: string): Promise<RTCDataChannel> {
     let groupId: string
     let targetPeerId: string
@@ -821,55 +919,43 @@ export class TransportManager {
       groupId = arg1
       targetPeerId = arg2
       transferId = arg3
+      if (!this.isGroupFresh(groupId)) {
+        throw new Error(`Cannot open file channel: group "${groupId}" authority expired`)
+      }
     } else {
       groupId = ''
       targetPeerId = arg1
       transferId = arg2
     }
 
-    let record = this.connections.get(targetPeerId)
+    const record = this.connections.get(targetPeerId)
     if (!record || record.state === 'failed') {
       throw new Error(`Cannot open file channel: peer ${targetPeerId} link is not available`)
     }
 
     if (record.state === 'connecting') {
-      const { promise, resolve, reject } = Promise.withResolvers<void>()
-      const timeout = setTimeout(() => {
-        reject(new Error(`Timeout waiting for peer ${targetPeerId} link to open`))
-      }, 10000)
-
-      const checkInterval = setInterval(() => {
-        const cur = this.connections.get(targetPeerId)
-        if (cur?.state === 'open') {
-          clearInterval(checkInterval)
-          clearTimeout(timeout)
-          resolve()
-        } else if (!cur || cur.state === 'failed') {
-          clearInterval(checkInterval)
-          clearTimeout(timeout)
-          reject(new Error(`Peer ${targetPeerId} link failed`))
-        }
-      }, 50)
-
-      await promise
-      record = this.connections.get(targetPeerId)!
+      await this.waitForLinkOpen(targetPeerId, 10000)
     }
 
-    if (record.state !== 'open') {
+    const currentRecord = this.connections.get(targetPeerId)
+    if (!currentRecord || currentRecord.state !== 'open') {
       throw new Error(`Cannot open file channel: peer ${targetPeerId} link is not open`)
+    }
+    if (groupId && !this.isGroupFresh(groupId)) {
+      throw new Error(`Cannot open file channel: group "${groupId}" authority expired`)
     }
 
     const channelLabel = groupId
       ? makeFileChannelLabelV2(groupId, transferId)
       : `kazaa-file-v1:${transferId}`
 
-    const channel = record.pc.createDataChannel(channelLabel, {
+    const channel = currentRecord.pc.createDataChannel(channelLabel, {
       ordered: true
     })
 
-    record.activeFileChannels.set(transferId, channel)
+    currentRecord.activeFileChannels.set(transferId, channel)
     channel.onclose = () => {
-      record.activeFileChannels.delete(transferId)
+      currentRecord.activeFileChannels.delete(transferId)
     }
 
     const { promise, resolve, reject } = Promise.withResolvers<RTCDataChannel>()

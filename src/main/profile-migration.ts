@@ -7,11 +7,10 @@ import {
   realpathSync,
   renameSync,
   rmdirSync,
-  rmSync,
-  statSync
+  rmSync
 } from 'node:fs'
-import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { join, resolve, dirname, basename } from 'node:path'
+import { randomUUID, createHash } from 'node:crypto'
 import { validatePersistedState } from './p2p/peer-store.ts'
 
 export interface PrepareProfileOptions {
@@ -184,4 +183,54 @@ export function prepareProfileDirectory(options: PrepareProfileOptions): Prepare
     dataDirectory: targetDir,
     notices
   }
+}
+export function getCanonicalTargetIdentity(targetPath: string): string {
+  const absolutePath = resolve(targetPath)
+
+  let current = absolutePath
+  const missingSegments: string[] = []
+  while (!existsSync(current)) {
+    const parent = dirname(current)
+    if (parent === current) break
+    missingSegments.unshift(basename(current))
+    current = parent
+  }
+
+  let canonicalBase: string
+  try {
+    canonicalBase = realpathSync.native(current)
+  } catch {
+    canonicalBase = current
+  }
+
+  let canonicalPath = missingSegments.length > 0 ? join(canonicalBase, ...missingSegments) : canonicalBase
+
+  if (process.platform === 'win32') {
+    canonicalPath = canonicalPath.toLowerCase()
+  }
+
+  return canonicalPath
+}
+
+export function getCoordinationLockDirectory(appDataDirectory: string, targetPath: string): string {
+  const identity = getCanonicalTargetIdentity(targetPath)
+  const hash = createHash('sha256').update(identity, 'utf-8').digest('hex')
+  return join(appDataDirectory, '.p2p-multiple-groups-instance-locks', hash)
+}
+
+export function prepareProfileDirectoryWithLock(
+  options: PrepareProfileOptions,
+  acquireLock: (lockDirectory: string) => boolean
+): PrepareProfileResult | null {
+  const targetPath = options.explicitDataDirectory || join(options.appDataDirectory, 'p2p-multiple-groups')
+  const lockDirectory = getCoordinationLockDirectory(options.appDataDirectory, targetPath)
+
+  mkdirSync(lockDirectory, { recursive: true })
+
+  const acquired = acquireLock(lockDirectory)
+  if (!acquired) {
+    return null
+  }
+
+  return prepareProfileDirectory(options)
 }

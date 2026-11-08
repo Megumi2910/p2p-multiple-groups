@@ -586,7 +586,7 @@ export class SignalingClient {
   private closeSocket(ws: WebSocket | null): void {
     if (!ws) return
     try {
-      ws.close()
+      ws.terminate()
     } catch {
       // ignore
     }

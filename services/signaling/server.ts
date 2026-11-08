@@ -47,6 +47,8 @@ export interface SignalingServerInstance {
   close(): Promise<void>
 }
 
+const upgradeGroupIdMap = new WeakMap<WebSocket, string>()
+
 interface SocketSession {
   peerId: string | null
   sessionId: string | null
@@ -57,6 +59,7 @@ interface SocketSession {
   lastTokenUpdate: number
   joinedGroupIds: Set<string>
   v1RoomId: string | null
+  upgradeGroupId: string
 }
 
 interface GroupMember {
@@ -123,11 +126,9 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
 
   // Group runtime map
   const groupMap = new Map<string, GroupRuntimeState>()
-  const validTokenBuffers: Buffer[] = []
 
   for (const g of groupDefinitions) {
     const tokenBuffer = Buffer.from(g.token, 'utf-8')
-    validTokenBuffers.push(tokenBuffer)
     groupMap.set(g.groupId, {
       groupId: g.groupId,
       token: g.token,
@@ -336,29 +337,37 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     const providedBuffer = Buffer.from(providedToken, 'utf-8')
 
     // Verify token matches at least one configured group token using timingSafeEqual
-    let isAuthorized = false
-    for (const validBuffer of validTokenBuffers) {
+    let matchedGroupId: string | null = null
+    for (const group of groupMap.values()) {
       if (
-        providedBuffer.length === validBuffer.length &&
-        timingSafeEqual(providedBuffer, validBuffer)
+        providedBuffer.length === group.tokenBuffer.length &&
+        timingSafeEqual(providedBuffer, group.tokenBuffer)
       ) {
-        isAuthorized = true
+        matchedGroupId = group.groupId
         break
       }
     }
 
-    if (!isAuthorized) {
+    if (!matchedGroupId) {
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
       socket.destroy()
       return
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
+      upgradeGroupIdMap.set(ws, matchedGroupId!)
       wss.emit('connection', ws, req)
     })
   })
 
   wss.on('connection', (ws: WebSocket) => {
+    const upgradeGroupId = upgradeGroupIdMap.get(ws)
+    if (!upgradeGroupId) {
+      ws.close(1008, 'Missing upgrade group identity')
+      return
+    }
+    upgradeGroupIdMap.delete(ws)
+
     sockets.add(ws)
 
     const session: SocketSession = {
@@ -370,7 +379,8 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       tokens: 40,
       lastTokenUpdate: Date.now(),
       joinedGroupIds: new Set(),
-      v1RoomId: null
+      v1RoomId: null,
+      upgradeGroupId
     }
 
     // Initial message deadline: 5 seconds
@@ -674,6 +684,17 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
           return
         }
 
+        if (group.groupId !== sess.upgradeGroupId) {
+          sendToWs(ws, {
+            v: 1,
+            type: 'error',
+            code: 'AUTH_FAILED',
+            message: 'Token not authorized for requested room'
+          } as ServerSignalingMessage)
+          ws.close(1008, 'Auth failed')
+          return
+        }
+
         if (activeSocketsByPeerId.has(msg.peerId)) {
           sendToWs(ws, {
             v: 1,
@@ -787,13 +808,11 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     ws.on('pong', () => {
       session.lastPong = Date.now()
     })
-
     ws.on('close', () => {
       clearTimeout(joinTimer)
       sockets.delete(ws)
       removeSocketFromAllGroups(session)
     })
-
     ws.on('error', () => {
       clearTimeout(joinTimer)
       sockets.delete(ws)
@@ -824,9 +843,13 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
         group.revision++
         broadcastGroupRosterV2(group)
         broadcastGroupRosterV1(group)
+      } else if (group.members.size > 0) {
+        broadcastGroupRosterV2(group)
+        broadcastGroupRosterV1(group)
       }
     }
   }, 2000)
+  heartbeatTimer.unref()
 
   const { promise: listenPromise, resolve: resolveListen, reject: rejectListen } = Promise.withResolvers<void>()
 
@@ -852,7 +875,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
 
       for (const ws of sockets) {
         try {
-          ws.close(1001, 'Server shutting down')
+          ws.terminate()
         } catch {
           // ignore
         }

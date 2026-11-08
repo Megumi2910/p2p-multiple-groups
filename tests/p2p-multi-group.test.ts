@@ -242,7 +242,7 @@ describe('Simultaneous Multi-Group P2P Mesh', () => {
         60000,
         (s) => {
           const failed = s.transfers.find((t) => t.state === 'failed')
-          return failed ? `Transfer failed: ${failed.message}` : null
+          return failed ? `Transfer failed: ${failed.message} for ${failed.fileName} (state: ${JSON.stringify(s.transfers)})` : null
         },
         'concurrent-transfers-completed'
       )
@@ -257,12 +257,45 @@ describe('Simultaneous Multi-Group P2P Mesh', () => {
       // Verify received files on disk
       const bytesAlpha = await readFile(dlAlphaPath)
       const bytesBeta = await readFile(dlBetaPath)
-
       assert.equal(bytesAlpha.length, payloadAlpha.length)
       assert.equal(createHash('sha256').update(bytesAlpha).digest('hex'), alphaResultEntry.file.sha256)
 
       assert.equal(bytesBeta.length, payloadBeta.length)
       assert.equal(createHash('sha256').update(bytesBeta).digest('hex'), betaResultEntry.file.sha256)
+
+      // Verify terminal history retains groupKey and groupId on both downloader and uploader
+      const downloaderHistory = downloader.getState().transfers
+      const compAlpha = downloaderHistory.find((t) => (t.fileName === 'alpha-data.bin' || t.fileName === 'received-alpha.bin') && t.state === 'completed')
+      const compBeta = downloaderHistory.find((t) => (t.fileName === 'beta-data.bin' || t.fileName === 'received-beta.bin') && t.state === 'completed')
+      assert.ok(compAlpha, 'Completed alpha transfer must exist in downloader history')
+      assert.ok(compBeta, 'Completed beta transfer must exist in downloader history')
+      assert.equal(compAlpha.groupKey, alphaKey)
+      assert.equal(compAlpha.groupId, groupAlphaId)
+      assert.equal(compBeta.groupKey, betaKey)
+      assert.equal(compBeta.groupId, groupBetaId)
+
+      // Wait for uploader to record both transfers as completed upon receiving verified control frames
+      await waitForEngineState(
+        uploader,
+        (s) => {
+          const upA = s.transfers.find((t) => (t.fileName === 'alpha-data.bin' || t.fileName === 'received-alpha.bin') && t.state === 'completed')
+          const upB = s.transfers.find((t) => (t.fileName === 'beta-data.bin' || t.fileName === 'received-beta.bin') && t.state === 'completed')
+          return Boolean(upA && upB)
+        },
+        15000,
+        undefined,
+        'uploader-transfers-completed'
+      )
+
+      const uploaderHistory = uploader.getState().transfers
+      const upAlpha = uploaderHistory.find((t) => (t.fileName === 'alpha-data.bin' || t.fileName === 'received-alpha.bin') && t.state === 'completed')
+      const upBeta = uploaderHistory.find((t) => (t.fileName === 'beta-data.bin' || t.fileName === 'received-beta.bin') && t.state === 'completed')
+      assert.ok(upAlpha, 'Completed alpha transfer must exist in uploader history')
+      assert.ok(upBeta, 'Completed beta transfer must exist in uploader history')
+      assert.equal(upAlpha.groupKey, alphaKey)
+      assert.equal(upAlpha.groupId, groupAlphaId)
+      assert.equal(upBeta.groupKey, betaKey)
+      assert.equal(upBeta.groupId, groupBetaId)
     } finally {
       if (sn) await sn.dispose()
       if (uploader) await uploader.dispose()

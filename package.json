@@ -14,12 +14,14 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test:unit": "node --test tests/theme-store.test.ts && node --test tests/credential-store.test.ts && node --test tests/peer-store-v2.test.ts && node --test tests/profile-migration.test.ts && node --test tests/signaling-config.test.ts && node --test tests/p2p-protocol.test.ts",
-    "test:p2p": "node --test tests/signaling-server.test.ts && node --test tests/signaling-client.test.ts && node --test tests/p2p-integration.test.ts && node --test tests/p2p-library-search.test.ts && node --test tests/p2p-transfers.test.ts && node --test tests/p2p-transfers-survival.test.ts && node --test tests/p2p-multi-group.test.ts && node --test tests/p2p-group-security.test.ts",
+    "test:p2p": "node --test tests/signaling-server.test.ts && node --test tests/signaling-client.test.ts && node --test tests/p2p-integration.test.ts && node --test tests/p2p-library-search.test.ts && node --test tests/p2p-transfers.test.ts && node --test tests/p2p-transfers-survival.test.ts && node --test tests/p2p-multi-group.test.ts && node --test tests/p2p-group-security.test.ts && node --test tests/p2p-engine-lifecycle.test.ts",
     "test:e2e": "node --test tests/electron-e2e.test.ts",
     "test": "npm run test:unit && npm run test:p2p && npm run test:e2e",
     "build": "npm run typecheck && electron-vite build",
     "signal:start": "node --env-file-if-exists=.env services/signaling/index.ts",
-    "signal:invite": "node --env-file-if-exists=.env scripts/create-invite.ts"
+    "signal:invite": "node --env-file-if-exists=.env scripts/create-invite.ts",
+    "docs:screenshots": "node scripts/capture-docs-screenshots.ts",
+    "docs:open": "node scripts/open-docs.js"
   },
   "dependencies": {
     "react": "19.3.0",
@@ -33,9 +35,13 @@
     "@types/react-dom": "19.3.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "5.2.0",
-    "electron": "44.4.1",
+    "electron": "44.10.1",
     "electron-vite": "5.0.0",
     "typescript": "5.9.3",
-    "vite": "7.3.6"
+    "vite": "7.3.7"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true
   }
 }

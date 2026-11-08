@@ -2,8 +2,14 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { loadSignalingOptions } from '../services/signaling/config.ts'
+import type { ServerSignalingMessageV2 } from '../src/shared/p2p-wire.ts'
 import WebSocket from 'ws'
+
+type WelcomeMessageV2 = Extract<ServerSignalingMessageV2, { type: 'welcome' }>
 
 async function getFreePort(): Promise<number> {
   const srv = createServer()
@@ -221,5 +227,232 @@ describe('Signaling Configuration & CLI Parser', () => {
       const result = await exitPromise
       assert.ok(result.code === 0 || result.signal === 'SIGTERM')
     }
+  })
+  it('verifies shipped deployment templates advertise canonical keys and pass end-to-end runtime lifecycle', async () => {
+    // 1. Read shipped templates from disk
+    const renderYamlContent = await readFile(join(process.cwd(), 'render.yaml'), 'utf-8')
+    const azureEnvContent = await readFile(join(process.cwd(), 'ops', 'azure', 'signaling.env.example'), 'utf-8')
+
+    // Assert render.yaml uses canonical P2P_MULTIPLE_GROUPS_* keys and no deprecated short names
+    assert.ok(renderYamlContent.includes('key: P2P_MULTIPLE_GROUPS_GROUPS_JSON'), 'render.yaml must use P2P_MULTIPLE_GROUPS_GROUPS_JSON')
+    assert.ok(renderYamlContent.includes('key: P2P_MULTIPLE_GROUPS_STUN_URL'), 'render.yaml must use P2P_MULTIPLE_GROUPS_STUN_URL')
+    assert.ok(renderYamlContent.includes('key: P2P_MULTIPLE_GROUPS_TURN_URL'), 'render.yaml must use P2P_MULTIPLE_GROUPS_TURN_URL')
+    assert.ok(renderYamlContent.includes('key: P2P_MULTIPLE_GROUPS_TURN_USERNAME'), 'render.yaml must use P2P_MULTIPLE_GROUPS_TURN_USERNAME')
+    assert.ok(renderYamlContent.includes('key: P2P_MULTIPLE_GROUPS_TURN_CREDENTIAL'), 'render.yaml must use P2P_MULTIPLE_GROUPS_TURN_CREDENTIAL')
+
+    assert.ok(!renderYamlContent.includes('key: P2P_GROUPS_JSON'), 'render.yaml must not use short P2P_GROUPS_JSON')
+    assert.ok(!renderYamlContent.includes('key: P2P_STUN_URL'), 'render.yaml must not use short P2P_STUN_URL')
+    assert.ok(!renderYamlContent.includes('key: P2P_TURN_URL'), 'render.yaml must not use short P2P_TURN_URL')
+    assert.ok(!renderYamlContent.includes('key: P2P_TURN_USERNAME'), 'render.yaml must not use short P2P_TURN_USERNAME')
+    assert.ok(!renderYamlContent.includes('key: P2P_TURN_CREDENTIAL'), 'render.yaml must not use short P2P_TURN_CREDENTIAL')
+
+    // Assert azure template uses canonical P2P_MULTIPLE_GROUPS_* keys
+    assert.ok(azureEnvContent.includes('P2P_MULTIPLE_GROUPS_SIGNAL_HOST='), 'azure template must use P2P_MULTIPLE_GROUPS_SIGNAL_HOST')
+    assert.ok(azureEnvContent.includes('P2P_MULTIPLE_GROUPS_SIGNAL_PORT='), 'azure template must use P2P_MULTIPLE_GROUPS_SIGNAL_PORT')
+    assert.ok(azureEnvContent.includes('P2P_MULTIPLE_GROUPS_GROUPS_JSON='), 'azure template must use P2P_MULTIPLE_GROUPS_GROUPS_JSON')
+    assert.ok(azureEnvContent.includes('P2P_MULTIPLE_GROUPS_TURN_HOST='), 'azure template must use P2P_MULTIPLE_GROUPS_TURN_HOST')
+    assert.ok(azureEnvContent.includes('P2P_MULTIPLE_GROUPS_TURN_SECRET='), 'azure template must use P2P_MULTIPLE_GROUPS_TURN_SECRET')
+
+    assert.ok(!/^P2P_SIGNAL_HOST=/m.test(azureEnvContent), 'azure template must not use short P2P_SIGNAL_HOST')
+    assert.ok(!/^P2P_SIGNAL_PORT=/m.test(azureEnvContent), 'azure template must not use short P2P_SIGNAL_PORT')
+    assert.ok(!/^P2P_GROUPS_JSON=/m.test(azureEnvContent), 'azure template must not use short P2P_GROUPS_JSON')
+    assert.ok(!/^P2P_TURN_HOST=/m.test(azureEnvContent), 'azure template must not use short P2P_TURN_HOST')
+    assert.ok(!/^P2P_TURN_SECRET=/m.test(azureEnvContent), 'azure template must not use short P2P_TURN_SECRET')
+
+    // 2. Render-derived environment test
+    const renderPort = await getFreePort()
+    const renderEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      P2P_MULTIPLE_GROUPS_SIGNAL_HOST: '127.0.0.1',
+      P2P_MULTIPLE_GROUPS_SIGNAL_PORT: String(renderPort),
+      P2P_MULTIPLE_GROUPS_GROUPS_JSON: JSON.stringify([
+        { groupId: 'render-alpha', token: validToken1, name: 'Render Alpha' },
+        { groupId: 'render-beta', token: validToken2, name: 'Render Beta' }
+      ]),
+      P2P_MULTIPLE_GROUPS_STUN_URL: 'stun:stun.relay.metered.ca:80',
+      P2P_MULTIPLE_GROUPS_TURN_URL: 'turns:global.relay.metered.ca:443?transport=tcp',
+      P2P_MULTIPLE_GROUPS_TURN_USERNAME: 'metered-user-test',
+      P2P_MULTIPLE_GROUPS_TURN_CREDENTIAL: 'metered-cred-test',
+      P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL: `ws://127.0.0.1:${renderPort}/signal`
+    }
+
+    const renderConfig = loadSignalingOptions(renderEnv)
+    assert.equal(renderConfig.host, '127.0.0.1')
+    assert.equal(renderConfig.port, renderPort)
+    assert.equal(renderConfig.groups?.length, 2)
+    assert.equal(renderConfig.groups?.[0].groupId, 'render-alpha')
+    assert.equal(renderConfig.groups?.[1].groupId, 'render-beta')
+    assert.equal(renderConfig.stunUrl, 'stun:stun.relay.metered.ca:80')
+    assert.equal(renderConfig.turnUrl, 'turns:global.relay.metered.ca:443?transport=tcp')
+    assert.equal(renderConfig.turnUsername, 'metered-user-test')
+    assert.equal(renderConfig.turnCredential, 'metered-cred-test')
+
+    // Spawn services/signaling/index.ts under Render-derived environment
+    const renderChild = spawn(process.execPath, ['services/signaling/index.ts'], {
+      env: renderEnv,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    try {
+      let healthy = false
+      for (let i = 0; i < 30; i++) {
+        await delay(100)
+        try {
+          const res = await fetch(`http://127.0.0.1:${renderPort}/healthz`)
+          if (res.ok && (await res.json()).ok === true) {
+            healthy = true
+            break
+          }
+        } catch {
+          // retry
+        }
+      }
+      assert.equal(healthy, true, 'Render-derived server must serve /healthz')
+
+      // Connect local client and inspect welcome ICE configuration
+      const ws = new WebSocket(`ws://127.0.0.1:${renderPort}/signal`, {
+        headers: { Authorization: `Bearer ${validToken1}` }
+      })
+      const { promise: welcomePromise, resolve: resolveWelcome } = Promise.withResolvers<WelcomeMessageV2>()
+      ws.on('open', () => {
+        ws.send(JSON.stringify({
+          v: 2,
+          type: 'register',
+          peerId: randomUUID(),
+          displayName: 'RenderTester'
+        }))
+      })
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString('utf-8')) as ServerSignalingMessageV2
+        if (msg.type === 'welcome') resolveWelcome(msg)
+      })
+
+      const welcomeMsg = await welcomePromise
+      assert.ok(welcomeMsg.iceConfig)
+      assert.ok(welcomeMsg.iceConfig.servers.length >= 2)
+      const serverUrls = welcomeMsg.iceConfig.servers.flatMap((s: { urls: string | string[] }) => Array.isArray(s.urls) ? s.urls : [s.urls])
+      assert.ok(serverUrls.includes('stun:stun.relay.metered.ca:80'), 'STUN url must be in ICE config')
+      assert.ok(serverUrls.includes('turns:global.relay.metered.ca:443?transport=tcp'), 'TURN url must be in ICE config')
+      ws.close()
+    } finally {
+      const { promise: exitP, resolve: resolveExit } = Promise.withResolvers<void>()
+      renderChild.on('exit', () => resolveExit())
+      renderChild.kill('SIGTERM')
+      await exitP
+    }
+
+    // Assert create-invite under Render environment outputs valid v2 invitation
+    const { promise: renderInviteP, resolve: resolveRenderInvite, reject: rejectRenderInvite } = Promise.withResolvers<string>()
+    const renderInviteChild = spawn(process.execPath, ['scripts/create-invite.ts', '--group-id=render-alpha'], {
+      env: renderEnv,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let renderInviteOut = ''
+    renderInviteChild.stdout.on('data', (d) => (renderInviteOut += d.toString()))
+    renderInviteChild.on('exit', (c) => {
+      if (c === 0) resolveRenderInvite(renderInviteOut)
+      else rejectRenderInvite(new Error(`Exit code ${c}`))
+    })
+    const renderInviteRes = JSON.parse((await renderInviteP).trim())
+    assert.equal(renderInviteRes.version, 2)
+    assert.equal(renderInviteRes.groupId, 'render-alpha')
+    assert.equal(renderInviteRes.token, validToken1)
+    assert.equal(renderInviteRes.signalingUrl, `ws://127.0.0.1:${renderPort}/signal`)
+
+    // 3. Azure-derived environment test
+    const azurePort = await getFreePort()
+    const azureTurnSecret = Buffer.alloc(32, 77).toString('base64url')
+    const azureEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      P2P_MULTIPLE_GROUPS_SIGNAL_HOST: '127.0.0.1',
+      P2P_MULTIPLE_GROUPS_SIGNAL_PORT: String(azurePort),
+      P2P_MULTIPLE_GROUPS_GROUPS_JSON: JSON.stringify([
+        { groupId: 'azure-alpha', token: validToken1, name: 'Azure Alpha' },
+        { groupId: 'azure-beta', token: validToken2, name: 'Azure Beta' }
+      ]),
+      P2P_MULTIPLE_GROUPS_TURN_HOST: '127.0.0.1',
+      P2P_MULTIPLE_GROUPS_TURN_SECRET: azureTurnSecret,
+      P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL: `ws://127.0.0.1:${azurePort}/signal`
+    }
+
+    const azureConfig = loadSignalingOptions(azureEnv)
+    assert.equal(azureConfig.host, '127.0.0.1')
+    assert.equal(azureConfig.port, azurePort)
+    assert.equal(azureConfig.groups?.length, 2)
+    assert.equal(azureConfig.turnHost, '127.0.0.1')
+    assert.equal(azureConfig.turnSecret, azureTurnSecret)
+
+    // Spawn services/signaling/index.ts under Azure-derived environment
+    const azureChild = spawn(process.execPath, ['services/signaling/index.ts'], {
+      env: azureEnv,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    try {
+      let healthy = false
+      for (let i = 0; i < 30; i++) {
+        await delay(100)
+        try {
+          const res = await fetch(`http://127.0.0.1:${azurePort}/healthz`)
+          if (res.ok && (await res.json()).ok === true) {
+            healthy = true
+            break
+          }
+        } catch {
+          // retry
+        }
+      }
+      assert.equal(healthy, true, 'Azure-derived server must serve /healthz')
+
+      // Connect local client and inspect dynamic HMAC TURN credentials
+      const ws = new WebSocket(`ws://127.0.0.1:${azurePort}/signal`, {
+        headers: { Authorization: `Bearer ${validToken1}` }
+      })
+      const { promise: welcomePromise, resolve: resolveWelcome } = Promise.withResolvers<WelcomeMessageV2>()
+      ws.on('open', () => {
+        ws.send(JSON.stringify({
+          v: 2,
+          type: 'register',
+          peerId: randomUUID(),
+          displayName: 'AzureTester'
+        }))
+      })
+      ws.on('message', (raw) => {
+        const msg = JSON.parse(raw.toString('utf-8')) as ServerSignalingMessageV2
+        if (msg.type === 'welcome') resolveWelcome(msg)
+      })
+
+      const welcomeMsg = await welcomePromise
+      assert.ok(welcomeMsg.iceConfig)
+      assert.ok(welcomeMsg.iceConfig.servers.length >= 2)
+      const turnServer = welcomeMsg.iceConfig.servers.find((s: { username?: string; credential?: string }) => Boolean(s.username && s.credential))
+      assert.ok(turnServer, 'Dynamic HMAC TURN server entry must be present')
+      assert.ok(typeof turnServer.username === 'string' && turnServer.username.length > 0)
+      assert.ok(typeof turnServer.credential === 'string' && turnServer.credential.length > 0)
+      ws.close()
+    } finally {
+      const { promise: exitP, resolve: resolveExit } = Promise.withResolvers<void>()
+      azureChild.on('exit', () => resolveExit())
+      azureChild.kill('SIGTERM')
+      await exitP
+    }
+
+    // Assert create-invite under Azure environment outputs valid v2 invitation
+    const { promise: azureInviteP, resolve: resolveAzureInvite, reject: rejectAzureInvite } = Promise.withResolvers<string>()
+    const azureInviteChild = spawn(process.execPath, ['scripts/create-invite.ts', '--group-id=azure-beta'], {
+      env: azureEnv,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let azureInviteOut = ''
+    azureInviteChild.stdout.on('data', (d) => (azureInviteOut += d.toString()))
+    azureInviteChild.on('exit', (c) => {
+      if (c === 0) resolveAzureInvite(azureInviteOut)
+      else rejectAzureInvite(new Error(`Exit code ${c}`))
+    })
+    const azureInviteRes = JSON.parse((await azureInviteP).trim())
+    assert.equal(azureInviteRes.version, 2)
+    assert.equal(azureInviteRes.groupId, 'azure-beta')
+    assert.equal(azureInviteRes.token, validToken2)
+    assert.equal(azureInviteRes.signalingUrl, `ws://127.0.0.1:${azurePort}/signal`)
   })
 })

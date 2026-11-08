@@ -7,6 +7,7 @@ export const MAX_TRANSFER_CHUNK_SIZE = 16384 // 16 KiB
 export const MAX_CATALOG_BATCH_ENTRIES = 32
 export const MAX_SEARCH_RESULTS_ENTRIES = 16
 export const MAX_SEARCH_QUERY_LENGTH = 120
+export const ROSTER_FRESHNESS_LEASE_MS = 6000
 
 export const CONTROL_CHANNEL_LABEL_V2 = 'p2p-multiple-groups-control-v2'
 export const FILE_CHANNEL_LABEL_PREFIX_V2 = 'p2p-multiple-groups-file-v2:'

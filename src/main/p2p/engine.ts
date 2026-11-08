@@ -33,6 +33,7 @@ import {
   isServerSignalingMessageV2,
   MAX_CATALOG_BATCH_ENTRIES,
   MAX_SEARCH_QUERY_LENGTH,
+  ROSTER_FRESHNESS_LEASE_MS,
   type GroupJoinedMessage,
   type OverlayCatalogAckMessageV2,
   type OverlayCatalogBatchMessageV2,
@@ -41,6 +42,7 @@ import {
   type OverlayControlMessage,
   type OverlayControlMessageV2,
   type OverlaySearchMessageV2,
+  type OverlaySearchResultsMessageV2,
   type ServerSignalingMessageV2,
   type SignalingIceConfig,
   type SignalingRosterPeerV2
@@ -48,7 +50,7 @@ import {
 import { LibraryManager } from './library.ts'
 import { SupernodeIndexManager, SearchResultsTracker } from './search-index.ts'
 import { TransferManager, type TransferAuthorizationContext } from './transfers.ts'
-import { createCredentialStore } from './credential-store.ts'
+import { createCredentialStore, type CredentialStore } from './credential-store.ts'
 import {
   createMultiGroupPeerStore,
   type MultiGroupPeerStore,
@@ -66,8 +68,8 @@ import {
 export interface CreatePeerEngineOptions {
   dataDirectory: string
   transportFactory?: (signalingUrl: string, events: TransportEvents) => TransportManager
+  credentialStore?: CredentialStore
 }
-
 export interface PeerEngine {
   getState(): MultiGroupP2pState & P2pState
   subscribe(listener: (state: MultiGroupP2pState & P2pState) => void): () => void
@@ -162,41 +164,56 @@ export async function createPeerEngine(
 
   const isTransferAuthorized = (context: TransferAuthorizationContext): boolean => {
     if (!context.groupKey) {
-      return true
+      return false
     }
     const runtime = groups.get(context.groupKey)
-    if (!runtime || !runtime.isJoined) return false
+    if (!runtime || !hasFreshGroupAuthority(runtime)) return false
     if (context.epoch && runtime.epoch && runtime.epoch !== context.epoch) return false
-
     if (context.direction === 'upload') {
-      if (context.ownerMembershipId && runtime.membershipId && context.ownerMembershipId !== runtime.membershipId) {
+      if (
+        !context.requesterPeerId ||
+        !context.requesterSessionId ||
+        !context.requesterMembershipId ||
+        !context.ownerMembershipId
+      ) {
         return false
       }
-      if (context.requesterPeerId) {
-        const isMember = runtime.members.some(
-          (m) =>
-            m.peerId === context.requesterPeerId &&
-            (!context.requesterMembershipId || m.membershipId === context.requesterMembershipId)
-        )
-        if (!isMember) return false
+      if (context.ownerMembershipId !== runtime.membershipId) {
+        return false
       }
+      const remoteMember = runtime.members.find(
+        (m) =>
+          m.peerId === context.requesterPeerId &&
+          m.sessionId === context.requesterSessionId &&
+          m.membershipId === context.requesterMembershipId
+      )
+      if (!remoteMember) return false
+
       const sf = store.get().sharedFiles.find((f) => f.fileId === context.fileId)
       if (!sf || !sf.groupKeys.includes(context.groupKey)) {
         return false
       }
       return true
     } else {
-      if (context.requesterMembershipId && runtime.membershipId && context.requesterMembershipId !== runtime.membershipId) {
+      if (
+        !context.ownerPeerId ||
+        !context.ownerSessionId ||
+        !context.ownerMembershipId ||
+        !context.requesterMembershipId
+      ) {
         return false
       }
-      if (context.ownerPeerId) {
-        const isMember = runtime.members.some(
-          (m) =>
-            m.peerId === context.ownerPeerId &&
-            (!context.ownerMembershipId || m.membershipId === context.ownerMembershipId)
-        )
-        if (!isMember) return false
+      if (context.requesterMembershipId !== runtime.membershipId) {
+        return false
       }
+      const remoteMember = runtime.members.find(
+        (m) =>
+          m.peerId === context.ownerPeerId &&
+          m.sessionId === context.ownerSessionId &&
+          m.membershipId === context.ownerMembershipId
+      )
+      if (!remoteMember) return false
+
       return true
     }
   }
@@ -218,7 +235,8 @@ export async function createPeerEngine(
       return 'unknown'
     }
   })
-  const credentialStore = createCredentialStore({ dataDirectory: options.dataDirectory })
+  const credentialStore = options.credentialStore ?? createCredentialStore({ dataDirectory: options.dataDirectory })
+  const autoJoinKeys: GroupKey[] = []
 
   // Initialize group runtimes from persisted store and load remembered credentials
   for (const g of persisted.groups) {
@@ -227,9 +245,7 @@ export async function createPeerEngine(
       memoryCredentials.set(g.groupKey, token)
       createGroupRuntime(g.groupKey, g.groupId, g.signalingUrl, g.supernodeEligible, g.autoJoin, 'stored')
       if (g.autoJoin) {
-        queueMicrotask(() => {
-          void engineInstance.resumeGroup(g.groupKey)
-        })
+        autoJoinKeys.push(g.groupKey)
       }
     } else {
       createGroupRuntime(g.groupKey, g.groupId, g.signalingUrl, g.supernodeEligible, g.autoJoin, 'required')
@@ -281,6 +297,43 @@ export async function createPeerEngine(
     return runtime
   }
 
+  function hasFreshGroupAuthority(runtime: GroupRuntime): boolean {
+    if (isDisposed) return false
+    if (!runtime.isJoined) return false
+    if (!runtime.epoch || !runtime.membershipId) return false
+    if (runtime.lastRosterRenewedAt <= 0) return false
+    return Date.now() - runtime.lastRosterRenewedAt <= ROSTER_FRESHNESS_LEASE_MS
+  }
+
+  function expireGroupAuthority(runtime: GroupRuntime): void {
+    if (!runtime.isJoined) return
+    if (runtime.status === 'recovering' && runtime.message === 'Roster freshness expired') {
+      return
+    }
+    runtime.status = 'recovering'
+    runtime.message = 'Roster freshness expired'
+    runtime.supernodeIndex.clear()
+    runtime.searchResults.clear()
+    runtime.acknowledgedGeneration = null
+
+    if (runtime.searchTimeoutTimer) {
+      clearTimeout(runtime.searchTimeoutTimer)
+      runtime.searchTimeoutTimer = undefined
+    }
+    if (runtime.searchQueryId) {
+      runtime.searchStatus = 'error'
+      runtime.searchMessage = 'Roster freshness expired'
+    }
+
+    transfers.cancelGroup(runtime.groupKey)
+
+    const transport = endpointTransports.get(runtime.signalingUrl)
+    if (transport) {
+      transport.setGroupFreshness(runtime.groupId, false)
+    }
+
+    publishState()
+  }
   function publishState(): void {
     stateRevision++
     const snapshot = buildCombinedSnapshot()
@@ -332,18 +385,41 @@ export async function createPeerEngine(
         handleControlMessage(signalingUrl, fromPeerId, msg)
       },
       onFileChannel: (groupId, fromPeerId, fromSessionId, transferId, channel) => {
+        if (!groupId) {
+          try {
+            channel.close()
+          } catch {
+            // ignore
+          }
+          return
+        }
         const key = makeGroupKey(signalingUrl, groupId)
         const runtime = groups.get(key)
-        const channelGroupContext = runtime
-          ? {
-              groupKey: key,
-              groupId,
-              epoch: runtime.epoch || '',
-              localMembershipId: runtime.membershipId || '',
-              remoteSessionId: fromSessionId,
-              remoteMembershipId: runtime.members.find((m) => m.peerId === fromPeerId)?.membershipId || ''
-            }
-          : undefined
+        if (!runtime || !hasFreshGroupAuthority(runtime)) {
+          try {
+            channel.close()
+          } catch {
+            // ignore
+          }
+          return
+        }
+        const remoteMember = runtime.members.find((m) => m.peerId === fromPeerId)
+        if (!remoteMember || remoteMember.sessionId !== fromSessionId) {
+          try {
+            channel.close()
+          } catch {
+            // ignore
+          }
+          return
+        }
+        const channelGroupContext = {
+          groupKey: key,
+          groupId,
+          epoch: runtime.epoch || '',
+          localMembershipId: runtime.membershipId || '',
+          remoteSessionId: fromSessionId,
+          remoteMembershipId: remoteMember.membershipId
+        }
         void transfers.handleIncomingChannel(fromPeerId, transferId, channel, channelGroupContext)
       },
       onLinkStateChange: (peerId, state, path) => {
@@ -368,6 +444,12 @@ export async function createPeerEngine(
       transport = options.transportFactory
         ? options.transportFactory(signalingUrl, transportEvents)
         : new TransportManager(transportEvents)
+      transport.setPeerContext(
+        currentIdentity.peerId,
+        '',
+        { expiresAt: 0, servers: [] },
+        relayOnly
+      )
       endpointTransports.set(signalingUrl, transport)
     }
 
@@ -434,8 +516,6 @@ export async function createPeerEngine(
     if (!runtime) return
 
     runtime.membershipId = msg.membershipId
-    runtime.epoch = msg.epoch
-    runtime.membershipRevision = msg.revision
     runtime.isJoined = true
     runtime.status = 'connected'
     runtime.lastRosterRenewedAt = Date.now()
@@ -453,15 +533,33 @@ export async function createPeerEngine(
   ): void {
     const key = makeGroupKey(signalingUrl, groupId)
     const runtime = groups.get(key)
-    if (!runtime) return
-
-    runtime.lastRosterRenewedAt = Date.now()
-
-    // Stale revision check in same epoch
+    if (!runtime || !runtime.isJoined) return
+    // Stale revision check in same epoch - reject same-epoch lower revisions before renewing timestamp
     if (runtime.epoch === epoch && revision < runtime.membershipRevision) {
       return
     }
 
+    // Renew only an accepted roster for a logically joined runtime whose local peer/session/membership appears in that roster
+    const localPeerId = store.get().peerId
+    const localMember = peers.find((p) => p.peerId === localPeerId)
+    if (!localMember) {
+      return
+    }
+    const client = endpointClients.get(signalingUrl)
+    if (client && client.getSessionId() && localMember.sessionId !== client.getSessionId()) {
+      return
+    }
+    if (runtime.membershipId && localMember.membershipId !== runtime.membershipId) {
+      return
+    }
+    if (!runtime.membershipId) {
+      runtime.membershipId = localMember.membershipId
+    }
+
+    // Renew lease upon accepting valid roster containing local peer
+    runtime.lastRosterRenewedAt = Date.now()
+    const isPureRenewal = runtime.epoch === epoch && revision === runtime.membershipRevision
+    if (!isPureRenewal) {
     // Changing epoch resets authorities
     if (runtime.epoch !== epoch) {
       runtime.epoch = epoch
@@ -528,7 +626,7 @@ export async function createPeerEngine(
     runtime.members = peers.map((p) => ({
       peerId: p.peerId,
       sessionId: p.sessionId,
-      membershipId: p.membershipId,
+      membershipId: (('membershipId' in p && typeof p.membershipId === 'string') ? p.membershipId : (p.membershipId || '')) as string,
       joinOrder: p.joinOrder,
       displayName: p.displayName,
       supernodeEligible: p.supernodeEligible,
@@ -542,14 +640,29 @@ export async function createPeerEngine(
     } else {
       runtime.message = `Connected to supernode ${runtime.primaryPeerId || 'none'}.`
     }
+  }
+    const wasRecovering = runtime.status === 'recovering'
+    runtime.status = 'connected'
+    if (isPureRenewal && wasRecovering) {
+      const activeSupernodes = runtime.members.filter((m) => m.role === 'supernode')
+      if (activeSupernodes.length === 0) {
+        runtime.message = 'No eligible supernode available in network.'
+      } else if (runtime.role === 'supernode') {
+        runtime.message = `Operating as active supernode (${activeSupernodes.length} total).`
+      } else {
+        runtime.message = `Connected to supernode ${runtime.primaryPeerId || 'none'}.`
+      }
+    }
 
     // Update transport group context
     const transport = endpointTransports.get(signalingUrl)
     if (transport) {
-      transport.updateGroupContext(groupId, epoch, revision, peers, true)
+      transport.updateGroupContext(groupId, runtime.epoch || epoch, runtime.membershipRevision, peers, true)
     }
 
-    announceCatalogue(runtime)
+    if (!isPureRenewal || wasRecovering) {
+      announceCatalogue(runtime)
+    }
     publishState()
   }
 
@@ -558,6 +671,7 @@ export async function createPeerEngine(
     const runtime = groups.get(key)
     if (!runtime) return
 
+    transfers.cancelGroup(key)
     runtime.isJoined = false
     runtime.status = 'disconnected'
     runtime.message = 'Left group'
@@ -585,7 +699,7 @@ export async function createPeerEngine(
 
       const key = makeGroupKey(signalingUrl, v2.groupId)
       const runtime = groups.get(key)
-      if (!runtime || !runtime.isJoined) return
+      if (!runtime || !hasFreshGroupAuthority(runtime)) return
       switch (v2.type) {
         case 'ping': {
           const pong: OverlayControlMessageV2 = {
@@ -607,7 +721,7 @@ export async function createPeerEngine(
 
         case 'catalog-begin': {
           if (runtime.role === 'supernode') {
-            const senderSession = v2.senderMembershipId || runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || fromPeerId
+            const senderSession = runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || fromPeerId
             const instantAck = runtime.supernodeIndex.handleCatalogBegin(fromPeerId, senderSession, v2 as any, v2.senderMembershipId)
             if (instantAck) {
               const ack: OverlayCatalogAckMessageV2 = {
@@ -644,7 +758,7 @@ export async function createPeerEngine(
 
         case 'catalog-batch': {
           if (runtime.role === 'supernode') {
-            const senderSession = v2.senderMembershipId || runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || fromPeerId
+            const senderSession = runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || fromPeerId
             runtime.supernodeIndex.handleCatalogBatch(fromPeerId, senderSession, v2 as any)
           }
           break
@@ -652,7 +766,7 @@ export async function createPeerEngine(
 
         case 'catalog-end': {
           if (runtime.role === 'supernode') {
-            const senderSession = v2.senderMembershipId || runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || fromPeerId
+            const senderSession = runtime.members.find((m) => m.peerId === fromPeerId)?.sessionId || fromPeerId
             const swapped = runtime.supernodeIndex.handleCatalogEnd(fromPeerId, senderSession, v2 as any, v2.senderMembershipId)
             if (swapped) {
               const ack: OverlayCatalogAckMessageV2 = {
@@ -849,10 +963,31 @@ export async function createPeerEngine(
               publishState()
             }
           } else if (runtime.role === 'supernode') {
+            const originMember = runtime.members.find((m) => m.peerId === v2.originPeerId)
+            if (!originMember || (originMember.membershipId || '') !== (v2.originMembershipId || '')) {
+              return
+            }
+
+            const relayedResultsMsg: OverlaySearchResultsMessageV2 = {
+              v: 2,
+              type: 'search-results',
+              groupId: v2.groupId,
+              epoch: runtime.epoch || '',
+              revision: runtime.membershipRevision,
+              senderMembershipId: runtime.membershipId || '',
+              responderPeerId: v2.responderPeerId,
+              responderMembershipId: v2.responderMembershipId,
+              queryId: v2.queryId,
+              originPeerId: v2.originPeerId,
+              originMembershipId: v2.originMembershipId,
+              entries: v2.entries,
+              done: v2.done,
+              partial: v2.partial
+            }
+
             const transport = endpointTransports.get(signalingUrl)
-            transport?.sendControl(v2.groupId, v2.originPeerId, v2)
+            transport?.sendControl(v2.groupId, v2.originPeerId, relayedResultsMsg)
           }
-          break
         }
       }
     }
@@ -877,7 +1012,7 @@ export async function createPeerEngine(
   }
 
   function announceCatalogue(runtime: GroupRuntime): void {
-    if (isDisposed || !runtime.isJoined) return
+    if (isDisposed || !hasFreshGroupAuthority(runtime)) return
 
     // Filter library metadata by committed v2 grants for this groupKey
     const committedFiles = store.get().sharedFiles
@@ -896,11 +1031,13 @@ export async function createPeerEngine(
       runtime.acknowledgedGeneration = null
     }
     if (runtime.role === 'supernode') {
+      const currentSessionId = endpointClients.get(runtime.signalingUrl)?.getSessionId() || ''
       runtime.supernodeIndex.updateLocalCatalogue(
         store.get().peerId,
-        runtime.membershipId || '',
+        currentSessionId,
         gen,
-        groupMetadata
+        groupMetadata,
+        runtime.membershipId || ''
       )
       runtime.acknowledgedGeneration = gen
       library.setAcknowledgedGeneration(gen)
@@ -970,15 +1107,13 @@ export async function createPeerEngine(
 
     for (const runtime of groups.values()) {
       if (runtime.isJoined) {
-        // Freshness: expires after 6s without authoritative renewal
-        if (runtime.lastRosterRenewedAt > 0 && now - runtime.lastRosterRenewedAt > 6000) {
-          runtime.status = 'recovering'
-          runtime.message = 'Roster freshness expired'
-          publishState()
+        if (!hasFreshGroupAuthority(runtime)) {
+          expireGroupAuthority(runtime)
         }
       }
     }
   }, 2000)
+  monitorTimer.unref()
 
   function buildCombinedSnapshot(): MultiGroupP2pState & P2pState {
     const persistedState = store.get()
@@ -1040,22 +1175,7 @@ export async function createPeerEngine(
     })
 
     // Active transfers
-    const transferList: MultiGroupTransfer[] = transfers.getTransfers().map((t) => ({
-      id: t.id,
-      groupKey: '',
-      groupId: '',
-      direction: t.direction,
-      fileName: t.fileName,
-      peerId: t.peerId,
-      peerName: t.peerName,
-      size: t.size,
-      transferredBytes: t.transferredBytes,
-      sha256: t.sha256,
-      state: t.state,
-      path: t.path,
-      message: t.message
-    }))
-
+    const transferList: MultiGroupTransfer[] = transfers.getTransfers()
     // Legacy projection for untouched components / tests
     const firstGroup = activeGroupList[0]
     const legacyNet: P2pNetworkState = firstGroup
@@ -1128,6 +1248,21 @@ export async function createPeerEngine(
       recoveryEvents: firstGroup ? firstGroup.recoveryEvents : []
     }
   }
+  let policyQueue: Promise<void> = Promise.resolve()
+  function queueAction<T>(action: () => Promise<T>): Promise<T> {
+    const enqueued = policyQueue.then(() => {
+      if (isDisposed) {
+        return Promise.reject(new Error('Engine disposed'))
+      }
+      return action()
+    })
+    policyQueue = enqueued.then(
+      () => {},
+      () => {}
+    )
+    return enqueued
+  }
+
   const engineInstance = {
     getState: () => buildCombinedSnapshot(),
 
@@ -1138,117 +1273,156 @@ export async function createPeerEngine(
       }
     },
 
-    joinGroup: async (options: JoinGroupOptions): Promise<ActionResult> => {
-      const check = validateJoinGroupOptions(options)
-      if (!check.valid) {
-        return { ok: false, code: 'INVALID_INPUT', message: check.error }
-      }
-
-      // Check relay policy compatibility
-      const hasActive = Array.from(groups.values()).some((g) => g.isJoined)
-      if (hasActive && options.relayOnly !== relayOnly) {
-        return {
-          ok: false,
-          code: 'INVALID_INPUT',
-          message: 'Changing relay policy requires disconnecting all groups first'
+    joinGroup: (options: JoinGroupOptions): Promise<ActionResult> => {
+      return queueAction(async () => {
+        const check = validateJoinGroupOptions(options)
+        if (!check.valid) {
+          return { ok: false, code: 'INVALID_INPUT', message: check.error }
         }
-      }
 
-      const inv = options.invitation
-      const groupKey = makeGroupKey(inv.signalingUrl, inv.groupId)
-      const credStatus = options.rememberInvitation ? 'stored' : 'memory'
-
-      memoryCredentials.set(groupKey, inv.token)
-
-      const runtime = createGroupRuntime(
-        groupKey,
-        inv.groupId,
-        inv.signalingUrl,
-        options.supernodeEligible,
-        false,
-        credStatus
-      )
-      runtime.supernodeEligible = options.supernodeEligible
-
-      const { client, transport } = getOrCreateEndpoint(inv.signalingUrl)
-      if (options.displayName) {
-        client.setDisplayName(options.displayName)
-      }
-      transport.setPeerContext(
-        store.get().peerId,
-        client.getSessionId() || '',
-        { expiresAt: 0, servers: [] },
-        relayOnly
-      )
-
-      try {
-        await client.joinGroup(inv.groupId, inv.token, options.supernodeEligible)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        return { ok: false, code: msg.includes('AUTH_FAILED') ? 'AUTH_FAILED' : 'IO_ERROR', message: msg }
-      }
-
-      if (options.rememberInvitation) {
-        await credentialStore.setCredential(groupKey, inv.token)
-        runtime.credentialStatus = 'stored'
-      } else {
-        runtime.credentialStatus = 'memory'
-      }
-      runtime.autoJoin = options.autoJoin !== false
-
-      // Authoritatively accepted: commit to store
-      try {
-        await store.upsertGroup(
-          {
-            groupKey,
-            signalingUrl: inv.signalingUrl,
-            groupId: inv.groupId,
-            supernodeEligible: options.supernodeEligible,
-            autoJoin: runtime.autoJoin,
-            credentialCiphertext: null
-          },
-          {
-            displayName: options.displayName,
-            relayOnly: options.relayOnly
+        // Check relay policy compatibility
+        const hasActive = Array.from(groups.values()).some((g) => g.isJoined)
+        if (hasActive && options.relayOnly !== undefined && options.relayOnly !== relayOnly) {
+          return {
+            ok: false,
+            code: 'INVALID_INPUT',
+            message: 'Changing relay policy requires disconnecting all groups first'
           }
+        }
+
+        const prevRelayOnly = relayOnly
+        if (options.relayOnly !== undefined) {
+          relayOnly = options.relayOnly
+          for (const t of endpointTransports.values()) {
+            t.setRelayOnly(relayOnly)
+          }
+        }
+
+        const inv = options.invitation
+        const groupKey = makeGroupKey(inv.signalingUrl, inv.groupId)
+        const existingRuntime = groups.get(groupKey)
+        const prevCredStatus = existingRuntime ? existingRuntime.credentialStatus : 'memory'
+
+        memoryCredentials.set(groupKey, inv.token)
+
+        const runtime = createGroupRuntime(
+          groupKey,
+          inv.groupId,
+          inv.signalingUrl,
+          options.supernodeEligible,
+          false,
+          prevCredStatus
         )
-      } catch (err) {
-        // Rollback
-        await client.leaveGroup(inv.groupId)
-        return { ok: false, code: 'IO_ERROR', message: 'Failed to persist group membership' }
-      }
+        runtime.supernodeEligible = options.supernodeEligible
 
-      publishState()
-      return { ok: true }
-    },
+        const { client } = getOrCreateEndpoint(inv.signalingUrl)
+        if (options.displayName) {
+          client.setDisplayName(options.displayName)
+        }
 
-    resumeGroup: async (groupKey: GroupKey): Promise<ActionResult> => {
-      const runtime = groups.get(groupKey)
-      if (!runtime) {
-        return { ok: false, code: 'NOT_FOUND', message: 'Group not found' }
-      }
+        try {
+          await client.joinGroup(inv.groupId, inv.token, options.supernodeEligible)
+        } catch (err) {
+          const survivingActive = Array.from(groups.values()).some((g) => g.isJoined)
+          if (!survivingActive) {
+            relayOnly = prevRelayOnly
+            for (const t of endpointTransports.values()) {
+              t.setRelayOnly(relayOnly)
+            }
+          }
+          const msg = err instanceof Error ? err.message : String(err)
+          return { ok: false, code: msg.includes('AUTH_FAILED') ? 'AUTH_FAILED' : 'IO_ERROR', message: msg }
+        }
 
-      const token = memoryCredentials.get(groupKey)
-      if (!token) {
-        return { ok: false, code: 'INVITATION_REQUIRED', message: 'Invitation token required to resume group' }
-      }
+        if (options.rememberInvitation) {
+          try {
+            const storedResult = await credentialStore.setCredential(groupKey, inv.token)
+            runtime.credentialStatus = storedResult
+          } catch (credErr) {
+            runtime.credentialStatus = 'memory'
+            runtime.message = 'Persistence failed; operating in memory-only mode and previous saved credential may remain'
+            publishState()
+            return {
+              ok: false,
+              code: 'IO_ERROR',
+              message: 'Failed to persist credential: ' + (credErr instanceof Error ? credErr.message : String(credErr))
+            }
+          }
+        } else {
+          try {
+            await credentialStore.deleteCredential(groupKey)
+            runtime.credentialStatus = 'memory'
+          } catch (credErr) {
+            runtime.credentialStatus = prevCredStatus
+            publishState()
+            return {
+              ok: false,
+              code: 'IO_ERROR',
+              message:
+                'Failed to remove saved credential during memory-only conversion: ' +
+                (credErr instanceof Error ? credErr.message : String(credErr))
+            }
+          }
+        }
+        runtime.autoJoin = options.autoJoin !== false
 
-      const { client, transport } = getOrCreateEndpoint(runtime.signalingUrl)
-      transport.setPeerContext(
-        store.get().peerId,
-        client.getSessionId() || '',
-        { expiresAt: 0, servers: [] },
-        relayOnly
-      )
+        // Authoritatively accepted: commit to store
+        try {
+          await store.upsertGroup(
+            {
+              groupKey,
+              signalingUrl: inv.signalingUrl,
+              groupId: inv.groupId,
+              supernodeEligible: options.supernodeEligible,
+              autoJoin: runtime.autoJoin,
+              credentialCiphertext: null
+            },
+            {
+              displayName: options.displayName,
+              relayOnly: relayOnly
+            }
+          )
+        } catch {
+          // Rollback
+          await client.leaveGroup(inv.groupId)
+          runtime.isJoined = false
+          const survivingActive = Array.from(groups.values()).some((g) => g.isJoined)
+          if (!survivingActive) {
+            relayOnly = prevRelayOnly
+            for (const t of endpointTransports.values()) {
+              t.setRelayOnly(relayOnly)
+            }
+          }
+          return { ok: false, code: 'IO_ERROR', message: 'Failed to persist group membership' }
+        }
 
-      try {
-        await client.joinGroup(runtime.groupId, token, runtime.supernodeEligible)
         publishState()
         return { ok: true }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        return { ok: false, code: msg.includes('AUTH_FAILED') ? 'AUTH_FAILED' : 'IO_ERROR', message: msg }
-      }
+      })
+    },
+
+    resumeGroup: (groupKey: GroupKey): Promise<ActionResult> => {
+      return queueAction(async () => {
+        const runtime = groups.get(groupKey)
+        if (!runtime) {
+          return { ok: false, code: 'NOT_FOUND', message: 'Group not found' }
+        }
+
+        const token = memoryCredentials.get(groupKey)
+        if (!token) {
+          return { ok: false, code: 'INVITATION_REQUIRED', message: 'Invitation token required to resume group' }
+        }
+
+        const { client } = getOrCreateEndpoint(runtime.signalingUrl)
+        try {
+          await client.joinGroup(runtime.groupId, token, runtime.supernodeEligible)
+          publishState()
+          return { ok: true }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          return { ok: false, code: msg.includes('AUTH_FAILED') ? 'AUTH_FAILED' : 'IO_ERROR', message: msg }
+        }
+      })
     },
 
     leaveGroup: async (groupKey: GroupKey): Promise<ActionResult> => {
@@ -1339,19 +1513,24 @@ export async function createPeerEngine(
       return { ok: true }
     },
 
-    setRelayOnly: async (newRelayOnly: boolean): Promise<ActionResult> => {
-      const hasActive = Array.from(groups.values()).some((g) => g.isJoined)
-      if (hasActive) {
-        return {
-          ok: false,
-          code: 'INVALID_INPUT',
-          message: 'Changing relay policy requires disconnecting all groups first'
+    setRelayOnly: (newRelayOnly: boolean): Promise<ActionResult> => {
+      return queueAction(async () => {
+        const hasActive = Array.from(groups.values()).some((g) => g.isJoined)
+        if (hasActive) {
+          return {
+            ok: false,
+            code: 'INVALID_INPUT',
+            message: 'Changing relay policy requires disconnecting all groups first'
+          }
         }
-      }
-      relayOnly = newRelayOnly
-      await store.setRelayOnly(newRelayOnly)
-      publishState()
-      return { ok: true }
+        await store.setRelayOnly(newRelayOnly)
+        relayOnly = newRelayOnly
+        for (const t of endpointTransports.values()) {
+          t.setRelayOnly(newRelayOnly)
+        }
+        publishState()
+        return { ok: true }
+      })
     },
 
     addFiles: async (arg1: unknown, arg2?: unknown): Promise<any> => {
@@ -1414,7 +1593,26 @@ export async function createPeerEngine(
     },
 
     setFileGroups: async (fileId: string, groupKeys: GroupKey[]): Promise<ActionResult> => {
-      await store.setFileGroups(fileId, groupKeys)
+      const existing = store.get().sharedFiles.find((f) => f.fileId === fileId)
+      const oldKeys = existing ? [...existing.groupKeys] : []
+
+      try {
+        await store.setFileGroups(fileId, groupKeys)
+      } catch (err: unknown) {
+        return {
+          ok: false,
+          code: 'IO_ERROR',
+          message: err instanceof Error ? err.message : String(err)
+        }
+      }
+
+      library.setFileGroups(fileId, groupKeys)
+
+      const removedKeys = oldKeys.filter((k) => !groupKeys.includes(k))
+      for (const removedKey of removedKeys) {
+        transfers.cancelFileGrant(removedKey, fileId)
+      }
+
       scheduleAnnounceAll()
       publishState()
       return { ok: true }
@@ -1439,29 +1637,35 @@ export async function createPeerEngine(
       }
 
       const runtime = groups.get(groupKey)
-      if (!runtime || !runtime.isJoined) {
-        throw new Error('No active group joined for search')
+      if (!runtime || !hasFreshGroupAuthority(runtime)) {
+        if (arg2 === undefined) {
+          throw new Error('DISCONNECTED: Group is not connected or roster authority has expired')
+        }
+        return { ok: false, code: 'DISCONNECTED', message: 'Group is not connected or roster authority has expired' }
       }
 
+      const currentQueryId = randomUUID()
       runtime.searchQueryText = trimmed
-      runtime.searchQueryId = randomUUID()
+      runtime.searchQueryId = currentQueryId
       runtime.searchStatus = 'searching'
       runtime.searchMessage = null
-      runtime.searchResults.startNewSearch(runtime.searchQueryId, trimmed)
+      runtime.searchResults.startNewSearch(currentQueryId, trimmed)
       publishState()
 
       clearTimeout(runtime.searchTimeoutTimer)
-      runtime.searchTimeoutTimer = setTimeout(() => {
-        if (runtime.searchStatus === 'searching') {
-          runtime.searchStatus = 'complete'
-          publishState()
-        }
-      }, 8000)
+      runtime.searchTimeoutTimer = undefined
 
       const transport = endpointTransports.get(runtime.signalingUrl)
       if (runtime.role === 'supernode') {
-        const localRes = runtime.supernodeIndex.search(trimmed, store.get().peerId, runtime.searchQueryId)
-        runtime.searchResults.addBatch(runtime.searchQueryId, localRes.entries as any, (id) => {
+        runtime.searchTimeoutTimer = setTimeout(() => {
+          if (runtime.searchStatus === 'searching' && runtime.searchQueryId === currentQueryId) {
+            runtime.searchStatus = 'complete'
+            publishState()
+          }
+        }, 8000)
+
+        const localRes = runtime.supernodeIndex.search(trimmed, store.get().peerId, currentQueryId)
+        runtime.searchResults.addBatch(currentQueryId, localRes.entries as any, (id) => {
           const m = runtime.members.find((x) => x.peerId === id)
           return m ? m.displayName : `Peer-${id.slice(0, 6)}`
         })
@@ -1474,7 +1678,7 @@ export async function createPeerEngine(
             epoch: runtime.epoch || '',
             revision: runtime.membershipRevision,
             senderMembershipId: runtime.membershipId || '',
-            queryId: runtime.searchQueryId,
+            queryId: currentQueryId,
             query: trimmed,
             originPeerId: store.get().peerId,
             originMembershipId: runtime.membershipId || '',
@@ -1483,30 +1687,97 @@ export async function createPeerEngine(
         } else {
           runtime.searchStatus = 'complete'
           clearTimeout(runtime.searchTimeoutTimer)
+          runtime.searchTimeoutTimer = undefined
         }
         publishState()
-      } else if (runtime.role === 'ordinary' && runtime.primaryPeerId) {
-        const targetId = runtime.primaryPeerId
-        const queryId = runtime.searchQueryId
-        transport?.sendControl(runtime.groupId, targetId, {
+        if (arg2 === undefined) return
+        return { ok: true }
+      } else if (runtime.role === 'ordinary') {
+        const capturedPrimary = runtime.primaryPeerId
+        if (!capturedPrimary) {
+          runtime.searchStatus = 'error'
+          runtime.searchMessage = 'No supernode available to route search'
+          publishState()
+          if (arg2 === undefined) {
+            throw new Error('NO_SUPERNODE: No supernode available to route search')
+          }
+          return { ok: false, code: 'NO_SUPERNODE', message: 'No supernode available to route search' }
+        }
+
+        if (!transport) {
+          runtime.searchStatus = 'error'
+          runtime.searchMessage = 'Transport unavailable'
+          publishState()
+          if (arg2 === undefined) throw new Error('UNREACHABLE: Transport unavailable')
+          return { ok: false, code: 'UNREACHABLE', message: 'Transport unavailable' }
+        }
+
+        // Wait up to 10 seconds for primary link to open
+        try {
+          await transport.waitForLinkOpen(capturedPrimary, 10000)
+        } catch (waitErr: unknown) {
+          if (runtime.searchQueryId !== currentQueryId || isDisposed) {
+            return { ok: false, code: 'UNREACHABLE', message: 'Query superseded or engine disposed' }
+          }
+          runtime.searchStatus = 'error'
+          runtime.searchMessage = `Primary link failed to open: ${waitErr instanceof Error ? waitErr.message : String(waitErr)}`
+          publishState()
+          if (arg2 === undefined) {
+            throw new Error(`UNREACHABLE: ${runtime.searchMessage}`)
+          }
+          return { ok: false, code: 'UNREACHABLE', message: runtime.searchMessage }
+        }
+
+        // Recheck query ID, freshness, primary identity, disposal after wait
+        if (isDisposed || runtime.searchQueryId !== currentQueryId) {
+          return { ok: false, code: 'UNREACHABLE', message: 'Query superseded or engine disposed' }
+        }
+        if (!hasFreshGroupAuthority(runtime)) {
+          runtime.searchStatus = 'error'
+          runtime.searchMessage = 'Group authority expired while waiting for primary route'
+          publishState()
+          if (arg2 === undefined) throw new Error('DISCONNECTED: Group authority expired')
+          return { ok: false, code: 'DISCONNECTED', message: 'Group authority expired' }
+        }
+        if (runtime.primaryPeerId !== capturedPrimary) {
+          runtime.searchStatus = 'error'
+          runtime.searchMessage = 'Primary route changed while waiting for connection'
+          publishState()
+          if (arg2 === undefined) throw new Error('UNREACHABLE: Primary route changed')
+          return { ok: false, code: 'UNREACHABLE', message: 'Primary route changed' }
+        }
+
+        const sent = transport.sendControl(runtime.groupId, capturedPrimary, {
           v: 2,
           type: 'search',
           groupId: runtime.groupId,
           epoch: runtime.epoch || '',
           revision: runtime.membershipRevision,
           senderMembershipId: runtime.membershipId || '',
-          queryId,
+          queryId: currentQueryId,
           query: trimmed,
           ttl: 1
         })
-      } else {
-        runtime.searchStatus = 'error'
-        runtime.searchMessage = 'No supernode available to route search'
-        publishState()
-      }
 
-      if (arg2 === undefined) return
-      return { ok: true }
+        if (!sent) {
+          runtime.searchStatus = 'error'
+          runtime.searchMessage = 'Failed to dispatch search control frame to primary'
+          publishState()
+          if (arg2 === undefined) throw new Error('UNREACHABLE: Failed to dispatch search frame')
+          return { ok: false, code: 'UNREACHABLE', message: 'Failed to dispatch search frame' }
+        }
+
+        // Start 8-second reply timer only once query has actually been sent
+        runtime.searchTimeoutTimer = setTimeout(() => {
+          if (runtime.searchStatus === 'searching' && runtime.searchQueryId === currentQueryId) {
+            runtime.searchStatus = 'complete'
+            publishState()
+          }
+        }, 8000)
+
+        if (arg2 === undefined) return
+        return { ok: true }
+      }
     },
 
     download: async (arg1: string, arg2: string, arg3?: string): Promise<any> => {
@@ -1525,8 +1796,12 @@ export async function createPeerEngine(
       }
 
       const runtime = groups.get(groupKey)
-      if (!runtime) throw new Error('NOT_FOUND')
-
+      if (!runtime || !hasFreshGroupAuthority(runtime)) {
+        if (arg3 === undefined) {
+          throw new Error('DISCONNECTED: Group is not connected or roster authority has expired')
+        }
+        return { ok: false, code: 'DISCONNECTED', message: 'Group is not connected or roster authority has expired' }
+      }
       const result = runtime.searchResults.resolveResult(resultId)
       if (!result) throw new Error('NOT_FOUND')
 
@@ -1566,14 +1841,17 @@ export async function createPeerEngine(
       return { ok: true }
     },
 
-    resolveSearchResult: (arg1: string, arg2?: string): any => {
+    resolveSearchResult: (arg1: string, arg2?: string): MultiGroupSearchResult | P2pSearchResult | undefined => {
       if (arg2 !== undefined) {
         const runtime = groups.get(arg1 as GroupKey)
-        return runtime?.searchResults.resolveResult(arg2)
+        if (!runtime || !hasFreshGroupAuthority(runtime)) return undefined
+        return runtime.searchResults.resolveResult(arg2)
       }
       for (const runtime of groups.values()) {
-        const res = runtime.searchResults.resolveResult(arg1)
-        if (res) return res as unknown as P2pSearchResult
+        if (hasFreshGroupAuthority(runtime)) {
+          const res = runtime.searchResults.resolveResult(arg1)
+          if (res) return res as unknown as P2pSearchResult
+        }
       }
       return undefined
     },
@@ -1609,6 +1887,12 @@ export async function createPeerEngine(
       if (isDisposed) return
       isDisposed = true
 
+      try {
+        await policyQueue
+      } catch {
+        // ignore
+      }
+
       clearInterval(monitorTimer)
       for (const runtime of groups.values()) {
         clearTimeout(runtime.searchTimeoutTimer)
@@ -1628,5 +1912,29 @@ export async function createPeerEngine(
       subscribers.clear()
     }
   }
+  queueMicrotask(async () => {
+    for (const key of autoJoinKeys) {
+      if (isDisposed) break
+      try {
+        const res = await engineInstance.resumeGroup(key)
+        if (!res.ok) {
+          const runtime = groups.get(key)
+          if (runtime && !runtime.isJoined) {
+            runtime.status = res.code === 'AUTH_FAILED' ? 'error' : 'disconnected'
+            runtime.message = res.message
+            publishState()
+          }
+        }
+      } catch (err: unknown) {
+        const runtime = groups.get(key)
+        if (runtime && !runtime.isJoined) {
+          runtime.status = 'error'
+          runtime.message = err instanceof Error ? err.message : String(err)
+          publishState()
+        }
+      }
+    }
+  })
+
   return engineInstance as unknown as PeerEngine
 }

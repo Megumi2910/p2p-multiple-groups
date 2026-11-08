@@ -1,9 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, type IpcMainInvokeEvent } from 'electron'
+import { mkdirSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createThemeStore, type ThemeStore } from './theme-store.ts'
 import { installMenu, setMenuWindowActive } from './menu.ts'
-import { prepareProfileDirectory } from './profile-migration.ts'
+import { prepareProfileDirectoryWithLock, type PrepareProfileResult } from './profile-migration.ts'
 import {
   IPC_CHANNELS,
   isThemePreference,
@@ -631,46 +632,62 @@ app.on('activate', () => {
   }
 })
 
-function setupDataDirectory(): void {
+function setupDataDirectory(): boolean {
   const dataDirArgs = process.argv.filter((arg) => arg.startsWith('--data-dir=') || arg === '--data-dir')
   let explicitDir: string | undefined
 
   if (dataDirArgs.length > 1) {
     console.error('Duplicate --data-dir arguments are not allowed.')
     app.exit(1)
-    return
+    return false
   } else if (dataDirArgs.length === 1) {
     const raw = dataDirArgs[0]
     if (raw === '--data-dir') {
       console.error('--data-dir requires an absolute path: --data-dir=<absolute-path>')
       app.exit(1)
-      return
+      return false
     }
     const val = raw.slice('--data-dir='.length).trim()
     if (!val || !isAbsolute(val)) {
       console.error('--data-dir must specify a non-empty absolute path')
       app.exit(1)
-      return
+      return false
     }
     explicitDir = val
   }
 
   app.setName('p2p-multiple-groups')
-
   const appData = app.getPath('appData')
-  const { dataDirectory } = prepareProfileDirectory({
-    appDataDirectory: appData,
-    explicitDataDirectory: explicitDir
-  })
 
-  app.setPath('userData', dataDirectory)
-  app.setPath('sessionData', join(dataDirectory, 'session'))
+  let prepResult: PrepareProfileResult | null = null
+  try {
+    prepResult = prepareProfileDirectoryWithLock(
+      {
+        appDataDirectory: appData,
+        explicitDataDirectory: explicitDir
+      },
+      (lockDirectory) => {
+        app.setPath('userData', lockDirectory)
+        return app.requestSingleInstanceLock()
+      }
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('[main] Profile preparation failed:', message)
+    dialog.showErrorBox('p2p-multiple-groups failed to start', message)
+    app.exit(1)
+    return false
+  }
 
-  const gotLock = app.requestSingleInstanceLock()
-  if (!gotLock) {
+  if (!prepResult) {
     app.quit()
     process.exit(0)
   }
+
+  const finalDataDir = prepResult.dataDirectory
+  mkdirSync(join(finalDataDir, 'session'), { recursive: true })
+  app.setPath('userData', finalDataDir)
+  app.setPath('sessionData', join(finalDataDir, 'session'))
 
   app.on('second-instance', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -678,8 +695,11 @@ function setupDataDirectory(): void {
       mainWindow.focus()
     }
   })
+
+  return true
 }
 
-setupDataDirectory()
-
-app.whenReady().then(init)
+const canStart = setupDataDirectory()
+if (canStart) {
+  app.whenReady().then(init)
+}

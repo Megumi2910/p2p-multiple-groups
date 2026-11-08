@@ -768,4 +768,215 @@ describe('Multi-Group Multiplexed Signaling V2', () => {
       await server.close()
     }
   })
+  it('binds legacy signaling joins to upgrade authorization while preserving v2 multiplexing', async () => {
+    const server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [
+        { groupId: 'group-A', token: tokenA },
+        { groupId: 'group-B', token: tokenB }
+      ]
+    })
+
+    const peerObserver = randomUUID()
+    const peerAttacker = randomUUID()
+    const peerLegitA = randomUUID()
+    const peerV2 = randomUUID()
+
+    let wsObserver: WebSocket | null = null
+    let wsAttacker: WebSocket | null = null
+    let wsLegitA: WebSocket | null = null
+    let wsV2: WebSocket | null = null
+
+    try {
+      // 1. Observer joins room B with valid token B
+      wsObserver = new WebSocket(`ws://127.0.0.1:${server.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${tokenB}` }
+      })
+      const observerMessages: ServerSignalingMessage[] = []
+      const { promise: observerOpen, resolve: resolveObserverOpen } = Promise.withResolvers<void>()
+      const { promise: observerWelcome, resolve: resolveObserverWelcome } = Promise.withResolvers<void>()
+      wsObserver.on('open', () => resolveObserverOpen())
+      wsObserver.on('message', (data) => {
+        const m = JSON.parse(data.toString('utf-8')) as ServerSignalingMessage
+        observerMessages.push(m)
+        if (m.type === 'welcome') {
+          resolveObserverWelcome()
+        }
+      })
+      await observerOpen
+
+      wsObserver.send(
+        JSON.stringify({
+          v: 1,
+          type: 'join',
+          roomId: 'group-B',
+          peerId: peerObserver,
+          displayName: 'ObserverB',
+          supernodeEligible: true
+        })
+      )
+      await observerWelcome
+
+      // 2. Attacker opens socket with token A (authorized for group-A), but attempts to join group-B via v1 join
+      wsAttacker = new WebSocket(`ws://127.0.0.1:${server.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${tokenA}` }
+      })
+      const attackerMessages: ServerSignalingMessage[] = []
+      const { promise: attackerOpen, resolve: resolveAttackerOpen } = Promise.withResolvers<void>()
+      const { promise: attackerClosed, resolve: resolveAttackerClosed } = Promise.withResolvers<{
+        code: number
+        reason: string
+      }>()
+      wsAttacker.on('open', () => resolveAttackerOpen())
+      wsAttacker.on('message', (data) => {
+        attackerMessages.push(JSON.parse(data.toString('utf-8')) as ServerSignalingMessage)
+      })
+      wsAttacker.on('close', (code, reason) => {
+        resolveAttackerClosed({ code, reason: reason.toString('utf-8') })
+      })
+      await attackerOpen
+
+      wsAttacker.send(
+        JSON.stringify({
+          v: 1,
+          type: 'join',
+          roomId: 'group-B',
+          peerId: peerAttacker,
+          displayName: 'AttackerB',
+          supernodeEligible: true
+        })
+      )
+
+      const closeEvent = await attackerClosed
+      assert.equal(closeEvent.code, 1008)
+      assert.equal(closeEvent.reason, 'Auth failed')
+
+      // Verify attacker received error AUTH_FAILED and never received welcome/roster
+      assert.equal(attackerMessages.length, 1)
+      const err = attackerMessages[0]
+      assert.equal(err.type, 'error')
+      if (err.type === 'error') {
+        assert.equal(err.code, 'AUTH_FAILED')
+        assert.equal(err.message, 'Token not authorized for requested room')
+      }
+
+      // Verify observer in group-B never saw attacker in any roster
+      for (const m of observerMessages) {
+        if (m.type === 'roster') {
+          assert.ok(!m.peers.some((p) => p.peerId === peerAttacker), 'Attacker should never appear in B roster')
+        }
+      }
+
+      // 3. Legit client with token A joins group-A successfully
+      wsLegitA = new WebSocket(`ws://127.0.0.1:${server.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${tokenA}` }
+      })
+      const legitAMessages: ServerSignalingMessage[] = []
+      const { promise: legitAOpen, resolve: resolveLegitAOpen } = Promise.withResolvers<void>()
+      const { promise: legitAWelcome, resolve: resolveLegitAWelcome } = Promise.withResolvers<void>()
+      wsLegitA.on('open', () => resolveLegitAOpen())
+      wsLegitA.on('message', (data) => {
+        const m = JSON.parse(data.toString('utf-8')) as ServerSignalingMessage
+        legitAMessages.push(m)
+        if (m.type === 'welcome') {
+          resolveLegitAWelcome()
+        }
+      })
+      await legitAOpen
+
+      wsLegitA.send(
+        JSON.stringify({
+          v: 1,
+          type: 'join',
+          roomId: 'group-A',
+          peerId: peerLegitA,
+          displayName: 'LegitA',
+          supernodeEligible: true
+        })
+      )
+      await legitAWelcome
+
+      // 4. Multiplexed v2 client: opened with token A, can join B with token B, but fails with invalid token
+      wsV2 = new WebSocket(`ws://127.0.0.1:${server.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${tokenA}` }
+      })
+      const v2Messages: ServerSignalingMessageV2[] = []
+      const { promise: v2Open, resolve: resolveV2Open } = Promise.withResolvers<void>()
+      const { promise: v2Welcome, resolve: resolveV2Welcome } = Promise.withResolvers<void>()
+      let onV2Error: ((msg: ServerSignalingMessageV2) => void) | null = null
+      let onV2Joined: ((msg: ServerSignalingMessageV2) => void) | null = null
+
+      wsV2.on('open', () => resolveV2Open())
+      wsV2.on('message', (data) => {
+        const m = JSON.parse(data.toString('utf-8')) as ServerSignalingMessageV2
+        v2Messages.push(m)
+        if (m.type === 'welcome') {
+          resolveV2Welcome()
+        }
+        if (m.type === 'error' && onV2Error) {
+          onV2Error(m)
+        }
+        if (m.type === 'group-joined' && onV2Joined) {
+          onV2Joined(m)
+        }
+      })
+      await v2Open
+
+      wsV2.send(
+        JSON.stringify({
+          v: 2,
+          type: 'register',
+          peerId: peerV2,
+          displayName: 'V2Client'
+        })
+      )
+      await v2Welcome
+
+      // Attempt join group-B with bad token
+      const { promise: badTokenPromise, resolve: resolveBadToken } = Promise.withResolvers<ServerSignalingMessageV2>()
+      onV2Error = resolveBadToken
+      wsV2.send(
+        JSON.stringify({
+          v: 2,
+          type: 'join-group',
+          groupId: 'group-B',
+          token: 'wrong-token-for-b',
+          supernodeEligible: true
+        })
+      )
+      const badTokenErr = await badTokenPromise
+      assert.equal(badTokenErr.type, 'error')
+      if (badTokenErr.type === 'error') {
+        assert.equal(badTokenErr.groupId, 'group-B')
+        assert.equal(badTokenErr.code, 'AUTH_FAILED')
+      }
+      onV2Error = null
+
+      // Join group-B with valid token B on the same v2 socket
+      const { promise: joinedPromise, resolve: resolveJoined } = Promise.withResolvers<ServerSignalingMessageV2>()
+      onV2Joined = resolveJoined
+      wsV2.send(
+        JSON.stringify({
+          v: 2,
+          type: 'join-group',
+          groupId: 'group-B',
+          token: tokenB,
+          supernodeEligible: true
+        })
+      )
+      const joinedMsg = await joinedPromise
+      assert.equal(joinedMsg.type, 'group-joined')
+      if (joinedMsg.type === 'group-joined') {
+        assert.equal(joinedMsg.groupId, 'group-B')
+      }
+      onV2Joined = null
+    } finally {
+      if (wsObserver) wsObserver.close()
+      if (wsAttacker) wsAttacker.close()
+      if (wsLegitA) wsLegitA.close()
+      if (wsV2) wsV2.close()
+      await server.close()
+    }
+  })
 })

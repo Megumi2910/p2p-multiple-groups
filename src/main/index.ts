@@ -24,6 +24,9 @@ import { createPeerEngine, type PeerEngine } from './p2p/engine.ts'
 import { sanitizeDestinationFileName } from './p2p/transfers.ts'
 
 app.setName('p2p-multiple-groups')
+if (process.platform === 'linux') {
+  app.disableHardwareAcceleration()
+}
 
 let mainWindow: BrowserWindow | null = null
 let themeStore: ThemeStore | null = null

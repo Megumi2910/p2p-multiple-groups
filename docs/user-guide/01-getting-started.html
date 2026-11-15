@@ -159,7 +159,17 @@ cd p2p-multiple-groups</code></pre>
           <pre><code class="language-bash">npm run build</code></pre>
           <p>This runs static TypeScript checks for Node and Web environments, compiling output assets to <code>./out/main/</code>, <code>./out/preload/</code>, and <code>./out/renderer/</code>.</p>
 
-          <h3>Step 4: Launch the Application</h3>
+          <h3>Step 4: Start Signaling Infrastructure (Optional for local swarms)</h3>
+          <p>You can launch the signaling server either using Docker Compose or directly via Node.js:</p>
+          <pre><code class="language-bash"># Option A: Docker Compose (background container)
+cp .env.example .env
+npm run docker:up
+
+# Option B: Direct Node.js execution
+cp .env.example .env
+npm run signal:start</code></pre>
+
+          <h3>Step 5: Launch the Application</h3>
           <ul>
             <li><strong>Development Mode</strong> (with Hot Module Replacement):
               <pre><code class="language-bash">npm run dev</code></pre>
@@ -252,11 +262,11 @@ cd p2p-multiple-groups</code></pre>
 
         <section id="next-steps">
           <h2>5. Next Steps</h2>
-          <p>Now that your client is running, proceed to join a virtual group or set up your shared library:</p>
+          <p>Now that your client is running, proceed to create or join a virtual group and set up your shared library:</p>
           <ul>
-            <li><a href="02-network-and-groups.html">02. Network & Virtual Groups</a> — Learn how to join groups using cryptographic invitations.</li>
+            <li><a href="02-network-and-groups.html">02. Network & Virtual Groups</a> — Create a virtual group dynamically as owner or join via compact base64url invite codes or V2 JSON invitations.</li>
             <li><a href="03-library-and-sharing.html">03. Library & File Grants</a> — Add local files and manage group permissions.</li>
-            <li><a href="06-signaling-and-ops.html">06. Signaling Server Operations</a> — Host your own local signaling server.</li>
+            <li><a href="06-signaling-and-ops.html">06. Signaling Server Operations</a> — Host and operate your own signaling node or Docker stack.</li>
           </ul>
         </section>
 

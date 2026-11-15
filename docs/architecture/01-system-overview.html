@@ -164,7 +164,7 @@ graph TD
     TRANSPORT -.->|"TURN Relay Traffic"| COTURN
 
     ENGINE <==>|"IPC_CHANNELS (ipcMain / ipcRenderer)"| PRELOAD
-    PRELOAD <==>|"window.p2p / window.kazaa"| REACT_APP
+    PRELOAD <==>|"window.p2p"| REACT_APP
             </div>
           </div>
 
@@ -216,16 +216,17 @@ graph TD
           <p>Communication between the sandboxed renderer and the main process is strictly mediated by the <code>IPC_CHANNELS</code> registry defined in <code>src/shared/contracts.ts</code>.</p>
 
           <pre><code class="language-typescript">export const IPC_CHANNELS = {
-  THEME_GET: 'kazaa:theme:get',
-  THEME_SET: 'kazaa:theme:set',
-  COMMAND: 'kazaa:command',
-
-  // Scoped V2 P2P Channels
+  THEME_GET: 'p2p:theme:get',
+  THEME_SET: 'p2p:theme:set',
+  COMMAND: 'p2p:command',
   P2P_V2_GET_STATE: 'p2p:getState',
   P2P_V2_STATE: 'p2p:state',
+  P2P_V2_CREATE_GROUP: 'p2p:createGroup',
   P2P_V2_JOIN_GROUP: 'p2p:joinGroup',
   P2P_V2_RESUME_GROUP: 'p2p:resumeGroup',
   P2P_V2_LEAVE_GROUP: 'p2p:leaveGroup',
+  P2P_V2_ROTATE_GROUP_INVITE: 'p2p:rotateGroupInvite',
+  P2P_V2_REMOVE_GROUP_MEMBER: 'p2p:removeGroupMember',
   P2P_V2_SET_GROUP_AUTO_JOIN: 'p2p:setGroupAutoJoin',
   P2P_V2_SET_GROUP_ELIGIBILITY: 'p2p:setGroupEligibility',
   P2P_V2_FORGET_GROUP: 'p2p:forgetGroup',
@@ -260,7 +261,7 @@ graph TD
               <div class="math-display">ActionResult = { ok: true } | { ok: false, code: P2pErrorCode, message: string }</div>
             </li>
             <li><strong>Throttled State Publication</strong>: Engine mutations trigger state broadcasts. To avoid overwhelming the React render cycle during rapid chunk transfers or catalog publication, the main process coalesces snapshots using a 200 ms trailing throttle timer:
-              <pre><code class="language-typescript">function dispatchStateToWindow(state: MultiGroupP2pState &amp; P2pState): void {
+              <pre><code class="language-typescript">function dispatchStateToWindow(state: MultiGroupP2pState): void {
   pendingStateSnapshot = state
   if (!stateThrottleTimer) {
     stateThrottleTimer = setTimeout(() => {

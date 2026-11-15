@@ -218,7 +218,7 @@ flowchart TD
     end
 
     subgraph PreloadBoundary["Preload Execution Boundary"]
-        BRIDGE["contextBridge.exposeInMainWorld\n('kazaa', 'p2p')"]
+        BRIDGE["contextBridge.exposeInMainWorld\n('p2p', api)"]
         SAN_INPUT["Input Sanitization & Deep Freeze"]
     end
 
@@ -238,14 +238,14 @@ flowchart TD
             </div>
           </div>
 
-          <h3>1. Strict Content Security Policy (CSP)</h3>
-          <p>The production HTML document enforces a locked-down CSP:</p>
-          <pre><code class="language-html">&lt;meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'; object-src 'none'; media-src 'none'; frame-src 'none';" /&gt;</code></pre>
+          <h3>1. Strict Content Security Policy (CSP) &amp; <code>p2pCsp</code> Injection</h3>
+          <p>The production HTML document enforces a locked-down CSP dynamically injected via the <code>p2pCsp</code> plugin in <code>electron.vite.config.ts</code>:</p>
+          <pre><code class="language-html">&lt;meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';" /&gt;</code></pre>
 
           <ul>
-            <li><strong><code>connect-src 'none'</code></strong>: The renderer process is mathematically barred from making HTTP, WebSocket, or WebRTC connections. Even if an attacker injects malicious JavaScript into the DOM, that script cannot establish outbound command-and-control network channels.</li>
+            <li><strong><code>connect-src 'none'</code></strong>: The renderer process is mathematically barred from making HTTP, WebSocket, or WebRTC connections. Even if an attacker injects malicious JavaScript into the DOM, that script cannot establish outbound command-and-control network channels. In development mode, <code>p2pCsp</code> permits <code>ws://127.0.0.1:5173</code> solely for Vite Hot Module Replacement.</li>
             <li><strong><code>object-src 'none'</code></strong>: Disables plugins (Java, Flash).</li>
-            <li><strong><code>frame-src 'none'</code></strong>: Disables iframe nesting.</li>
+            <li><strong><code>frame-src 'none'</code> / <code>base-uri 'none'</code></strong>: Disables iframe nesting and URI hijacking.</li>
           </ul>
 
           <h3>2. Node.js Context Isolation</h3>
@@ -280,14 +280,14 @@ flowchart TD
             <li>Defaults to <code>download</code> if sanitization empties the filename.</li>
           </ul>
 
-          <h3>5. OS Keychain Hardware Protection</h3>
-          <p>Group tokens and credentials are never stored in plaintext configuration files. They are encrypted using <code>safeStorage</code>:</p>
+          <h3>5. OS Keychain Hardware Protection &amp; Owner Authorization</h3>
+          <p>Group tokens and authoritative <code>ownerSecret</code> credentials are never stored in plaintext configuration files. They are encrypted using <code>safeStorage</code>:</p>
           <ul>
             <li><strong>Windows</strong>: Encrypted with DPAPI using the logged-in Windows user's master key.</li>
             <li><strong>macOS</strong>: Stored using Apple Keychain Services with application-scoped access controls.</li>
             <li><strong>Linux</strong>: Stored using libsecret / Secret Service DBus daemon, preventing unauthorized processes from reading credential blobs.</li>
+            <li><strong>Owner Secret Authorization</strong>: A 32-byte <code>ownerSecret</code> stored under <code>${groupKey}:owner</code> proves ownership to the signaling server for privileged actions, specifically invite code rotation (<code>rotateGroupInvite</code>) and member eviction (<code>removeGroupMember</code>). Constant-time comparison (<code>timingSafeEqual</code>) ensures owner secrets are immune to timing side-channel attacks.</li>
           </ul>
-        </section>
 
         <!-- Footer Navigation -->
         <div class="docs-footer-nav">

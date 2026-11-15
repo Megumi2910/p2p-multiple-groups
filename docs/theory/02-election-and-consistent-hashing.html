@@ -151,7 +151,7 @@
           </ul>
 
           <pre><code class="language-typescript">// Verified implementation from src/main/p2p/election.ts
-export function electSupernodes(peers: readonly SignalingRosterPeer[]): ElectionResult {
+export function electSupernodes(peers: readonly SignalingRosterPeerV2[]): ElectionResult {
   const eligible = peers.filter((p) => p.supernodeEligible)
   eligible.sort((a, b) => {
     if (a.joinOrder !== b.joinOrder) {

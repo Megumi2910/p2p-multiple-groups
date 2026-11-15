@@ -219,17 +219,28 @@
   displayName: string     // 1-32 characters
 }</code></pre>
 
-              <h4>2. join-group</h4>
+              <h4>2. create-group</h4>
+              <p>Dynamically create a new virtual group on this signaling server:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'create-group',
+  groupId: string,
+  ownerSecret: string,
+  supernodeEligible: boolean
+}</code></pre>
+
+              <h4>3. join-group</h4>
               <p>Join a specific virtual group on this signaling server:</p>
               <pre><code class="language-typescript">{
   v: 2,
   type: 'join-group',
-  groupId: string,        // 1-32 chars alphanumeric/dash/underscore
-  token: string,          // Secret access token
+  groupId?: string,
+  token: string,
+  ownerSecret?: string,
   supernodeEligible: boolean
 }</code></pre>
 
-              <h4>3. leave-group</h4>
+              <h4>4. leave-group</h4>
               <p>Gracefully unregister from a virtual group:</p>
               <pre><code class="language-typescript">{
   v: 2,
@@ -237,7 +248,26 @@
   groupId: string
 }</code></pre>
 
-              <h4>4. eligibility</h4>
+              <h4>5. rotate-invite</h4>
+              <p>Owner request to rotate the short invite code:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'rotate-invite',
+  groupId: string,
+  ownerSecret: string
+}</code></pre>
+
+              <h4>6. remove-member</h4>
+              <p>Owner request to kick a peer from the group:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'remove-member',
+  groupId: string,
+  targetPeerId: string,
+  ownerSecret: string
+}</code></pre>
+
+              <h4>7. eligibility</h4>
               <p>Update election candidate status in an active group:</p>
               <pre><code class="language-typescript">{
   v: 2,
@@ -246,7 +276,22 @@
   supernodeEligible: boolean
 }</code></pre>
 
-              <h4>5. signal</h4>
+              <h4>8. profile</h4>
+              <p>Update peer display name across all active groups:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'profile',
+  displayName: string
+}</code></pre>
+
+              <h4>9. ice-config</h4>
+              <p>Request updated STUN/TURN credentials:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'ice-config'
+}</code></pre>
+
+              <h4>10. signal</h4>
               <p>Exchange SDP offers, answers, or ICE candidates targeted to a specific peer:</p>
               <pre><code class="language-typescript">{
   v: 2,
@@ -275,13 +320,49 @@
   v: 2,
   type: 'group-joined',
   groupId: string,
-  membershipId: string,   // Ephemeral membership UUID
-  epoch: string,          // Server session UUID
-  revision: number,       // Monotonic revision counter
-  peers: SignalingRosterPeerV2[]
+  membershipId: string,
+  epoch: string,
+  revision: number,
+  peers: SignalingRosterPeerV2[],
+  ownerPeerId?: string | null,
+  inviteCode?: string
 }</code></pre>
 
-              <h4>3. roster</h4>
+              <h4>3. group-left</h4>
+              <p>Notification that local peer has left a virtual group:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'group-left',
+  groupId: string
+}</code></pre>
+
+              <h4>4. invite-rotated</h4>
+              <p>Broadcast notification that the group invite code was rotated:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'invite-rotated',
+  groupId: string,
+  inviteCode: string
+}</code></pre>
+
+              <h4>5. group-kicked</h4>
+              <p>Notification sent to an evicted peer:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'group-kicked',
+  groupId: string,
+  reason: string
+}</code></pre>
+
+              <h4>6. ice-config</h4>
+              <p>Refreshed STUN/TURN server credentials:</p>
+              <pre><code class="language-typescript">{
+  v: 2,
+  type: 'ice-config',
+  iceConfig: SignalingIceConfig
+}</code></pre>
+
+              <h4>7. roster</h4>
               <p>Authoritative group membership broadcast (triggers supernode re-election):</p>
               <pre><code class="language-typescript">{
   v: 2,
@@ -289,14 +370,8 @@
   groupId: string,
   epoch: string,
   revision: number,
-  peers: Array&lt;{
-    peerId: string,
-    sessionId: string,
-    membershipId: string,
-    joinOrder: number,
-    displayName: string,
-    supernodeEligible: boolean
-  }&gt;
+  peers: SignalingRosterPeerV2[],
+  ownerPeerId?: string | null
 }</code></pre>
 
               <h4>4. error</h4>

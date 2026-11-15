@@ -104,7 +104,9 @@ When `createMultiGroupPeerStore(dataDir)` executes:
 
 ## 4. `SafeCredentialStore` Hardware Encryption
 
-Secret access tokens for virtual groups are decoupled from `peer-state.json` to prevent exposure via accidental file sharing or system diagnostics.
+Secret access tokens and authoritative owner secrets for virtual groups are decoupled from `peer-state.json` to prevent exposure via accidental file sharing or system diagnostics:
+- **Group Access Tokens**: Persisted under the key `groupKey`.
+- **Group Owner Secrets**: Persisted under the composite key `${groupKey}:owner` (authorizing invite rotation and member eviction).
 
 ### Storage Mechanics
 1. **OS-Level Key Derivation**: Uses Electron `safeStorage`:

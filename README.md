@@ -1,7 +1,7 @@
 # p2p-multiple-groups
 
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24.12.0-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Electron](https://img.shields.io/badge/Electron-44.4.1-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-44.10.1-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19.3.0-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![WebRTC](https://img.shields.io/badge/WebRTC-Werift_Pure_Node-333333?style=flat-square&logo=webrtc&logoColor=white)](https://github.com/shinyishi/werift-webrtc)
@@ -30,6 +30,7 @@ The core engineering challenge addressed by this architecture is **secure multi-
 - **Cryptographic File Integrity**: End-to-end SHA-256 verification streaming directly through Node.js crypto primitives. Incomplete transfers are staged in hidden `.tmp.<transferId>` files and atomically renamed only upon cryptographic digest verification.
 - **Zero-Trust Desktop Sandboxing**: Main process isolates WebRTC network primitives and file I/O. The React 19 renderer operates in complete context isolation with zero Node integration, locked down by strict Content Security Policy (`connect-src 'none'`) and origin-validated IPC channels.
 - **Hardware-Backed Credential Security**: Group authentication tokens and signaling credentials persist through OS-level keychains via Electron `safeStorage` (Windows DPAPI, macOS Keychain, Linux Secret Service / DBus) with seamless fallback to non-persistent session memory.
+- **Dynamic Group Ownership & Short Invite Codes**: Peers can dynamically create groups (`createGroup`) with 32-byte `ownerSecret` credentials persisted in OS keychain (`${groupKey}:owner`), join via compact 8–64 character base64url invite codes or V2 JSON invitations, rotate invite codes (`rotateGroupInvite`), kick members (`removeGroupMember`), and automatically re-seed owned groups on signaling server restarts.
 
 ---
 
@@ -37,13 +38,29 @@ The core engineering challenge addressed by this architecture is **secure multi-
 
 | Layer | Technologies & Dependencies | Purpose |
 |---|---|---|
-| **Runtime & Host** | Node.js `24.18.0` (engines `>=24.12.0`), Electron `44.4.1` | Native desktop runtime, sandboxed multi-process host, OS keychain integration |
+| **Runtime & Host** | Node.js `24.18.0` (engines `>=24.12.0`), Electron `44.10.1` | Native desktop runtime, sandboxed multi-process host, OS keychain integration |
 | **P2P Transport** | Werift `^0.24.4` (pure Node WebRTC), `ws` `^8.21.3` | User-space DTLS 1.2, SRTP, SCTP data channels, WebSocket signaling |
 | **Frontend UI** | React `19.3.0`, React DOM `19.3.0`, TypeScript `5.9.3` | Reactive desktop interface, keyboard navigation, accessible theme system |
-| **Tooling & Build** | Vite `7.3.6`, `electron-vite` `5.0.0`, `@vitejs/plugin-react` `5.2.0` | Multi-target compilation (main, preload, renderer), bundle optimization |
+| **Tooling & Build** | Vite `7.3.7`, `electron-vite` `5.0.0`, `@vitejs/plugin-react` `5.2.0` | Multi-target compilation (main, preload, renderer), bundle optimization |
 | **Testing & E2E** | Node Test Runner (`node:test`), Chrome DevTools Protocol (CDP) | Headless multi-engine verification, integration testing, automated UI visual capture |
 
 ---
+
+## Java Developer Quick Orientation & Build Pipeline
+
+Coming from Java, Maven, or Gradle? Here is how this codebase maps directly to concepts you already know:
+
+| Java / Maven / Gradle Concept | This Repository (JS / TS / npm / Vite) | Notes & Differences |
+|---|---|---|
+| **`pom.xml` / `build.gradle`** | `package.json` | Single manifest declaring project metadata, dependencies, scripts, and runtime engines. |
+| **`gradle.lockfile` / Maven checksums** | `package-lock.json` | Pinned exact dependency versions with cryptographic SHA-512 integrity hashes. |
+| **`~/.m2/repository`** | `./node_modules/` | Local directory containing third-party dependencies (gitignored). |
+| **`javac -Xlint` (Compile & Typecheck)** | `npm run typecheck` | `tsc --noEmit` checks static types across Node and Web targets without emitting files. TypeScript uses **Type Erasure** (types do not exist at runtime). |
+| **JVM (HotSpot)** | `Node.js >=24.12.0` (V8 + libuv) | Single-threaded Event Loop with non-blocking I/O and `Promise` / `async`/`await` (replaces threads & `CompletableFuture`). |
+| **JAR / WAR Packaging** | `npm run build` (`electron-vite build`) | Produces 3 isolated targets in `./out/`: `./out/main/index.js` (Node main process), `./out/preload/index.cjs` (IPC sandbox bridge), and `./out/renderer/` (Chromium React 19 UI). |
+| **JUnit 5 / TestNG** | `npm test` (`node --test`) | Built-in zero-dependency Node test runner executing unit, P2P integration, and E2E suites. |
+
+> For a complete, in-depth guide covering TypeScript type stripping, `tsconfig` project references, and line-by-line build pipeline internals, read the [Java-to-JS/TS/npm Deep-Dive Guide](docs/user-guide/00-js-ts-npm-fundamentals.md) ([HTML version](docs/user-guide/00-js-ts-npm-fundamentals.html)).
 
 ## Quick Start
 
@@ -134,7 +151,7 @@ You can also browse the documentation directly in your browser by opening `docs/
 |---|---|---|
 | **[Interactive Portal](docs/index.html)** ([Hub](docs/README.md)) | All contributors & operators | Master documentation portal, high-level architecture diagram, role-based reading tracks. |
 | **[Source Code &amp; Syntax Guide](docs/code-guide/01-js-ts-react-syntax-in-codebase.html)** ([Markdown](docs/code-guide/01-js-ts-react-syntax-in-codebase.md)) | Developers, exam candidates, code reviewers | JS/TS/React 19 syntax deep-dive, file-by-file codebase walkthrough, 30+ code locators, 32-question inquiry exam bank. |
-| **[JS/TS & npm Guide](docs/user-guide/00-js-ts-npm-fundamentals.html)** ([Markdown](docs/user-guide/00-js-ts-npm-fundamentals.md)) | Beginners & developers | Foundations of JS, TS, Node, npm, package.json, tsconfig, and complete 16-command CLI reference. |
+| **[JS/TS & npm Guide](docs/user-guide/00-js-ts-npm-fundamentals.html)** ([Markdown](docs/user-guide/00-js-ts-npm-fundamentals.md)) | Beginners & developers | Java-to-JS/TS/npm mental model, electron-vite build internals, tsconfig split, and complete 19-command CLI reference. |
 | **[User Guide](docs/user-guide/01-getting-started.html)** ([Markdown](docs/user-guide/01-getting-started.md)) | End users, QA testers, developers | Step-by-step guides for setup, group management, sharing, search, and transfers. |
 | **[Theory & Mathematics](docs/theory/01-distributed-topology.html)** ([Markdown](docs/theory/01-distributed-topology.md)) | Distributed systems architects | Mathematical topology proofs, HRW consistent hashing, NAT traversal RFCs, flow control math. |
 | **[Internal Architecture](docs/architecture/01-system-overview.html)** ([Markdown](docs/architecture/01-system-overview.md)) | Core engineers & security reviewers | IPC contracts, `PeerEngine` lifecycle, complete wire protocol specification, storage engines. |

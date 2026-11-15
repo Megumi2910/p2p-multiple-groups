@@ -70,40 +70,40 @@
     },
     // Source Code & Syntax
     {
-      title: '01. JS/TS & React 19 Syntax in Codebase (Tiếng Việt)',
+      title: '01. JS/TS & React 19 Syntax in Codebase',
       category: 'Code Guide',
       url: 'code-guide/01-js-ts-react-syntax-in-codebase.html',
-      snippet: 'Bóc tách chi tiết cấu trúc cú pháp JavaScript, TypeScript, Node.js 24 và React 19 trong codebase: const/let, optional chaining, discriminated unions, promise queue serialization, type guards.',
+      snippet: 'Deep-dive into JavaScript, TypeScript, Node.js 24, and React 19 syntax across the codebase: const/let, optional chaining, discriminated unions, promise queue serialization, type guards.',
       keywords: 'code syntax javascript typescript react19 hooks usestate useeffect usecallback useref promise queue serialization generics type guards'
     },
     {
-      title: '02. Shared Contracts, Preload Bridge & Signaling Code (Tiếng Việt)',
+      title: '02. Shared Contracts, Preload Bridge & Signaling Code',
       category: 'Code Guide',
       url: 'code-guide/02-shared-preload-and-signaling-code.html',
-      snippet: 'Walkthrough chi tiết electron.vite.config.ts, shared contracts, p2p wire protocol, preload security bridge, signaling server, token bucket rate limiter, timingSafeEqual.',
-      keywords: 'code shared contracts preload contextbridge signaling server websocket token bucket rate limiter timingsafeequal csp rfc5766 hmac'
+      snippet: 'Walkthrough of electron.vite.config.ts (p2pCsp), 22 IPC channel contracts, wire protocol type guards, preload security bridge, signaling server, dynamic group creation, token bucket rate limiter.',
+      keywords: 'code shared contracts preload contextbridge signaling server websocket token bucket rate limiter timingsafeequal p2pcsp csp rfc5766 hmac create group invite code'
     },
     {
-      title: '03. Main Process & P2P Engine Core Walkthrough (Tiếng Việt)',
+      title: '03. Main Process & P2P Engine Core Walkthrough',
       category: 'Code Guide',
       url: 'code-guide/03-main-process-and-p2p-engine-code.html',
-      snippet: 'Walkthrough chi tiết main process, IPC security 4 tầng, HRW election, SafeCredentialStore DPAPI/Keychain, library hashing, search index, transport pooling, transfers flow control, PeerEngine.',
-      keywords: 'code main process p2p engine election hrw rendezvous hashing safecredentailstore library search index transport pooling transfers flow control'
+      snippet: 'Walkthrough of main process entry, 4-tier validateSender IPC security, HRW election, SafeCredentialStore DPAPI/Keychain, library hashing, search index, transport pooling, transfers flow control, and PeerEngine.',
+      keywords: 'code main process p2p engine election hrw rendezvous hashing safecredentialstore library search index transport pooling transfers flow control owner secret'
     },
     {
-      title: '04. React Renderer UI & Inquiry Test Q&A Bank (Tiếng Việt)',
+      title: '04. React Renderer UI & Inquiry Test Q&A Bank',
       category: 'Code Guide',
       url: 'code-guide/04-renderer-ui-and-inquiry-qa.html',
-      snippet: 'Walkthrough giao diện React 19, usePeerState hook, Swarm aggregation, bảng tra cứu 30+ vị trí code, và ngân hàng 32 câu hỏi vấn đáp chuyên sâu (Inquiry Test / Viva Defense).',
-      keywords: 'code renderer react19 usepeerstate swarm search command palette dialog bang tra cuu code inquiry test van dap viva defense cau hoi'
+      snippet: 'Walkthrough of sandboxed React 19 UI, usePeerState hook, swarm aggregation, 30+ code locator lookup table, and 32-question comprehensive inquiry exam defense Q&A.',
+      keywords: 'code renderer react19 usepeerstate swarm search command palette dialog code locators inquiry test viva defense exam'
     },
     // User Guide
     {
-      title: "00. JS, TS & npm Fundamentals (Tiếng Việt)",
-      category: "User Guide",
-      url: "user-guide/00-js-ts-npm-fundamentals.html",
-      snippet: "Giải thích căn bản dễ hiểu về JavaScript, TypeScript, Node.js, npm, package.json, tsconfig và chi tiết toàn bộ các lệnh CLI trong project.",
-      keywords: "javascript typescript nodejs npm package.json tsconfig electron-vite commands scripts huong dan tieng viet"
+      title: '00. JS, TS & npm Fundamentals',
+      category: 'User Guide',
+      url: 'user-guide/00-js-ts-npm-fundamentals.html',
+      snippet: 'Java-to-JS/TS/npm mental model, electron-vite multi-target build pipeline internals (ssr vs client, out/ directories), tsconfig project references, and complete 19-command CLI reference.',
+      keywords: 'javascript typescript nodejs npm java maven gradle jvm v8 typecheck electron-vite build ssr client rollup esbuild out/main/index.js out/preload/index.cjs out/renderer docker commands scripts'
     },
     {
       title: '01. Getting Started',
@@ -116,8 +116,8 @@
       title: '02. Network & Virtual Groups',
       category: 'User Guide',
       url: 'user-guide/02-network-and-groups.html',
-      snippet: 'Virtual groups, canonical GroupKey, V1 vs V2 invitations, SafeStorage keychain credential persistence, privacy mode (relayOnly), and leave/forget.',
-      keywords: 'network virtual groups groupkey invitation token keychain safestorage relayonly privacy'
+      snippet: 'Virtual group creation & ownership, short invite codes, V2 invitations, SafeStorage keychain credential persistence, dynamic invite rotation, member removal, and privacy mode (relayOnly).',
+      keywords: 'network virtual groups groupkey create group owner rotate invite code token keychain safestorage relayonly privacy'
     },
     {
       title: '03. Library & File Sharing',
@@ -144,8 +144,8 @@
       title: '06. Signaling Server Operations',
       category: 'User Guide',
       url: 'user-guide/06-signaling-and-ops.html',
-      snippet: 'Starting local signaling node (npm run signal:start), .env configuration reference, CLI invite generator (npm run signal:invite), and GET /healthz probe.',
-      keywords: 'signaling server operations local invite .env healthz websocket'
+      snippet: 'Starting signaling nodes via Docker Compose (npm run docker:up) or Node.js (npm run signal:start), .env reference, CLI invite generator (npm run signal:invite --code-only), and GET / health probing.',
+      keywords: 'signaling server operations local invite docker compose .env healthz websocket invite code'
     },
     {
       title: '07. Troubleshooting & FAQ',

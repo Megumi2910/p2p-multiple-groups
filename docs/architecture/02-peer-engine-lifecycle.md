@@ -114,13 +114,15 @@ function queueAction<T>(action: () => Promise<T>): Promise<T> {
 
 ### Serialized Operations
 The following operations must pass through `queueAction`:
-1. `joinGroup`: Validates invitation, persists group, connects signaling client, handshakes group.
-2. `resumeGroup`: Reconnects a previously saved group using remembered credentials.
-3. `leaveGroup`: Gracefully unregisters from signaling, tears down group SCTP streams.
-4. `forgetGroup`: Leaves group, permanently purges credentials, and atomically revokes all file grants.
-5. `disconnectAll`: Disconnects all active groups.
-6. `setRelayOnly`: Changes the ICE transport policy (enforces that all groups are disconnected first).
-
+1. `createGroup`: Creates a new virtual group, saves `ownerSecret`, handshakes with signaling, and elects owner.
+2. `joinGroup`: Validates invitation, persists group, connects signaling client, handshakes group.
+3. `resumeGroup`: Reconnects a previously saved group using remembered credentials.
+4. `rotateGroupInvite`: Authenticates with `ownerSecret`, requests invite code rotation, and broadcasts updated invite code.
+5. `removeGroupMember`: Authenticates with `ownerSecret` to evict a specified peer from the group roster.
+6. `leaveGroup`: Gracefully unregisters from signaling, tears down group SCTP streams.
+7. `forgetGroup`: Leaves group, permanently purges credentials, and atomically revokes all file grants.
+8. `disconnectAll`: Disconnects all active groups.
+9. `setRelayOnly`: Dynamically toggles ICE transport relay policies across active swarms.
 ---
 
 ## 4. Freshness Lease Watchdog & Recovery Loop
@@ -164,4 +166,4 @@ The engine maintains a subscriber pattern to update external consumers (such as 
 `PeerEngine` coalesces updates using a $200\text{ ms}$ trailing debounce window:
 1. When state changes, `publishState()` marks a dirty snapshot.
 2. If `stateThrottleTimer` is active, the notification is deferred.
-3. Once the $200\text{ ms}$ timer expires, the latest combined snapshot (`MultiGroupP2pState & P2pState`) is pushed via `IPC_CHANNELS.P2P_V2_STATE` and the legacy `P2P_STATE` channel simultaneously.
+3. Once the $200\text{ ms}$ timer expires, the latest `MultiGroupP2pState` snapshot is pushed over `IPC_CHANNELS.P2P_V2_STATE` (`'p2p:state'`).

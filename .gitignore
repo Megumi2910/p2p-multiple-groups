@@ -12,3 +12,11 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 .idea/
+.vscode/
+coverage/
+*.tmp.*
+multi-group-migration-checkpoint.md
+CHECKPOINT-MULTI-GROUP-REVIEW.md
+*checkpoint*.md
+CHECKPOINT*.md
+.agent/

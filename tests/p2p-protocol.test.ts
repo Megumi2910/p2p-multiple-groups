@@ -46,6 +46,9 @@ describe('P2P Protocol & Shared Contracts', () => {
   it('validates signaling URLs with loopback ws and internet wss', () => {
     assert.equal(validateSignalingUrl('ws://127.0.0.1:8787/signal').valid, true)
     assert.equal(validateSignalingUrl('ws://[::1]:8787/signal').valid, true)
+    assert.equal(validateSignalingUrl('ws://192.168.123.1:8787/signal').valid, true)
+    assert.equal(validateSignalingUrl('ws://10.0.0.1:8787/signal').valid, true)
+    assert.equal(validateSignalingUrl('ws://172.16.5.1:8787/signal').valid, true)
     assert.equal(validateSignalingUrl('ws://example.com/signal').valid, false) // ws on non-loopback rejected
     assert.equal(validateSignalingUrl('wss://example.com/signal').valid, true)
     assert.equal(validateSignalingUrl('wss://example.com/wrong').valid, false)

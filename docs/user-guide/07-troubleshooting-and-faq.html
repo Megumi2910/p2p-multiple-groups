@@ -189,7 +189,17 @@
                 <tr>
                   <td><code>INVALID_INPUT</code></td>
                   <td>Submitting form data or changing settings.</td>
-                  <td>Validation failure (e.g., display name contains invalid characters, empty group ID, or attempting to toggle <code>relayOnly</code> while groups are active).</td>
+                  <td>Validation failure (e.g., display name contains invalid characters, empty group ID, or malformed invite code).</td>
+                </tr>
+                <tr>
+                  <td><code>GROUP_EXISTS</code></td>
+                  <td>Creating a virtual group dynamically.</td>
+                  <td>A group with this group ID already exists on the signaling server. Choose a different ID or join with an invite code.</td>
+                </tr>
+                <tr>
+                  <td><code>GROUP_FULL</code></td>
+                  <td>Joining a virtual group.</td>
+                  <td>The group has reached its maximum concurrent peer capacity on the signaling server. Wait for inactive peers to disconnect.</td>
                 </tr>
               </tbody>
             </table>

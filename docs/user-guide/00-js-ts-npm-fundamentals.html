@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi" data-theme="dark" data-root="../">
+<html lang="en" data-theme="dark" data-root="../">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -101,335 +101,281 @@
     <!-- Center Content Viewport -->
     <main class="docs-content-wrapper">
       <article class="docs-article">
-        <!-- Breadcrumbs -->
-        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
-          <a href="../index.html">Docs</a>
-          <span class="breadcrumb-separator">/</span>
-          <span>User Guide</span>
-          <span class="breadcrumb-separator">/</span>
-          <span>00. JS, TS &amp; npm Fundamentals</span>
-        </nav>
-
-        <h1>Nền Tảng JS/TS, Node.js, npm &amp; Cẩm Nang Lệnh CLI</h1>
-        <p class="lead-paragraph">
-          Tài liệu nhập môn chuyên sâu bằng tiếng Việt: giải thích từ gốc rễ cách JavaScript, TypeScript, Node.js và npm phối hợp trong dự án <strong><code>p2p-multiple-groups</code></strong>, kiến trúc 3 tiến trình Electron và ý nghĩa chi tiết của toàn bộ 16 lệnh CLI.
-        </p>
-
-        <div class="callout callout-note">
-          <div class="callout-icon">💡</div>
-          <div class="callout-content">
-            <div class="callout-title">Dành cho kỹ sư mới</div>
-            <p>Nếu bạn chưa có nhiều kinh nghiệm về TypeScript hoặc Electron, hãy đọc kỹ Phần 1 và Phần 2 để nắm vững luồng biên dịch trước khi bắt đầu thực thi các lệnh ở Phần 4 và Phần 5.</p>
+        <header class="doc-header">
+          <div class="doc-badge-row">
+            <span class="badge badge-primary">User Guide</span>
+            <span class="badge badge-info">Orientation</span>
+            <span class="badge badge-success">Java / JVM Mapping</span>
           </div>
-        </div>
-
-        <hr>
+          <h1>00. JS, TS &amp; npm Fundamentals: A Java Developer's Deep Dive</h1>
+          <p class="lead-paragraph">
+            An exhaustive architectural and syntax mapping guide bridging Java, Maven, Gradle, and JVM mental models directly to modern JavaScript, TypeScript 5.9, Node.js 24, and the electron-vite multi-target build pipeline.
+          </p>
+        </header>
 
         <!-- Section 1 -->
         <section id="he-sinh-thai-js-ts-node-npm">
-          <h2>1. Nền tảng cốt lõi: JS, TS, Node.js và npm</h2>
+          <h2>1. Core Ecosystem &amp; Mental Model for Java Developers</h2>
           <p>
-            Dự án kết hợp nhiều công nghệ hiện đại. Dưới đây là vai trò cụ thể của từng thành phần trong bức tranh tổng thể:
+            Coming from the Java/JVM ecosystem (or C#, Go, and C++), looking at a repository filled with <code>.js</code>, <code>.ts</code>, <code>.tsx</code>, <code>.cjs</code>, <code>package.json</code>, <code>tsconfig*.json</code>, and <code>node_modules/</code> can feel disorienting. However, almost every concept in the modern Node.js and TypeScript ecosystem has a direct 1:1 equivalent in Java, Maven, and the JVM.
           </p>
 
-          <h3>1.1. JavaScript (JS) — Ngôn ngữ thực thi chính</h3>
-          <p>
-            JavaScript là ngôn ngữ chạy đơn luồng (single-threaded) dựa trên cơ chế vòng lặp sự kiện bất đồng bộ (Non-blocking Event Loop). 
-            <strong>Nguyên lý quan trọng nhất:</strong> Cả trình duyệt Chromium (phần hiển thị giao diện) và môi trường Node.js (phần máy ảo P2P và máy chủ Signaling) đều chỉ hiểu và chạy trực tiếp mã JavaScript thuần túy.
-          </p>
-          <p>
-            Trong dự án này, toàn bộ mã nguồn tuân theo chuẩn <strong>ECMAScript Modules (ESM)</strong> hiện đại, quy định bởi dòng <code>"type": "module"</code> trong <code>package.json</code>:
-          </p>
-          <pre><code class="language-typescript">// Sử dụng cú pháp import / export chuẩn ESM
-import { MultiGroupPeerStore } from './peer-store-v2.js';
-export const engine = new PeerEngine();</code></pre>
-
-          <h3>1.2. TypeScript (TS &amp; TSX) — Bản thiết kế kiểu dữ liệu tĩnh</h3>
-          <p>
-            JavaScript thuần không có kiểu dữ liệu tĩnh; lỗi truyền sai tham số chỉ phát hiện khi ứng dụng đang chạy (Runtime Error). Trong một hệ thống P2P phức tạp, lỗi runtime khi giải mã gói tin WebRTC sẽ làm đứt kết nối mạng của cả cụm ngang hàng.
-          </p>
-          <p>
-            <strong>TypeScript</strong> bổ sung "bản thiết kế kiểu" (Static Types) phía trên JavaScript. Ví dụ interface <code>GroupInvitation</code> trong <code>src/shared/p2p.ts</code> bảo đảm mọi lời mời tham gia nhóm đều phải đầy đủ các thuộc tính bắt buộc:
-          </p>
-          <pre><code class="language-typescript">export interface GroupInvitation {
-  version: 2;
-  groupId: string;
-  groupName: string;
-  signalingUrl: string;
-  token: string;
-  createdAt: number;
-  expiresAt?: number;
-}</code></pre>
-          <p>
-            File đuôi <code>.tsx</code> là TypeScript kết hợp cú pháp giao diện JSX của React 19, cho phép viết các component như <code>&lt;button onClick={joinGroup}&gt;Gia nhập&lt;/button&gt;</code> trực tiếp bên trong logic xử lý.
-          </p>
-
-          <div class="callout callout-warning">
-            <div class="callout-icon">⚡</div>
-            <div class="callout-content">
-              <div class="callout-title">Hai cơ chế xử lý TypeScript trong dự án này</div>
-              <ul>
-                <li><strong>Kiểm tra lỗi tĩnh (Typechecking):</strong> Sử dụng lệnh <code>npm run typecheck</code> (gọi <code>tsc --noEmit</code>). Trình biên dịch TypeScript chỉ kiểm tra tính hợp lệ của kiểu dữ liệu trong bộ nhớ, tuyệt đối không sinh ra bất kỳ file nào trên ổ cứng.</li>
-                <li><strong>Chuyển đổi để chạy thực tế:</strong>
-                  <ul>
-                    <li><strong>Node.js Native Type Stripping:</strong> Với các file chạy trực tiếp như test (<code>tests/*.test.ts</code>) hay signaling server (<code>services/signaling/index.ts</code>), <strong>Node.js &gt;=24.12.0</strong> tự động lột bỏ khai báo kiểu TS trong RAM và chạy thẳng mã JS mà không cần bước build trung gian.</li>
-                    <li><strong>Electron Desktop Build:</strong> <code>electron-vite</code> (kết hợp Vite, esbuild, Rollup) dịch và gom toàn bộ mã nguồn thành các file tối ưu trong thư mục <code>./out/</code>.</li>
-                  </ul>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <h3>1.3. Node.js (&gt;=24.12.0) — Môi trường chạy JS/TS ngoài trình duyệt</h3>
-          <p>
-            Node.js cho phép JavaScript vận hành như một ngôn ngữ hệ thống trên Windows, macOS và Linux. Nó cung cấp:
-          </p>
-          <ul>
-            <li>Truy cập hệ thống tập tin cục bộ (<code>node:fs</code>) để đọc file chia sẻ và ghi trạng thái <code>peer-state.json</code>.</li>
-            <li>Socket mạng đa kênh: WebSocket (<code>ws</code>) và WebRTC data channel (<code>werift</code>).</li>
-            <li>Mã hóa bảo mật cao (<code>node:crypto</code>) để băm dữ liệu SHA-256 từng chunk 16 KiB.</li>
-            <li>Trình chạy kiểm thử tự động tốc độ cao tích hợp sẵn (<code>node:test</code>).</li>
-          </ul>
-
-          <h3>1.4. npm và bộ ba quản lý thư viện</h3>
+          <h3>1.1. Java-to-JS/TS/Node/npm Rosetta Stone</h3>
           <div class="table-wrapper">
             <table>
               <thead>
                 <tr>
-                  <th>Thành phần</th>
-                  <th>Vai trò trong dự án</th>
-                  <th>Đưa lên Git?</th>
+                  <th>Java / Maven / Gradle Concept</th>
+                  <th>TypeScript / Node / npm Equivalent</th>
+                  <th>Architectural Role &amp; Implementation Details in This Codebase</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td><code>package.json</code></td>
-                  <td>Bảng kê khai thông tin dự án, danh sách lệnh tắt (<code>scripts</code>), các thư viện chạy thật (<code>dependencies</code>: react, werift, ws) và công cụ phát triển (<code>devDependencies</code>: electron, vite, typescript).</td>
-                  <td><strong>Có</strong></td>
+                  <td><strong>Source File (<code>.java</code>)</strong></td>
+                  <td><strong><code>src/**/*.ts</code>, <code>src/**/*.tsx</code></strong></td>
+                  <td>Statically typed source code. Files ending in <code>.tsx</code> contain React 19 JSX markup embedded directly inside TypeScript.</td>
                 </tr>
                 <tr>
-                  <td><code>package-lock.json</code></td>
-                  <td>Sổ cái khóa cứng chính xác số phiên bản và mã băm toàn vẹn (integrity hash) của từng thư viện con để đảm bảo mọi máy tính chạy <code>npm install</code> đều ra kết quả giống hệt nhau.</td>
-                  <td><strong>Có</strong></td>
+                  <td><strong>Bytecode (<code>.class</code>)</strong></td>
+                  <td><strong>Compiled JavaScript (<code>.js</code>, <code>.cjs</code>)</strong></td>
+                  <td>Browsers and Node.js cannot execute TypeScript directly. TypeScript relies on <strong>Type Erasure</strong>: all type annotations, <code>interface</code>, and <code>type</code> declarations are stripped away, producing standard ECMAScript.</td>
                 </tr>
                 <tr>
-                  <td><code>node_modules/</code></td>
-                  <td>Kho chứa toàn bộ mã nguồn thực tế của các thư viện bên thứ 3 tải từ Internet về máy. Rất nặng và tự sinh ra khi gõ <code>npm install</code>.</td>
-                  <td><strong>Không</strong> (luôn nằm trong <code>.gitignore</code>)</td>
+                  <td><strong>JVM (HotSpot Runtime)</strong></td>
+                  <td><strong>Node.js <code>&gt;=24.12.0</code> (V8 + libuv)</strong> &amp; <strong>Chromium V8</strong></td>
+                  <td>Node.js provides the headless execution runtime (Google V8 JS engine + <code>libuv</code> C library for asynchronous non-blocking event-driven I/O) for the Main process, signaling service, and tests. Chromium V8 executes the UI Renderer process.</td>
+                </tr>
+                <tr>
+                  <td><strong>Threads &amp; <code>CompletableFuture&lt;T&gt;</code></strong></td>
+                  <td><strong>Single-Threaded Event Loop with <code>Promise&lt;T&gt;</code> &amp; <code>async</code>/<code>await</code></strong></td>
+                  <td>Node.js does not spawn OS threads for concurrency; instead, a single-threaded Event Loop handles microtasks and macrotasks. <code>async</code>/<code>await</code> provides synchronous-looking syntax over asynchronous <code>Promise</code> pipelines.</td>
+                </tr>
+                <tr>
+                  <td><strong><code>pom.xml</code> / <code>build.gradle</code></strong></td>
+                  <td><strong><code>package.json</code></strong></td>
+                  <td>The declarative manifest at the repository root defining package metadata, runtime engine constraints (<code>"node": "&gt;=24.12.0"</code>), task scripts, and library dependencies.</td>
+                </tr>
+                <tr>
+                  <td><strong><code>gradle.lockfile</code> / Maven checksums</strong></td>
+                  <td><strong><code>package-lock.json</code></strong></td>
+                  <td>Exact tree of resolved dependencies with cryptographic SHA-512 integrity digests, guaranteeing byte-for-byte reproducible builds across developer machines and CI/CD pipelines.</td>
+                </tr>
+                <tr>
+                  <td><strong><code>~/.m2/repository</code> (Local Cache)</strong></td>
+                  <td><strong><code>./node_modules/</code></strong></td>
+                  <td>The project-local directory where <code>npm</code> installs third-party dependency packages. Unlike <code>~/.m2</code>, <code>node_modules</code> is scoped to the repository and is strictly excluded from version control (<code>.gitignore</code>).</td>
+                </tr>
+                <tr>
+                  <td><strong>Maven <code>&lt;scope&gt;compile&lt;/scope&gt;</code></strong></td>
+                  <td><strong><code>"dependencies"</code></strong></td>
+                  <td>Runtime dependencies packaged into the production application: <code>react@19.3.0</code>, <code>react-dom@19.3.0</code>, <code>werift@^0.24.4</code> (pure Node.js WebRTC), and <code>ws@^8.21.3</code> (RFC 6455 WebSockets).</td>
+                </tr>
+                <tr>
+                  <td><strong>Maven <code>&lt;scope&gt;provided&lt;/scope&gt;</code> / <code>test</code></strong></td>
+                  <td><strong><code>"devDependencies"</code></strong></td>
+                  <td>Tooling and build-time dependencies: <code>electron@44.10.1</code>, <code>electron-vite@5.0.0</code>, <code>vite@7.3.7</code>, <code>typescript@5.9.3</code>, <code>@vitejs/plugin-react@5.2.0</code>, and <code>@types/*</code>.</td>
+                </tr>
+                <tr>
+                  <td><strong>Stub JARs / C Headers (<code>.h</code>)</strong></td>
+                  <td><strong>Type Definition Packages (<code>@types/*</code>)</strong></td>
+                  <td>Packages like <code>@types/node</code>, <code>@types/react</code>, <code>@types/react-dom</code>, and <code>@types/ws</code> contain zero executable JavaScript. They are pure <code>.d.ts</code> declaration headers providing static type definitions for libraries written in untyped JS or C++ native bindings.</td>
+                </tr>
+                <tr>
+                  <td><strong>Maven Plugins (<code>&lt;build&gt;&lt;plugins&gt;</code>)</strong></td>
+                  <td><strong><code>"scripts"</code> in <code>package.json</code> + <code>electron.vite.config.ts</code></strong></td>
+                  <td>Build lifecycle task runners. Running <code>npm run build</code> invokes <code>tsc</code> and Vite/Rollup bundling pipelines according to <code>electron.vite.config.ts</code>.</td>
+                </tr>
+                <tr>
+                  <td><strong>JUnit 5 (<code>@Test</code>, <code>Assertions.*</code>)</strong></td>
+                  <td><strong>Node.js Native Test Runner (<code>node:test</code>, <code>node:assert/strict</code>)</strong></td>
+                  <td>Zero-dependency built-in testing engine in Node.js 24 using <code>describe()</code>, <code>it()</code>, and <code>assert.strictEqual()</code>, executed directly via <code>node --test</code>.</td>
                 </tr>
               </tbody>
             </table>
           </div>
+
+          <h3>1.2. Module Systems: ECMAScript Modules (ESM) vs. CommonJS (CJS)</h3>
+          <p>
+            In the modern JavaScript ecosystem, two module specifications exist side by side:
+          </p>
+          <ul>
+            <li>
+              <strong>ECMAScript Modules (ESM)</strong>: The official modern JavaScript standard. Configured via <code>"type": "module"</code> in <code>package.json:5</code>, telling Node.js that all <code>.js</code> and <code>.ts</code> files default to ES module syntax (<code>import { x } from './y.js'</code> and <code>export const x = 1</code>).
+            </li>
+            <li>
+              <strong>CommonJS (CJS)</strong>: The legacy Node.js module format using <code>const x = require('./y')</code> and <code>module.exports = { x }</code>. In this project, CommonJS is strictly scoped to <code>out/preload/index.cjs</code> (required by Electron's native browser window manager) and <code>tests/fixtures/electron-profile-launcher.cjs</code>.
+            </li>
+          </ul>
+
+          <h3>1.3. The Two Ways TypeScript Executes in This Project</h3>
+          <p>
+            In this repository, TypeScript follows two decoupled execution pipelines:
+          </p>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Execution Pipeline</th>
+                  <th>Applies To</th>
+                  <th>Mechanism</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Path A: Direct Zero-Build Type Stripping</strong></td>
+                  <td><code>services/signaling/index.ts</code>, <code>scripts/*.ts</code>, <code>tests/**/*.test.ts</code></td>
+                  <td>Node.js <code>&gt;=24.12.0</code> natively strips TypeScript annotations in memory and executes standard JavaScript directly with zero disk build overhead. Enforced via <code>"erasableSyntaxOnly": true</code> and <code>"rewriteRelativeImportExtensions": true</code> in <code>tsconfig.node.json</code>.</td>
+                </tr>
+                <tr>
+                  <td><strong>Path B: Bundled Electron Execution</strong></td>
+                  <td><code>src/main</code>, <code>src/preload</code>, <code>src/renderer</code></td>
+                  <td><code>electron-vite</code> runs Vite, Rollup, and esbuild to transpile JSX, tree-shake dependencies, inject strict CSPs, and bundle assets into <code>./out/</code>.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>1.4. Ground-Truth Data Contracts</h3>
+          <p>
+            All data contracts in the project are enforced at compile time using TypeScript interfaces that undergo <strong>Type Erasure</strong>. For example, the canonical group invitation contract from <code>src/shared/p2p.ts:22-27</code> is:
+          </p>
+          <pre><code class="language-typescript">export interface GroupInvitation {
+  version: 2
+  signalingUrl: string
+  groupId: string
+  token: string
+}</code></pre>
         </section>
 
         <hr>
 
         <!-- Section 2 -->
         <section id="kien-truc-build-electron-vite">
-          <h2>2. Kiến trúc 3 tiến trình Electron và hệ thống 3 file tsconfig</h2>
-
-          <h3>2.1. Phân chia 3 tiến trình độc lập</h3>
+          <h2>2. Three-Process Electron Architecture &amp; Three tsconfig Configurations</h2>
           <p>
-            Để đảm bảo an toàn tối đa cho máy tính của người dùng, ứng dụng desktop được chia làm 3 tiến trình với ranh giới an ninh nghiêm ngặt:
-          </p>
-
-          <div class="mermaid-diagram-wrapper">
-            <div class="mermaid">
-flowchart TB
-    subgraph MainProcess["Main Process (src/main/index.ts -> out/main/index.js)"]
-        direction TB
-        M["Tiến trình chính Node.js\n- Chạy PeerEngine & Werift WebRTC\n- Đọc/Ghi đĩa & Keychain safeStorage\n- Chuẩn ES Module (format: es)"]
-    end
-
-    subgraph PreloadScript["Preload Script (src/preload/index.ts -> out/preload/index.cjs)"]
-        direction TB
-        P["Cửa khẩu kiểm soát an ninh\n- contextBridge.exposeInMainWorld\n- Chỉ mở các hàm an toàn (window.p2p)\n- Chuẩn CommonJS (format: cjs)"]
-    end
-
-    subgraph RendererProcess["Renderer Process (src/renderer/ -> out/renderer/)"]
-        direction TB
-        R["Tiến trình giao diện React 19\n- Chạy trong sandbox trình duyệt Chromium\n- Bị chặn mạng hoàn toàn: connect-src 'none'\n- Giao tiếp qua IPC: contracts.ts"]
-    end
-
-    M <==>|"Kênh IPC an toàn (IPC_CHANNELS)"| P
-    P <==>|"window.p2p"| R
-            </div>
-          </div>
-
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tiến trình</th>
-                  <th>Mã nguồn &amp; Đầu ra</th>
-                  <th>Định dạng</th>
-                  <th>Trách nhiệm &amp; Chính sách bảo mật</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Main Process</strong></td>
-                  <td><code>src/main/index.ts</code><br>→ <code>out/main/index.js</code></td>
-                  <td>ES Module (<code>format: 'es'</code>)</td>
-                  <td>Nắm toàn quyền Node.js: kết nối mạng WebRTC, ghi file chia sẻ, quản lý khóa bảo mật <code>safeStorage</code> (DPAPI/Keychain).</td>
-                </tr>
-                <tr>
-                  <td><strong>Preload Script</strong></td>
-                  <td><code>src/preload/index.ts</code><br>→ <code>out/preload/index.cjs</code></td>
-                  <td>CommonJS (<code>format: 'cjs'</code>)</td>
-                  <td>Cửa khẩu an ninh: dùng <code>contextBridge</code> để chỉ công khai các hàm an toàn cho giao diện gọi qua kênh liên lạc IPC (<code>contracts.ts</code>).</td>
-                </tr>
-                <tr>
-                  <td><strong>Renderer Process</strong></td>
-                  <td><code>src/renderer/src/main.tsx</code><br>→ <code>out/renderer/</code></td>
-                  <td>Web Bundle (HTML/JS/CSS)</td>
-                  <td>Giao diện React 19 trong sandbox. Khi build thật, CSP khóa cứng <code>connect-src 'none'</code>, cấm tự ý kết nối mạng trực tiếp ra ngoài.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <h3>2.2. Vai trò của 3 file tsconfig</h3>
-          <p>
-            Dự án sử dụng cơ chế <strong>Project References</strong> của TypeScript để áp dụng các luật kiểm tra kiểu phù hợp cho từng môi trường:
+            Electron applications run multiple isolated processes to prevent untrusted UI code from compromising host operating system security:
           </p>
           <ul>
-            <li><code>tsconfig.json</code>: File mồi trung tâm, điều phối tham chiếu tới 2 file con bên dưới.</li>
-            <li><code>tsconfig.node.json</code>: Quy định kiểu cho môi trường Node.js (<code>"types": ["node"]</code>). Áp dụng cho: <code>src/main/</code>, <code>src/preload/</code>, <code>src/shared/</code>, <code>services/</code>, <code>scripts/</code>, <code>tests/</code>, và <code>electron.vite.config.ts</code>. Bật <code>"erasableSyntaxOnly": true</code> để tương thích hoàn toàn với Node 24.</li>
-            <li><code>tsconfig.web.json</code>: Quy định kiểu cho môi trường trình duyệt React (<code>"jsx": "react-jsx"</code>, <code>"types": ["vite/client"]</code>). Áp dụng cho <code>src/renderer/</code> và <code>src/shared/</code>. Ngăn chặn việc gọi nhầm các API hệ thống của Node.js từ giao diện.</li>
+            <li>
+              <strong>Main Process (Node.js)</strong> (<code>src/main/index.ts</code> &rarr; <code>out/main/index.js</code>): Owns full OS privileges, file I/O, pure Node.js WebRTC (<code>werift</code>), WebSocket connections (<code>ws</code>), and OS keychain storage via <code>SafeCredentialStore</code>.
+            </li>
+            <li>
+              <strong>Preload Bridge</strong> (<code>src/preload/index.ts</code> &rarr; <code>out/preload/index.cjs</code>): Runs in a protected bridge context with <code>contextIsolation: true</code>, exposing <code>window.p2p</code> via <code>contextBridge.exposeInMainWorld</code> over 22 strictly validated <code>IPC_CHANNELS</code>.
+            </li>
+            <li>
+              <strong>Renderer Process (Chromium)</strong> (<code>src/renderer/index.html</code> &rarr; <code>out/renderer/</code>): Sandboxed React 19 UI with zero Node.js privileges, locked down by <code>p2pCsp</code> (<code>connect-src 'none'</code> in production).
+            </li>
           </ul>
+
+          <h3>Content Security Policy (CSP) Protection</h3>
+          <p>
+            The custom <code>p2pCsp(isDev)</code> plugin in <code>electron.vite.config.ts:5-17</code> injects the Content Security Policy into <code>src/renderer/index.html</code>:
+          </p>
+          <pre><code class="language-typescript">function p2pCsp(isDev: boolean): Plugin {
+  const devCsp =
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:5173; object-src 'none'; base-uri 'none'; form-action 'none'"
+  const prodCsp =
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+
+  return {
+    name: 'p2p-csp',
+    transformIndexHtml(html: string): string {
+      return html.replace('%P2P_CSP%', isDev ? devCsp : prodCsp)
+    }
+  }
+}</code></pre>
+
+          <h3>Three tsconfig Configurations</h3>
+          <p>
+            To decouple browser web types from Node.js runtime types, the project uses TypeScript Project References:
+          </p>
+          <ol>
+            <li><strong><code>tsconfig.json</code></strong>: Root coordinator defining references to <code>tsconfig.node.json</code> and <code>tsconfig.web.json</code>.</li>
+            <li><strong><code>tsconfig.node.json</code></strong>: Configures <code>"types": ["node"]</code> for <code>src/main</code>, <code>src/preload</code>, <code>services/</code>, <code>scripts/</code>, and <code>tests/</code>.</li>
+            <li><strong><code>tsconfig.web.json</code></strong>: Configures <code>"jsx": "react-jsx"</code> and <code>"types": ["vite/client"]</code> for <code>src/renderer</code>.</li>
+          </ol>
         </section>
 
         <hr>
 
         <!-- Section 3 -->
-        <section id="bang-tra-cuu-nhanh-cac-lenh">
-          <h2>3. Bảng tra cứu nhanh toàn bộ 16 lệnh trong Project</h2>
-          <p>Dưới đây là bảng tổng hợp tất cả các lệnh CLI có sẵn trong dự án:</p>
+        <section id="giai-phau-lenh-npm-run-build">
+          <h2>3. Anatomy of npm run build: Output, Entry Points, Bundling Pipeline &amp; ./out/ Artifacts</h2>
+          <p>
+            Executing <code>npm run build</code> produces the following terminal output:
+          </p>
+          <pre><code class="language-text">&gt; p2p-multiple-groups@0.1.0 build
+&gt; npm run typecheck &amp;&amp; electron-vite build
 
+&gt; p2p-multiple-groups@0.1.0 typecheck
+&gt; npm run typecheck:node &amp;&amp; npm run typecheck:web
+
+&gt; p2p-multiple-groups@0.1.0 typecheck:node
+&gt; tsc --noEmit -p tsconfig.node.json --composite false
+
+&gt; p2p-multiple-groups@0.1.0 typecheck:web
+&gt; tsc --noEmit -p tsconfig.web.json --composite false
+
+vite v7.3.7 building ssr environment for production...
+transforming...
+✓ 16 modules transformed.
+rendering chunks...
+out/main/index.js  217.90 kB
+✓ built in 324ms
+
+vite v7.3.7 building ssr environment for production...
+transforming...
+✓ 2 modules transformed.
+rendering chunks...
+out/preload/index.cjs  4.01 kB
+✓ built in 19ms
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 37 modules transformed.
+rendering chunks...
+../../out/renderer/index.html                   0.62 kB
+../../out/renderer/assets/index-B2QFJOqy.css   15.37 kB
+../../out/renderer/assets/index-DaQqRAeS.js   739.87 kB
+✓ built in 660ms</code></pre>
+
+          <h3>Line-by-Line Pipeline Dissection</h3>
           <div class="table-wrapper">
             <table>
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Lệnh Terminal</th>
-                  <th>Lệnh ngầm thực thi bên dưới</th>
-                  <th>Nhóm</th>
-                  <th>Tóm tắt công dụng</th>
+                  <th>Build Step</th>
+                  <th>Why It Runs &amp; What It Does</th>
+                  <th>Key Architectural Details</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>1</td>
-                  <td><code>npm install</code></td>
-                  <td><code>npm install</code></td>
-                  <td>Cài đặt</td>
-                  <td>Tải và cài đặt toàn bộ dependencies vào <code>node_modules</code>.</td>
+                  <td><strong>Phase 1: <code>npm run typecheck</code></strong></td>
+                  <td>Runs <code>typecheck:node</code> and <code>typecheck:web</code> sequentially.</td>
+                  <td>Uses <code>tsc --noEmit</code>. Silence signifies success (Unix exit code <code>0</code>). Zero files are written to disk.</td>
                 </tr>
                 <tr>
-                  <td>2</td>
-                  <td><code>npm run dev</code></td>
-                  <td><code>electron-vite dev --watch</code></td>
-                  <td>Chạy app</td>
-                  <td>Bật dev server Vite (port 5173), biên dịch nóng HMR và mở cửa sổ Electron.</td>
+                  <td><strong>Build 1: <code>out/main/index.js</code></strong></td>
+                  <td><code>vite building ssr environment...</code></td>
+                  <td><strong>Why SSR?</strong> Vite designates any Node.js runtime target as "SSR". Node built-ins and npm dependencies (<code>werift</code>, <code>ws</code>) are externalized. 16 modules in <code>src/main</code> and <code>src/shared</code> are bundled into <code>out/main/index.js</code> (~217.90 kB), matching <code>"main"</code> in <code>package.json</code>.</td>
                 </tr>
                 <tr>
-                  <td>3</td>
-                  <td><code>npm run build</code></td>
-                  <td><code>npm run typecheck &amp;&amp; electron-vite build</code></td>
-                  <td>Đóng gói</td>
-                  <td>Kiểm tra kiểu dữ liệu, sau đó biên dịch 3 tiến trình ra thư mục <code>./out/</code>.</td>
+                  <td><strong>Build 2: <code>out/preload/index.cjs</code></strong></td>
+                  <td><code>vite building ssr environment...</code></td>
+                  <td>The Preload script runs in Electron's Node-enabled bridge context. Vite bundles <code>src/preload/index.ts</code> and <code>src/shared/contracts.ts</code> into CommonJS (<code>out/preload/index.cjs</code>, ~4.01 kB). All type imports are erased.</td>
                 </tr>
                 <tr>
-                  <td>4</td>
-                  <td><code>npm run start</code></td>
-                  <td><code>electron-vite preview</code></td>
-                  <td>Chạy app</td>
-                  <td>Chạy thử bản đóng gói trong <code>./out/</code> ở điều kiện thực tế (không dùng dev server).</td>
-                </tr>
-                <tr>
-                  <td>5</td>
-                  <td><code>npm run typecheck:node</code></td>
-                  <td><code>tsc --noEmit -p tsconfig.node.json --composite false</code></td>
-                  <td>Kiểm tra kiểu</td>
-                  <td>Kiểm tra lỗi kiểu TS cho Backend, Main, Preload, Services, Tests, Scripts.</td>
-                </tr>
-                <tr>
-                  <td>6</td>
-                  <td><code>npm run typecheck:web</code></td>
-                  <td><code>tsc --noEmit -p tsconfig.web.json --composite false</code></td>
-                  <td>Kiểm tra kiểu</td>
-                  <td>Kiểm tra lỗi kiểu TS và cú pháp JSX cho Giao diện React Renderer.</td>
-                </tr>
-                <tr>
-                  <td>7</td>
-                  <td><code>npm run typecheck</code></td>
-                  <td><code>npm run typecheck:node &amp;&amp; npm run typecheck:web</code></td>
-                  <td>Kiểm tra kiểu</td>
-                  <td>Kiểm tra kiểu toàn diện cả Node lẫn Web, dừng ngay nếu có lỗi.</td>
-                </tr>
-                <tr>
-                  <td>8</td>
-                  <td><code>npm run test:unit</code></td>
-                  <td><code>node --test tests/theme-store.test.ts ...</code> (6 files)</td>
-                  <td>Kiểm thử</td>
-                  <td>Tầng 1: Kiểm thử đơn vị các store mã hóa, di chuyển dữ liệu và protocol.</td>
-                </tr>
-                <tr>
-                  <td>9</td>
-                  <td><code>npm run test:p2p</code></td>
-                  <td><code>node --test tests/signaling-server.test.ts ...</code> (9 files)</td>
-                  <td>Kiểm thử</td>
-                  <td>Tầng 2: Kiểm thử tích hợp mạng P2P, bầu Supernode, truyền file WebRTC.</td>
-                </tr>
-                <tr>
-                  <td>10</td>
-                  <td><code>npm run test:e2e</code></td>
-                  <td><code>node --test tests/electron-e2e.test.ts</code></td>
-                  <td>Kiểm thử</td>
-                  <td>Tầng 3: Khởi động Electron thật và lái giao diện tự động qua Chrome DevTools Protocol.</td>
-                </tr>
-                <tr>
-                  <td>11</td>
-                  <td><code>npm test</code></td>
-                  <td><code>npm run test:unit &amp;&amp; npm run test:p2p &amp;&amp; npm run test:e2e</code></td>
-                  <td>Kiểm thử</td>
-                  <td>Chạy toàn bộ 3 tầng kiểm thử liên tiếp (16 test files).</td>
-                </tr>
-                <tr>
-                  <td>12</td>
-                  <td><code>npm run signal:start</code></td>
-                  <td><code>node --env-file-if-exists=.env services/signaling/index.ts</code></td>
-                  <td>Signaling</td>
-                  <td>Khởi chạy WebSocket Signaling Server tại cổng <code>8787</code>.</td>
-                </tr>
-                <tr>
-                  <td>13</td>
-                  <td><code>npm run signal:invite</code></td>
-                  <td><code>node --env-file-if-exists=.env scripts/create-invite.ts</code></td>
-                  <td>Signaling</td>
-                  <td>Tạo mã lời mời tham gia nhóm (Group Invitation V2 Token) dạng JSON.</td>
-                </tr>
-                <tr>
-                  <td>14</td>
-                  <td><code>npm run docs:open</code></td>
-                  <td><code>node scripts/open-docs.js</code></td>
-                  <td>Tài liệu</td>
-                  <td>Mở cổng tài liệu HTML trên trình duyệt mặc định (hỗ trợ cờ <code>--dry-run</code>).</td>
-                </tr>
-                <tr>
-                  <td>15</td>
-                  <td><code>npm run docs:screenshots</code></td>
-                  <td><code>node scripts/capture-docs-screenshots.ts</code></td>
-                  <td>Tài liệu</td>
-                  <td>Dựng cụm P2P ảo, bật Electron và dùng CDP chụp 6 ảnh màn hình vào <code>docs/assets/</code>.</td>
-                </tr>
-                <tr>
-                  <td>16</td>
-                  <td><code>node scripts/verify-html-docs.js</code></td>
-                  <td><code>node scripts/verify-html-docs.js</code></td>
-                  <td>Chất lượng</td>
-                  <td>Quét toàn bộ HTML tài liệu, kiểm tra tính toàn vẹn của thẻ link, anchor <code>#id</code> và ảnh.</td>
+                  <td><strong>Build 3: <code>out/renderer/</code></strong></td>
+                  <td><code>vite building client environment...</code></td>
+                  <td><strong>Why Client?</strong> The Renderer runs inside sandboxed Chromium. Vite compiles a browser SPA, bundling React 19 and React DOM:
+                    <ol>
+                      <li><code>out/renderer/index.html</code> (~0.62 kB): Production HTML with <code>p2pCsp(false)</code> strict CSP (<code>connect-src 'none'</code>).</li>
+                      <li><code>assets/index-B2QFJOqy.css</code> (~15.37 kB): Extracted, minified CSS.</li>
+                      <li><code>assets/index-DaQqRAeS.js</code> (~739.87 kB): Minified React 19 app with content-hash suffix.</li>
+                    </ol>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -439,160 +385,258 @@ flowchart TB
         <hr>
 
         <!-- Section 4 -->
-        <section id="giai-thich-chi-tiet-tung-lenh">
-          <h2>4. Giải thích chuyên sâu từng lệnh: Tại sao có, nó làm gì, cờ/tham số là gì?</h2>
-
-          <h3>Nhóm 1: Cài đặt</h3>
-          <h4>1. <code>npm install</code></h4>
-          <p>
-            Đọc <code>package-lock.json</code>, tải các thư viện về thư mục <code>node_modules/</code> và thực hiện liên kết native modules. Dự án cấu hình mục <code>allowScripts</code> trong <code>package.json</code> để cấp quyền cho <code>esbuild</code> biên dịch nhị phân tối ưu hóa riêng cho hệ điều hành của bạn.
-          </p>
-
-          <h3>Nhóm 2: Chạy &amp; Đóng gói ứng dụng Desktop</h3>
-          <h4>2. <code>npm run dev</code> (Lệnh ngầm: <code>electron-vite dev --watch</code>)</h4>
-          <p>
-            Khởi động môi trường phát triển: bật máy chủ Vite tại <code>http://127.0.0.1:5173</code> phục vụ Hot Module Replacement (HMR) cho giao diện React; đồng thời biên dịch nóng Main Process và Preload Script với cờ <code>--watch</code> (tự khởi động lại nếu bạn sửa mã ở tiến trình chính).
-          </p>
-
-          <h4>3. <code>npm run build</code> (Lệnh ngầm: <code>npm run typecheck &amp;&amp; electron-vite build</code>)</h4>
-          <p>
-            Toán tử <code>&amp;&amp;</code> bảo đảm chỉ đóng gói khi bước kiểm tra kiểu (<code>typecheck</code>) không có bất kỳ lỗi nào. Sau đó <code>electron-vite build</code> sẽ đóng gói:
-          </p>
-          <ul>
-            <li><code>src/main/index.ts</code> → <code>./out/main/index.js</code> (ES Module)</li>
-            <li><code>src/preload/index.ts</code> → <code>./out/preload/index.cjs</code> (CommonJS)</li>
-            <li><code>src/renderer/</code> → <code>./out/renderer/</code> (HTML tĩnh và JS/CSS đã nén minified)</li>
-          </ul>
-
-          <h4>4. <code>npm run start</code> (Lệnh ngầm: <code>electron-vite preview</code>)</h4>
-          <p>
-            Chạy thử ứng dụng desktop Electron trực tiếp từ thư mục <code>./out/</code> giống hệt môi trường thực tế của người dùng cuối, không thông qua dev server Vite. Bắt buộc phải chạy <code>npm run build</code> trước.
-          </p>
-
-          <h3>Nhóm 3: Kiểm tra kiểu dữ liệu TypeScript (Typechecking)</h3>
-          <h4>5. <code>npm run typecheck:node</code> (<code>tsc --noEmit -p tsconfig.node.json --composite false</code>)</h4>
-          <p>Ý nghĩa từng cờ:</p>
-          <ul>
-            <li><code>tsc</code>: Trình biên dịch TypeScript Compiler.</li>
-            <li><code>--noEmit</code>: Chỉ kiểm tra lỗi trong RAM, tuyệt đối không tạo ra file mới trên ổ cứng.</li>
-            <li><code>-p tsconfig.node.json</code>: Đọc cấu hình từ file Node chuyên biệt (kiểm tra main, preload, shared, services, scripts, tests).</li>
-            <li><code>--composite false</code>: Tắt chế độ build composite để ép kiểm tra trực tiếp nhanh nhất.</li>
-          </ul>
-
-          <h4>6. <code>npm run typecheck:web</code> (<code>tsc --noEmit -p tsconfig.web.json --composite false</code>)</h4>
-          <p>
-            Tương tự lệnh trên, nhưng áp dụng cho <code>tsconfig.web.json</code> để kiểm tra giao diện React 19 trong <code>src/renderer/</code> (kiểm tra props, hooks, cú pháp thẻ JSX).
-          </p>
-
-          <h4>7. <code>npm run typecheck</code> (<code>npm run typecheck:node &amp;&amp; npm run typecheck:web</code>)</h4>
-          <p>
-            Chạy kiểm tra toàn diện cả hai môi trường Node và Web. Dừng ngay lập tức nếu xuất hiện bất kỳ cảnh báo lỗi kiểu nào.
-          </p>
-
-          <h3>Nhóm 4: Bộ kiểm thử tự động 3 tầng</h3>
-          <h4>8. <code>npm run test:unit</code></h4>
-          <p>
-            Sử dụng trình chạy test siêu tốc tích hợp sẵn <code>node --test</code> để chạy tuần tự 6 file unit test: <code>theme-store</code>, <code>credential-store</code>, <code>peer-store-v2</code> (atomic rename chống hỏng file), <code>profile-migration</code> (tự nâng cấp cấu hình V1 lên V2), <code>signaling-config</code> và <code>p2p-protocol</code>.
-          </p>
-
-          <h4>9. <code>npm run test:p2p</code></h4>
-          <p>
-            Chạy tuần tự 9 file test tích hợp mạng ngang hàng: kiểm tra WebSocket server, tự động gia hạn lease heartbeat, bắt tay WebRTC thật trong bộ nhớ qua <code>werift</code>, chia sẻ file, phân quyền grant, băm SHA-256 từng chunk 16 KiB, chịu lỗi đứt mạng giữa chừng (survival) và cô lập đa nhóm (multi-group security).
-          </p>
-
-          <h4>10. <code>npm run test:e2e</code> (<code>node --test tests/electron-e2e.test.ts</code>)</h4>
-          <p>
-            Khởi động ứng dụng Electron thật, kết nối qua <strong>Chrome DevTools Protocol (CDP)</strong> để tự động điều khiển chuột/phím, mở Command Palette (<code>Ctrl+K</code>), duyệt qua tất cả các màn hình và kiểm tra kết xuất giao diện.
-          </p>
-
-          <h4>11. <code>npm test</code></h4>
-          <p>
-            Chạy liên tiếp cả 3 tầng kiểm thử: <code>npm run test:unit &amp;&amp; npm run test:p2p &amp;&amp; npm run test:e2e</code>.
-          </p>
-
-          <h3>Nhóm 5: Vận hành Signaling &amp; Tạo mã mời</h3>
-          <h4>12. <code>npm run signal:start</code> (<code>node --env-file-if-exists=.env services/signaling/index.ts</code>)</h4>
-          <p>
-            Cờ <code>--env-file-if-exists=.env</code> là tính năng native của Node.js giúp tự động nạp file cấu hình môi trường mà không cần cài thêm thư viện <code>dotenv</code>. Khởi chạy máy chủ WebSocket Signaling tại <code>ws://127.0.0.1:8787/signal</code>.
-          </p>
-
-          <h4>13. <code>npm run signal:invite</code> (<code>node --env-file-if-exists=.env scripts/create-invite.ts</code>)</h4>
-          <p>
-            Cách truyền tham số qua ký hiệu <code>--</code>:
-          </p>
-          <pre><code class="language-bash">npm run signal:invite -- --group-id=engineering-team --group-name="Đội Kỹ Thuật"</code></pre>
-          <p>
-            Ký hiệu <code>--</code> báo cho npm biết hãy chuyển toàn bộ tham số phía sau vào cho script xử lý để sinh ra chuỗi JSON lời mời <code>GroupInvitation</code> V2 có chữ ký bảo mật.
-          </p>
-
-          <h3>Nhóm 6: Tài liệu &amp; Đảm bảo chất lượng</h3>
-          <h4>14. <code>npm run docs:open</code> (<code>node scripts/open-docs.js</code>)</h4>
-          <p>
-            Tự động nhận diện hệ điều hành (Windows <code>cmd /c start</code>, macOS <code>open</code>, Linux <code>xdg-open</code>) để mở cổng tài liệu <code>docs/index.html</code> trên trình duyệt web. Hỗ trợ cờ <code>npm run docs:open -- --dry-run</code> để kiểm tra trong CI.
-          </p>
-
-          <h4>15. <code>npm run docs:screenshots</code> (<code>node scripts/capture-docs-screenshots.ts</code>)</h4>
-          <p>
-            Dựng cụm P2P ảo với dữ liệu mẫu, mở Electron và dùng CDP tự động chụp lại 6 ảnh giao diện sắc nét lưu vào thư mục <code>docs/assets/</code>.
-          </p>
-
-          <h4>16. <code>node scripts/verify-html-docs.js</code></h4>
-          <p>
-            Bộ công cụ kiểm tra tự động: duyệt qua tất cả 21 file HTML, kiểm tra từng đường dẫn liên kết tương đối, ảnh, script và mọi thẻ neo <code>#id</code> nội bộ để đảm bảo tài liệu không có bất kỳ liên kết hỏng nào.
-          </p>
+        <section id="bang-tra-cuu-nhanh-cac-lenh">
+          <h2>4. Complete Quick-Reference Table of All 19 CLI Commands</h2>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>CLI Command</th>
+                  <th>Under-the-Hood Script</th>
+                  <th>Target Layer</th>
+                  <th>Primary Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td><code>npm install</code></td>
+                  <td><code>npm install</code></td>
+                  <td>Local Workspace</td>
+                  <td>Downloads and verifies SHA-512 hashes for dependencies.</td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td><code>npm run dev</code></td>
+                  <td><code>electron-vite dev --watch</code></td>
+                  <td>Main + Preload + Renderer</td>
+                  <td>Launches desktop application in dev mode with Vite HMR.</td>
+                </tr>
+                <tr>
+                  <td>3</td>
+                  <td><code>npm run build</code></td>
+                  <td><code>npm run typecheck &amp;&amp; electron-vite build</code></td>
+                  <td>All 3 Electron Targets</td>
+                  <td>Typechecks and compiles production artifacts into <code>./out/</code>.</td>
+                </tr>
+                <tr>
+                  <td>4</td>
+                  <td><code>npm run start</code></td>
+                  <td><code>electron-vite preview</code></td>
+                  <td>Packaged App</td>
+                  <td>Launches the desktop app directly from compiled <code>./out/</code> bundles.</td>
+                </tr>
+                <tr>
+                  <td>5</td>
+                  <td><code>npm run typecheck:node</code></td>
+                  <td><code>tsc --noEmit -p tsconfig.node.json --composite false</code></td>
+                  <td>Node Processes</td>
+                  <td>Typechecks main, preload, services, scripts, and tests.</td>
+                </tr>
+                <tr>
+                  <td>6</td>
+                  <td><code>npm run typecheck:web</code></td>
+                  <td><code>tsc --noEmit -p tsconfig.web.json --composite false</code></td>
+                  <td>Renderer (React 19)</td>
+                  <td>Typechecks React 19 UI components and DOM interactions.</td>
+                </tr>
+                <tr>
+                  <td>7</td>
+                  <td><code>npm run typecheck</code></td>
+                  <td><code>npm run typecheck:node &amp;&amp; npm run typecheck:web</code></td>
+                  <td>Full Codebase</td>
+                  <td>Sequentially validates types across all Node and Web targets.</td>
+                </tr>
+                <tr>
+                  <td>8</td>
+                  <td><code>npm run test:unit</code></td>
+                  <td><code>node --test tests/theme-store.test.ts ...</code></td>
+                  <td>Stores &amp; Codecs</td>
+                  <td>Runs the 6 isolated unit test suites using the Node test runner.</td>
+                </tr>
+                <tr>
+                  <td>9</td>
+                  <td><code>npm run test:p2p</code></td>
+                  <td><code>node --test tests/signaling-server.test.ts ...</code></td>
+                  <td>P2P Swarms &amp; WebRTC</td>
+                  <td>Runs the 9 integration test suites (Werift, HRW, flow control).</td>
+                </tr>
+                <tr>
+                  <td>10</td>
+                  <td><code>npm run test:e2e</code></td>
+                  <td><code>node --test tests/electron-e2e.test.ts</code></td>
+                  <td>Headless Electron (CDP)</td>
+                  <td>Launches Electron via Chrome DevTools Protocol to test the UI.</td>
+                </tr>
+                <tr>
+                  <td>11</td>
+                  <td><code>npm test</code></td>
+                  <td><code>npm run test:unit &amp;&amp; npm run test:p2p &amp;&amp; npm run test:e2e</code></td>
+                  <td>All Test Suites</td>
+                  <td>Executes all 16 test suites consecutively.</td>
+                </tr>
+                <tr>
+                  <td>12</td>
+                  <td><code>npm run signal:start</code></td>
+                  <td><code>node --env-file-if-exists=.env services/signaling/index.ts</code></td>
+                  <td>Signaling Server</td>
+                  <td>Starts standalone WebSocket signaling server on port 8787.</td>
+                </tr>
+                <tr>
+                  <td>13</td>
+                  <td><code>npm run signal:invite</code></td>
+                  <td><code>node --env-file-if-exists=.env scripts/create-invite.ts</code></td>
+                  <td>Signaling Utility</td>
+                  <td>Generates V2 JSON invitations or short base64url invite codes.</td>
+                </tr>
+                <tr>
+                  <td>14</td>
+                  <td><code>npm run docker:build</code></td>
+                  <td><code>docker build -t p2p-multiple-groups-signaling .</code></td>
+                  <td>Docker Container</td>
+                  <td>Builds production signaling container image from <code>Dockerfile</code>.</td>
+                </tr>
+                <tr>
+                  <td>15</td>
+                  <td><code>npm run docker:up</code></td>
+                  <td><code>docker compose --env-file .env up -d --build</code></td>
+                  <td>Docker Compose Stack</td>
+                  <td>Launches signaling and Coturn services in background containers.</td>
+                </tr>
+                <tr>
+                  <td>16</td>
+                  <td><code>npm run docker:down</code></td>
+                  <td><code>docker compose down</code></td>
+                  <td>Docker Compose Stack</td>
+                  <td>Stops and cleans up background containers and networks.</td>
+                </tr>
+                <tr>
+                  <td>17</td>
+                  <td><code>npm run docs:open</code></td>
+                  <td><code>node scripts/open-docs.js</code></td>
+                  <td>Documentation Portal</td>
+                  <td>Opens <code>docs/index.html</code> in default OS web browser.</td>
+                </tr>
+                <tr>
+                  <td>18</td>
+                  <td><code>npm run docs:screenshots</code></td>
+                  <td><code>node scripts/capture-docs-screenshots.ts</code></td>
+                  <td>CDP Screenshot Automation</td>
+                  <td>Automates headless Electron to capture production UI screenshots.</td>
+                </tr>
+                <tr>
+                  <td>19</td>
+                  <td><code>node scripts/verify-html-docs.js</code></td>
+                  <td><code>node scripts/verify-html-docs.js</code></td>
+                  <td>Documentation Integrity</td>
+                  <td>Validates all 25 HTML files, 900+ links, anchors, and assets.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <hr>
 
         <!-- Section 5 -->
-        <section id="quy-trinh-thuc-te">
-          <h2>5. Các quy trình thực hành chuẩn cho người mới bắt đầu</h2>
+        <section id="giai-thich-chi-tiet-tung-lenh">
+          <h2>5. In-Depth Breakdown of All 19 Commands</h2>
+          <p>
+            Below is a comprehensive breakdown of each command's flags, mechanics, and runtime behavior:
+          </p>
 
-          <h3>Quy trình 1: Cài đặt và khởi chạy ứng dụng lần đầu</h3>
-          <pre><code class="language-bash"># 1. Di chuyển vào thư mục dự án
+          <h3>Lifecycle &amp; Development</h3>
+          <ul>
+            <li><strong><code>npm install</code></strong>: Reads <code>package.json</code> and pins versions via <code>package-lock.json</code>. In CI environments, use <code>npm ci</code>.</li>
+            <li><strong><code>npm run dev</code></strong>: Runs <code>electron-vite dev --watch</code>. The <code>--watch</code> flag watches files and enables HMR for the React UI.</li>
+            <li><strong><code>npm run build</code></strong>: Runs <code>npm run typecheck &amp;&amp; electron-vite build</code>. Guarantees 0 type errors before producing production bundles.</li>
+            <li><strong><code>npm run start</code></strong>: Runs <code>electron-vite preview</code>, testing production artifacts in <code>./out/</code>.</li>
+          </ul>
+
+          <h3>Static Typechecking</h3>
+          <ul>
+            <li><strong><code>npm run typecheck:node</code></strong>: Validates <code>tsconfig.node.json</code> using <code>tsc --noEmit --composite false</code>.</li>
+            <li><strong><code>npm run typecheck:web</code></strong>: Validates <code>tsconfig.web.json</code> for React 19 JSX components.</li>
+            <li><strong><code>npm run typecheck</code></strong>: Runs both checks sequentially.</li>
+          </ul>
+
+          <h3>Testing Suites</h3>
+          <ul>
+            <li><strong><code>npm run test:unit</code></strong>: Executes unit tests for <code>theme-store</code>, <code>credential-store</code>, <code>peer-store-v2</code>, <code>profile-migration</code>, <code>signaling-config</code>, and <code>p2p-protocol</code>.</li>
+            <li><strong><code>npm run test:p2p</code></strong>: Executes multi-peer P2P integration tests (WebRTC, HRW election, transfer flow control, multi-group isolation, and owner security).</li>
+            <li><strong><code>npm run test:e2e</code></strong>: Spawns Electron with Chrome DevTools Protocol to verify navigation and the <code>window.p2p</code> sandbox bridge.</li>
+            <li><strong><code>npm test</code></strong>: Chains all unit, P2P, and E2E suites consecutively.</li>
+          </ul>
+
+          <h3>Signaling &amp; Container Ops</h3>
+          <ul>
+            <li><strong><code>npm run signal:start</code></strong>: Runs <code>node --env-file-if-exists=.env services/signaling/index.ts</code>. Loads <code>.env</code> automatically without crashing if missing.</li>
+            <li><strong><code>npm run signal:invite</code></strong>: Runs <code>scripts/create-invite.ts</code>. Accepts <code>--group-id=&lt;id&gt;</code> and <code>--code-only</code>:
+              <pre><code class="language-bash">npm run signal:invite -- --group-id=general-group --code-only</code></pre>
+            </li>
+            <li><strong><code>npm run docker:build</code></strong>: Builds <code>p2p-multiple-groups-signaling</code> container image.</li>
+            <li><strong><code>npm run docker:up</code></strong>: Runs <code>docker compose --env-file .env up -d --build</code> to start containers in background.</li>
+            <li><strong><code>npm run docker:down</code></strong>: Runs <code>docker compose down</code> to stop and remove containers.</li>
+          </ul>
+
+          <h3>Documentation Tooling</h3>
+          <ul>
+            <li><strong><code>npm run docs:open</code></strong>: Opens <code>docs/index.html</code> in default browser.</li>
+            <li><strong><code>npm run docs:screenshots</code></strong>: Automates headless screenshot capture for documentation assets.</li>
+            <li><strong><code>node scripts/verify-html-docs.js</code></strong>: Verifies HTML documentation integrity across all 25 pages.</li>
+          </ul>
+        </section>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <section id="quy-trinh-thuc-te">
+          <h2>6. Practical Step-by-Step Workflows</h2>
+
+          <h3>Workflow 1: First-Time Setup &amp; Development Launch</h3>
+          <pre><code class="language-bash"># 1. Clone repository
+git clone https://github.com/your-org/p2p-multiple-groups.git
 cd p2p-multiple-groups
 
-# 2. Kiểm tra phiên bản Node.js (bắt buộc >= 24.12.0)
-node -v
-
-# 3. Cài đặt toàn bộ thư viện dependencies
+# 2. Install dependencies
 npm install
 
-# 4. Kiểm tra kiểu dữ liệu để đảm bảo môi trường sạch
+# 3. Typecheck codebase
 npm run typecheck
 
-# 5. Khởi động ứng dụng ở chế độ phát triển
+# 4. Launch in development mode
 npm run dev</code></pre>
 
-          <h3>Quy trình 2: Tự mở mạng P2P và thử nghiệm chia sẻ file trên máy cá nhân</h3>
-          <p>Bạn có thể mô phỏng một mạng P2P gồm 2 máy tính kết nối với nhau ngay trên 1 chiếc laptop:</p>
-          <pre><code class="language-bash"># CỬA SỔ TERMINAL 1: Bật máy chủ Signaling
-npm run signal:start
+          <h3>Workflow 2: Running a Local 2-Peer Swarm on One Machine</h3>
+          <pre><code class="language-bash"># TERMINAL 1: Launch Signaling Server
+cp .env.example .env
+npm run docker:up
+# Or run directly: npm run signal:start
 
-# CỬA SỔ TERMINAL 2: Tạo mã mời cho nhóm thử nghiệm
-npm run signal:invite -- --group-id=nhom-test --group-name="Nhóm Test"
-# -> Sao chép toàn bộ chuỗi JSON in ra trên màn hình
-
-# CỬA SỔ TERMINAL 3: Bật Peer A
+# TERMINAL 2: Launch Peer A (Development Mode)
 npm run dev
-# -> Vào mục "Network & Groups" -> Dán chuỗi JSON -> Bấm "Join Group"
-# -> Vào mục "Library" -> Bấm "Add File" để chọn file và cấp quyền chia sẻ cho nhóm
+# 1. Open "Network &amp; Groups" -> Select "Create Group" -> Enter name (e.g. "alpha-swarm")
+# 2. Click "Create &amp; Join" -> Peer A is elected Owner and Supernode
+# 3. Click "Copy Invite Code" (or copy V2 JSON invitation)
+# 4. Open "Library" -> Click "Add File" -> Select a file and check "alpha-swarm" to share
 
-# CỬA SỔ TERMINAL 4: Bật Peer B (chạy bản preview độc lập)
+# TERMINAL 3: Launch Peer B (Production Preview Mode)
 npm run build
 npm run start
-# -> Vào mục "Network & Groups" -> Dán mã mời -> Bấm "Join Group"
-# -> Vào mục "Search & Discovery" -> Tìm kiếm file -> Bấm "Download"
-# -> Vào mục "Transfers" để quan sát các khối 16 KiB được truyền trực tiếp qua WebRTC!</code></pre>
+# 1. Open "Network &amp; Groups" -> Select "Join Group"
+# 2. Paste Invite Code copied from Peer A -> Click "Join Group"
+# 3. Open "Search &amp; Discovery" -> Search for file shared by Peer A
+# 4. Click "Download" -> Open "Transfers" to observe 16 KiB chunk flow over WebRTC!</code></pre>
 
-          <h3>Quy trình 3: Kiểm tra toàn diện trước khi commit / bàn giao code</h3>
-          <pre><code class="language-bash"># Bước 1: Kiểm tra kiểu dữ liệu tĩnh (Bắt buộc không có bất kỳ lỗi TS nào)
+          <h3>Workflow 3: Pre-Flight Verification Before Committing</h3>
+          <pre><code class="language-bash"># Step 1: Ensure zero TypeScript errors
 npm run typecheck
 
-# Bước 2: Chạy trọn bộ 3 tầng kiểm thử tự động (Unit, P2P, E2E)
+# Step 2: Execute all 16 test suites
 npm test
 
-# Bước 3: Kiểm tra tính toàn vẹn của hệ thống tài liệu HTML
+# Step 3: Verify HTML documentation integrity
 node scripts/verify-html-docs.js</code></pre>
         </section>
 
@@ -613,11 +657,12 @@ node scripts/verify-html-docs.js</code></pre>
       <aside class="docs-toc">
         <div class="toc-title">On This Page</div>
         <ul class="toc-list">
-          <li><a href="#he-sinh-thai-js-ts-node-npm" class="toc-link">1. Hệ sinh thái JS, TS, Node &amp; npm</a></li>
-          <li><a href="#kien-truc-build-electron-vite" class="toc-link">2. Kiến trúc 3 tiến trình &amp; tsconfig</a></li>
-          <li><a href="#bang-tra-cuu-nhanh-cac-lenh" class="toc-link">3. Bảng tra cứu nhanh 16 lệnh</a></li>
-          <li><a href="#giai-thich-chi-tiet-tung-lenh" class="toc-link">4. Giải thích chi tiết từng lệnh</a></li>
-          <li><a href="#quy-trinh-thuc-te" class="toc-link">5. Quy trình thực tế cho người mới</a></li>
+          <li><a href="#he-sinh-thai-js-ts-node-npm" class="toc-link">1. Core Ecosystem for Java Devs</a></li>
+          <li><a href="#kien-truc-build-electron-vite" class="toc-link">2. Electron Architecture &amp; tsconfig</a></li>
+          <li><a href="#giai-phau-lenh-npm-run-build" class="toc-link">3. Anatomy of npm run build</a></li>
+          <li><a href="#bang-tra-cuu-nhanh-cac-lenh" class="toc-link">4. Quick-Reference 19 Commands</a></li>
+          <li><a href="#giai-thich-chi-tiet-tung-lenh" class="toc-link">5. In-Depth Command Breakdown</a></li>
+          <li><a href="#quy-trinh-thuc-te" class="toc-link">6. Practical Workflows</a></li>
         </ul>
       </aside>
     </main>

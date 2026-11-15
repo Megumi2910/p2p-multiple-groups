@@ -231,12 +231,15 @@ function queueAction&lt;T&gt;(action: () => Promise&lt;T&gt;): Promise&lt;T&gt; 
           <h3>Serialized Operations</h3>
           <p>The following operations must pass through <code>queueAction</code>:</p>
           <ol>
+            <li><code>createGroup</code>: Creates a new virtual group, saves <code>ownerSecret</code>, handshakes with signaling, and elects owner.</li>
             <li><code>joinGroup</code>: Validates invitation, persists group, connects signaling client, handshakes group.</li>
             <li><code>resumeGroup</code>: Reconnects a previously saved group using remembered credentials.</li>
+            <li><code>rotateGroupInvite</code>: Authenticates with <code>ownerSecret</code>, requests invite code rotation, and broadcasts updated invite code.</li>
+            <li><code>removeGroupMember</code>: Authenticates with <code>ownerSecret</code> to evict a specified peer from the group roster.</li>
             <li><code>leaveGroup</code>: Gracefully unregisters from signaling, tears down group SCTP streams.</li>
             <li><code>forgetGroup</code>: Leaves group, permanently purges credentials, and atomically revokes all file grants.</li>
             <li><code>disconnectAll</code>: Disconnects all active groups.</li>
-            <li><code>setRelayOnly</code>: Changes the ICE transport policy (enforces that all groups are disconnected first).</li>
+            <li><code>setRelayOnly</code>: Dynamically toggles ICE transport relay policies across active swarms.</li>
           </ol>
         </section>
 
@@ -284,7 +287,7 @@ function queueAction&lt;T&gt;(action: () => Promise&lt;T&gt;): Promise&lt;T&gt; 
           <ol>
             <li>When state changes, <code>publishState()</code> marks a dirty snapshot.</li>
             <li>If <code>stateThrottleTimer</code> is active, the notification is deferred.</li>
-            <li>Once the 200 ms timer expires, the latest combined snapshot (<code>MultiGroupP2pState &amp; P2pState</code>) is pushed via <code>IPC_CHANNELS.P2P_V2_STATE</code> and the legacy <code>P2P_STATE</code> channel simultaneously.</li>
+            <li>Once the 200 ms timer expires, the latest <code>MultiGroupP2pState</code> snapshot is pushed over <code>IPC_CHANNELS.P2P_V2_STATE</code> (<code>'p2p:state'</code>).</li>
           </ol>
         </section>
 

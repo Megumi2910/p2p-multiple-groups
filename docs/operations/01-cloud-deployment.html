@@ -328,6 +328,7 @@ sudo /etc/letsencrypt/renewal-hooks/deploy/p2p-renew.sh</code></pre>
             </table>
           </div>
 
+          <p><em>(Note: <code>ops/azure/kazaa-signaling.service</code> is the legacy systemd service template filename preserved in <code>ops/azure/</code> for backward compatibility).</em></p>
           <p>Start and enable all services:</p>
           <pre><code class="language-bash">sudo systemctl daemon-reload
 sudo systemctl enable --now coturn
@@ -337,8 +338,35 @@ sudo systemctl restart nginx</code></pre>
 
         <hr>
 
+        <section id="docker-deployment">
+          <h2>3. Docker &amp; Docker Compose Deployment</h2>
+          <p>For containerized environments, the repository includes a standalone Alpine <code>Dockerfile</code> and <code>docker-compose.yml</code>:</p>
+
+          <h3>Deployment Steps</h3>
+          <ol>
+            <li>Configure environment variables:
+              <pre><code class="language-bash">cp .env.example .env</code></pre>
+            </li>
+            <li>Launch container stack in the background:
+              <pre><code class="language-bash">npm run docker:up</code></pre>
+            </li>
+            <li>View logs and health check status:
+              <pre><code class="language-bash">docker compose logs -f</code></pre>
+            </li>
+            <li>Stop and tear down container stack:
+              <pre><code class="language-bash">npm run docker:down</code></pre>
+            </li>
+            <li>Rebuild container image directly:
+              <pre><code class="language-bash">npm run docker:build</code></pre>
+            </li>
+          </ol>
+          <p>The container includes a built-in Alpine <code>HEALTHCHECK</code> probing <code>http://127.0.0.1:8787/healthz</code> every 15 seconds.</p>
+        </section>
+
+        <hr>
+
         <section id="render-paas">
-          <h2>3. Turnkey PaaS Deployment (Render.com)</h2>
+          <h2>4. Turnkey PaaS Deployment (Render.com)</h2>
           <p>
             For lightweight deployments without managing virtual machines, the repository includes a ready-to-use <strong>Render Blueprint</strong> in <code>render.yaml</code>.
           </p>
@@ -389,8 +417,8 @@ sudo systemctl restart nginx</code></pre>
         <ul class="toc-list">
           <li><a href="#cloud-architecture" class="toc-link">1. Infrastructure Overview</a></li>
           <li><a href="#azure-deployment" class="toc-link">2. Azure VM Deployment</a></li>
-          <li><a href="#render-paas" class="toc-link">3. Render.com PaaS</a></li>
-        </ul>
+          <li><a href="#docker-deployment" class="toc-link">3. Docker Deployment</a></li>
+          <li><a href="#render-paas" class="toc-link">4. Render.com PaaS</a></li>
       </aside>
     </main>
   </div>

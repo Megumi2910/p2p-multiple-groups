@@ -82,7 +82,7 @@ npm run test:e2e
 - `tests/electron-e2e.test.ts`:
   - Verifies production Content Security Policy (`connect-src 'none'`).
   - Asserts strict Node.js isolation (`window.process`, `window.require`, and `window.Buffer` are `undefined`).
-  - Verifies `window.p2p` and `window.kazaa` desktop bridge contracts.
+  - Verifies `window.p2p` desktop bridge contracts.
   - Full keyboard navigation rail testing across all 6 views with focus verification.
   - Command palette interaction (`Ctrl+K` / `Cmd+K`).
   - Minimum viewport layout verification ($760 \times 520$) confirming zero horizontal overflow.

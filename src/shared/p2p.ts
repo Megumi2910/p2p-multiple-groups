@@ -267,6 +267,43 @@ const BASE64URL_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
 const INVITE_CODE_PATTERN = /^[A-Za-z0-9_-]{8,64}$/
 const CONTROL_CHAR_PATTERN = /[\u0000-\u001F\u007F]/
 
+export function isLoopbackOrPrivateHost(hostname: string): boolean {
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname === '::1' ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.lan')
+  ) {
+    return true
+  }
+
+  // IPv4 private ranges (RFC 1918 & RFC 3927 link-local)
+  const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname)
+  if (ipv4Match) {
+    const octet1 = Number(ipv4Match[1])
+    const octet2 = Number(ipv4Match[2])
+    const octet3 = Number(ipv4Match[3])
+    const octet4 = Number(ipv4Match[4])
+    if (octet1 > 255 || octet2 > 255 || octet3 > 255 || octet4 > 255) return false
+    if (octet1 === 127) return true // 127.0.0.0/8
+    if (octet1 === 10) return true // 10.0.0.0/8
+    if (octet1 === 172 && octet2 >= 16 && octet2 <= 31) return true // 172.16.0.0/12
+    if (octet1 === 192 && octet2 === 168) return true // 192.168.0.0/16
+    if (octet1 === 169 && octet2 === 254) return true // 169.254.0.0/16
+    return false
+  }
+
+  // IPv6 ULA (fc00::/7) or link-local (fe80::/10)
+  const cleanIpv6 = hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  if (cleanIpv6.startsWith('fc') || cleanIpv6.startsWith('fd') || cleanIpv6.startsWith('fe80:')) {
+    return true
+  }
+
+  return false
+}
+
 export function validateSignalingUrl(rawUrl: string): { valid: true; url: string } | { valid: false; error: string } {
   if (typeof rawUrl !== 'string' || rawUrl.length === 0) {
     return { valid: false, error: 'Signaling URL is required' }
@@ -290,13 +327,13 @@ export function validateSignalingUrl(rawUrl: string): { valid: true; url: string
 
   const hostname = parsed.hostname
   if (parsed.protocol === 'ws:') {
-    if (hostname !== '127.0.0.1' && hostname !== '[::1]' && hostname !== 'localhost') {
-      return { valid: false, error: 'Insecure ws: protocol is permitted only for loopback addresses' }
+    if (!isLoopbackOrPrivateHost(hostname)) {
+      return { valid: false, error: 'Insecure ws: protocol is permitted only for loopback and private network addresses' }
     }
   } else if (parsed.protocol === 'wss:') {
     // wss is valid for any host
   } else {
-    return { valid: false, error: 'Signaling URL protocol must be wss: (or ws: on loopback)' }
+    return { valid: false, error: 'Signaling URL protocol must be wss: (or ws: on local/private networks)' }
   }
 
   return { valid: true, url: parsed.toString().replace(/\/$/, '') }

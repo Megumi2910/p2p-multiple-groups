@@ -26,7 +26,7 @@ The screen is split into **Active Transfers** and **Completed Transfers**:
 1. From the [Search](04-search-and-discovery.md) view, click **Download** on a desired file result.
 2. A destination prompt allows you to choose where to save the file on your local storage drive (defaults to your operating system's configured `Downloads` directory).
 3. The client negotiates a dedicated binary WebRTC data channel with the peer offering the file:
-   - Label: `kazaa-file-v2:<fileId>:<groupKey>`
+   - Label: `p2p-multiple-groups-file-v2:<groupId>:<transferId>`
 4. The transfer appears immediately in the Active Transfers table.
 
 ---

@@ -67,7 +67,7 @@ flowchart TD
     end
 
     subgraph PreloadBoundary["Preload Execution Boundary"]
-        BRIDGE["contextBridge.exposeInMainWorld\n('kazaa', 'p2p')"]
+        BRIDGE["contextBridge.exposeInMainWorld\n('p2p', api)"]
         SAN_INPUT["Input Sanitization & Deep Freeze"]
     end
 
@@ -86,15 +86,14 @@ flowchart TD
     IPC_VAL --> FS_IO
 ```
 
-### 1. Strict Content Security Policy (CSP)
-The production HTML document enforces a locked-down CSP:
+### 1. Strict Content Security Policy (CSP) & `p2pCsp` Injection
+The production HTML document enforces a locked-down CSP dynamically injected via the `p2pCsp` plugin in `electron.vite.config.ts`:
 ```html
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'; object-src 'none'; media-src 'none'; frame-src 'none';" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';" />
 ```
-- **`connect-src 'none'`**: The renderer process is mathematically barred from making HTTP, WebSocket, or WebRTC connections. Even if an attacker injects malicious JavaScript into the DOM, that script cannot establish outbound command-and-control network channels.
+- **`connect-src 'none'`**: The renderer process is mathematically barred from making HTTP, WebSocket, or WebRTC connections. Even if an attacker injects malicious JavaScript into the DOM, that script cannot establish outbound command-and-control network channels. In development mode, `p2pCsp` permits `ws://127.0.0.1:5173` solely for Vite Hot Module Replacement.
 - **`object-src 'none'`**: Disables plugins (Java, Flash).
-- **`frame-src 'none'`**: Disables iframe nesting.
-
+- **`frame-src 'none'` / `base-uri 'none'`**: Disables iframe nesting and URI hijacking.
 ### 2. Node.js Context Isolation
 - `contextIsolation: true`
 - `nodeIntegration: false`
@@ -125,8 +124,9 @@ Inbound downloads sanitize remote filenames using `sanitizeDestinationFileName`:
 - Removes trailing spaces and periods that cause filesystem truncation exploits on Windows.
 - Defaults to `download` if sanitization empties the filename.
 
-### 5. OS Keychain Hardware Protection
-Group tokens and credentials are never stored in plaintext configuration files. They are encrypted using `safeStorage`:
+### 5. OS Keychain Hardware Protection & Owner Authorization
+Group tokens and authoritative `ownerSecret` credentials are never stored in plaintext configuration files. They are encrypted using `safeStorage`:
 - **Windows**: Encrypted with DPAPI using the logged-in Windows user's master key.
 - **macOS**: Stored using Apple Keychain Services with application-scoped access controls.
 - **Linux**: Stored using libsecret / Secret Service DBus daemon, preventing unauthorized processes from reading credential blobs.
+- **Owner Secret Authorization**: A 32-byte `ownerSecret` stored under `${groupKey}:owner` proves ownership to the signaling server for privileged actions, specifically invite code rotation (`rotateGroupInvite`) and member eviction (`removeGroupMember`). Constant-time comparison (`timingSafeEqual`) ensures owner secrets are immune to timing side-channel attacks.

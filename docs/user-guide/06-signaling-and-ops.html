@@ -118,13 +118,24 @@
         <hr>
 
         <section id="quick-start">
-          <h2>1. Quick Start: Local Signaling Server</h2>
-          <p>To start the signaling server for local development or private testing:</p>
+          <h2>1. Quick Start: Local &amp; Containerized Signaling Server</h2>
+          <p>You can start the signaling server either using Docker Compose or directly via Node.js:</p>
 
-          <pre><code class="language-bash"># Start signaling server on ws://127.0.0.1:8787/signal
+          <pre><code class="language-bash"># Option A: Docker Compose (background container, auto-loads root .env)
+cp .env.example .env
+npm run docker:up
+
+# Stop container stack:
+npm run docker:down
+
+# Or rebuild container image:
+npm run docker:build
+
+# Option B: Direct Node.js execution (ws://127.0.0.1:8787/signal)
+cp .env.example .env
 npm run signal:start</code></pre>
 
-          <p>By default, the server binds to <code>127.0.0.1:8787</code> and loads configuration from the local <code>.env</code> file (if present).</p>
+          <p>By default, the server binds to <code>0.0.0.0:8787</code> (or <code>127.0.0.1:8787</code> locally) and loads configuration from the local <code>.env</code> file (if present).</p>
         </section>
 
         <hr>
@@ -140,17 +151,20 @@ P2P_MULTIPLE_GROUPS_SIGNAL_PORT=8787
 # Public URL advertised to peers in invitations (ws:// or wss://)
 P2P_MULTIPLE_GROUPS_PUBLIC_SIGNAL_URL=ws://127.0.0.1:8787/signal
 
-# Multi-Group JSON Definition
-# Array of objects with unique groupId and secret token
-P2P_MULTIPLE_GROUPS_GROUPS_JSON=[{"groupId":"engineering-team","token":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},{"groupId":"research-docs","token":"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"}]
+# Optional pre-seeded groups (JSON array). Users can also create groups dynamically in the UI.
+P2P_MULTIPLE_GROUPS_GROUPS_JSON=[{"groupId":"engineering-team","token":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"},{"groupId":"research-docs","token":"AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"}]
 
 # STUN Server (Optional, for NAT discovery)
 P2P_MULTIPLE_GROUPS_STUN_URL=stun:stun.l.google.com:19302
 
-# Dynamic Ephemeral TURN Relay (Optional, for Symmetric NAT bypass)
+# Static TURN Configuration (Metered.ca or custom coturn)
+P2P_MULTIPLE_GROUPS_TURN_URL=turn:turn.example.com:3478
+P2P_MULTIPLE_GROUPS_TURN_USERNAME=myuser
+P2P_MULTIPLE_GROUPS_TURN_CREDENTIAL=mypassword
+
+# Dynamic Ephemeral TURN Relay (Optional, for RFC 5766 HMAC-SHA1 Symmetric NAT bypass)
 P2P_MULTIPLE_GROUPS_TURN_HOST=turn.example.com:3478
 P2P_MULTIPLE_GROUPS_TURN_SECRET=your-shared-coturn-secret-here</code></pre>
-
           <h3>Configuration Variables Reference</h3>
           <div class="table-wrapper">
             <table>
@@ -183,9 +197,9 @@ P2P_MULTIPLE_GROUPS_TURN_SECRET=your-shared-coturn-secret-here</code></pre>
                 </tr>
                 <tr>
                   <td><code>P2P_MULTIPLE_GROUPS_GROUPS_JSON</code></td>
-                  <td>Yes</td>
+                  <td>No (Optional)</td>
                   <td>—</td>
-                  <td>JSON array containing <code>{ groupId, token }</code> records.</td>
+                  <td>Pre-seeded static groups array (<code>groupId</code> + 256-bit base64url <code>token</code>). Not required if groups are created dynamically in the UI.</td>
                 </tr>
                 <tr>
                   <td><code>P2P_MULTIPLE_GROUPS_STUN_URL</code></td>
@@ -194,10 +208,28 @@ P2P_MULTIPLE_GROUPS_TURN_SECRET=your-shared-coturn-secret-here</code></pre>
                   <td>STUN server URL formatted as <code>stun:&lt;host&gt;:&lt;port&gt;</code>.</td>
                 </tr>
                 <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_TURN_URL</code></td>
+                  <td>No</td>
+                  <td>—</td>
+                  <td>Static TURN relay URL (<code>turn:&lt;host&gt;:&lt;port&gt;</code>).</td>
+                </tr>
+                <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_TURN_USERNAME</code></td>
+                  <td>If TURN URL set</td>
+                  <td>—</td>
+                  <td>Static TURN username.</td>
+                </tr>
+                <tr>
+                  <td><code>P2P_MULTIPLE_GROUPS_TURN_CREDENTIAL</code></td>
+                  <td>If TURN URL set</td>
+                  <td>—</td>
+                  <td>Static TURN credential/password.</td>
+                </tr>
+                <tr>
                   <td><code>P2P_MULTIPLE_GROUPS_TURN_HOST</code></td>
                   <td>No</td>
                   <td>—</td>
-                  <td>FQDN or IP of Coturn TURN relay.</td>
+                  <td>FQDN or IP of Coturn TURN relay for ephemeral tokens.</td>
                 </tr>
                 <tr>
                   <td><code>P2P_MULTIPLE_GROUPS_TURN_SECRET</code></td>
@@ -205,7 +237,6 @@ P2P_MULTIPLE_GROUPS_TURN_SECRET=your-shared-coturn-secret-here</code></pre>
                   <td>—</td>
                   <td>Shared static secret for RFC 5766 HMAC-SHA1 credential generation.</td>
                 </tr>
-              </tbody>
             </table>
           </div>
 
@@ -224,15 +255,19 @@ P2P_MULTIPLE_GROUPS_TURN_SECRET=your-shared-coturn-secret-here</code></pre>
           <h2>3. Generating Group Invitations</h2>
           <p>Peers require an invitation JSON containing the public signaling URL, the group ID, and the cryptographic access token. Use the built-in CLI utility to generate invitations:</p>
 
-          <pre><code class="language-bash"># Specify the desired target group:
-npm run signal:invite -- --group-id=engineering-team</code></pre>
+          <pre><code class="language-bash"># Generate full JSON invitation:
+npm run signal:invite -- --group-id=engineering-team
 
-          <p>The script outputs a formatted V2 invitation JSON:</p>
+# Or print compact short invite code only:
+npm run signal:invite -- --group-id=engineering-team --code-only</code></pre>
+
+          <p>The script outputs a formatted V2 invitation JSON (or raw invite code if <code>--code-only</code> is passed):</p>
           <pre><code class="language-json">{
   "version": 2,
   "signalingUrl": "ws://127.0.0.1:8787/signal",
   "groupId": "engineering-team",
-  "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  "token": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+  "inviteCode": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"
 }</code></pre>
 
           <p>Distribute this invitation string securely (via encrypted chat, email, or password manager) to authorized team members.</p>

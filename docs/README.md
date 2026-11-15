@@ -68,15 +68,15 @@ Depending on your engineering focus, follow one of the curated reading tracks be
 ### Track 0: Software Engineers, Inquiry Candidates, and Code Reviewers
 Focuses on language syntax fundamentals (JS/TS/React 19), full file-by-file codebase walkthroughs, quick code locator tables, and a 32-question inquiry exam bank.
 1. [01. JS/TS & React 19 Syntax in Codebase](code-guide/01-js-ts-react-syntax-in-codebase.md) — Core JS, ES Modules, TypeScript type system, generics, type guards, promise serialization, and React 19 hooks.
-2. [02. Shared Contracts, Preload Bridge & Signaling Code](code-guide/02-shared-preload-and-signaling-code.md) — Build configuration, IPC channel contracts, input validators, wire protocol type guards, and signaling server.
+2. [02. Shared Contracts, Preload Bridge & Signaling Code](code-guide/02-shared-preload-and-signaling-code.md) — Build configuration (p2pCsp), 22 IPC channel contracts, input validators, wire protocol type guards, dynamic group creation, and signaling server.
 3. [03. Main Process & P2P Engine Core Walkthrough](code-guide/03-main-process-and-p2p-engine-code.md) — Electron host lifecycle, IPC origin filters, HRW election, hardware credential storage, library indexing, and flow control.
 4. [04. React Renderer UI & Inquiry Test Q&A Bank](code-guide/04-renderer-ui-and-inquiry-qa.md) — Sandboxed React 19 views, usePeerState hook, swarm aggregation, 30+ code locator table, and 32-question viva defense Q&A.
 
 ### Track 1: End Users, QA Testers, and Application Operators
 Focuses on running the application, managing group memberships, configuring file grants, initiating transfers, and troubleshooting common operational hurdles.
-1. [00. JS, TS & npm Fundamentals](user-guide/00-js-ts-npm-fundamentals.md) — JavaScript, TypeScript, Node.js, npm, package.json, tsconfig, and complete 16-command CLI reference.
+1. [00. JS, TS & npm Fundamentals](user-guide/00-js-ts-npm-fundamentals.md) — Java-to-JS/TS/npm mental model, electron-vite build pipeline internals, tsconfig split, and complete 19-command CLI reference (including Docker scripts).
 2. [01. Getting Started](user-guide/01-getting-started.md) — System requirements, desktop workspace layout, and keyboard shortcuts.
-3. [02. Network & Virtual Groups](user-guide/02-network-and-groups.md) — Group keys, invitations, keychain persistence, and privacy mode.
+3. [02. Network & Virtual Groups](user-guide/02-network-and-groups.md) — Group creation, owner controls, short invite codes, V2 invitations, keychain persistence, and privacy mode.
 4. [03. Library & Sharing](user-guide/03-library-and-sharing.md) — File addition, SHA-256 background hashing, and fine-grained group grants.
 5. [04. Search & Discovery](user-guide/04-search-and-discovery.md) — Multi-group tokenized boolean search and swarm source aggregation.
 6. [05. Transfers & Flow Control](user-guide/05-transfers-and-downloads.md) — Inflight transfer monitoring, route types, integrity checks, and cancellation.
@@ -111,12 +111,12 @@ Focuses on production deployment of signaling instances, Coturn TURN servers, TL
 | Directory | Document | Summary |
 |---|---|---|
 | `docs/code-guide/` | [01-js-ts-react-syntax-in-codebase.md](code-guide/01-js-ts-react-syntax-in-codebase.md) | JS/TS/Node/React 19 syntax deep-dive, block scoping, optional chaining, discriminated unions, promise queues. |
-| `docs/code-guide/` | [02-shared-preload-and-signaling-code.md](code-guide/02-shared-preload-and-signaling-code.md) | electron.vite.config.ts, shared contracts, wire protocol, preload bridge, signaling server, token bucket rate limiter. |
+| `docs/code-guide/` | [02-shared-preload-and-signaling-code.md](code-guide/02-shared-preload-and-signaling-code.md) | electron.vite.config.ts (p2pCsp), 22 IPC channels, wire protocol, preload bridge, dynamic group creation, signaling server. |
 | `docs/code-guide/` | [03-main-process-and-p2p-engine-code.md](code-guide/03-main-process-and-p2p-engine-code.md) | Main process entry, validateSender IPC 4-tier check, HRW election, credential store, inverted search index, transfers. |
 | `docs/code-guide/` | [04-renderer-ui-and-inquiry-qa.md](code-guide/04-renderer-ui-and-inquiry-qa.md) | React 19 UI, usePeerState hook, swarm aggregation, 30+ code locator table, 32-question inquiry exam bank. |
-| `docs/user-guide/` | [00-js-ts-npm-fundamentals.md](user-guide/00-js-ts-npm-fundamentals.md) | JavaScript, TypeScript, Node.js, npm, package.json, tsconfig, and complete 16-command CLI reference. |
+| `docs/user-guide/` | [00-js-ts-npm-fundamentals.md](user-guide/00-js-ts-npm-fundamentals.md) | Java-to-JS/TS/npm mental model, electron-vite build internals, tsconfig split, and complete 19-command CLI reference. |
 | `docs/user-guide/` | [01-getting-started.md](user-guide/01-getting-started.md) | Setup instructions, workspace layout, shortcuts, and command palette navigation. |
-| `docs/user-guide/` | [02-network-and-groups.md](user-guide/02-network-and-groups.md) | Group lifecycle, invitations, safe credential storage, auto-join, and privacy mode. |
+| `docs/user-guide/` | [02-network-and-groups.md](user-guide/02-network-and-groups.md) | Virtual group creation & ownership, short invite codes, V2 invitations, keychain persistence, and privacy mode. |
 | `docs/user-guide/` | [03-library-and-sharing.md](user-guide/03-library-and-sharing.md) | File grants, SHA-256 background hashing pipeline, and rescanning. |
 | `docs/user-guide/` | [04-search-and-discovery.md](user-guide/04-search-and-discovery.md) | Group-scoped search queries, token matching, and result source selection. |
 | `docs/user-guide/` | [05-transfers-and-downloads.md](user-guide/05-transfers-and-downloads.md) | Download workflows, real-time chunk monitoring, route inspection, and integrity checks. |

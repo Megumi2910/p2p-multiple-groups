@@ -153,8 +153,8 @@ flowchart TD
     subgraph TransportPipe["Shared Transport Layer"]
         PC["Single RTCPeerConnection\n(Werift DTLS 1.2 + SCTP)"]
         DC_CTRL["Control Channel\n'p2p-multiple-groups-control-v2'"]
-        DC_FILE1["Data Channel G1\n'p2p-multiple-groups-file-v2:fileId:groupKey1'"]
-        DC_FILE2["Data Channel G2\n'p2p-multiple-groups-file-v2:fileId:groupKey2'"]
+        DC_FILE1["Data Channel G1\n'p2p-multiple-groups-file-v2:groupId1:transferId1'"]
+        DC_FILE2["Data Channel G2\n'p2p-multiple-groups-file-v2:groupId2:transferId2'"]
         PC --- DC_CTRL
         PC --- DC_FILE1
         PC --- DC_FILE2
@@ -176,8 +176,8 @@ flowchart TD
           <h3>Protocol Isolation Guarantees</h3>
           <ol>
             <li><strong>Control Multiplexing</strong>: Every control message across the shared <code>p2p-multiple-groups-control-v2</code> channel explicitly carries its destination <code>groupId</code> and <code>senderMembershipId</code>. The engine routes payloads strictly to the matching local <code>GroupRuntime</code>.</li>
-            <li><strong>Channel Label Scoping</strong>: File transfer data channels encode the group key directly into their protocol label:
-              <div class="math-display">Label = "p2p-multiple-groups-file-v2:" || fileId || ":" || groupKey</div>
+            <li><strong>Channel Label Scoping</strong>: File transfer data channels encode the group ID and transfer ID directly into their protocol label:
+              <div class="math-display">Label = "p2p-multiple-groups-file-v2:" || groupId || ":" || transferId</div>
             </li>
             <li><strong>Zero Cross-Contamination</strong>: If Peer <span class="math-inline">B</span> attempts to request a file using <span class="math-inline">G_1</span>'s data channel while authenticated only for <span class="math-inline">G_2</span>, the request is rejected with <code>FORBIDDEN</code> and the channel is torn down without affecting <span class="math-inline">G_2</span>'s active streams.</li>
           </ol>

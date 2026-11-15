@@ -31,7 +31,7 @@ In `p2p-multiple-groups`, $k = 2$.
 
 ```typescript
 // Verified implementation from src/main/p2p/election.ts
-export function electSupernodes(peers: readonly SignalingRosterPeer[]): ElectionResult {
+export function electSupernodes(peers: readonly SignalingRosterPeerV2[]): ElectionResult {
   const eligible = peers.filter((p) => p.supernodeEligible)
   eligible.sort((a, b) => {
     if (a.joinOrder !== b.joinOrder) {

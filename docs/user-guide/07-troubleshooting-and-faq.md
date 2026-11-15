@@ -21,7 +21,9 @@ When an operation fails, the application returns a structured `ActionResult` con
 | `PROTOCOL_ERROR` | Receiving malformed wire payloads. | Version mismatch between clients or signaling server. Ensure all participants run compatible versions of `p2p-multiple-groups`. |
 | `FORBIDDEN` | Accessing file or joining unauthorized group. | The file access grant was revoked for your group by the hosting peer, or your node lacks permission. |
 | `INVITATION_REQUIRED` | Automatic re-joining upon application launch. | The group's credentials were not saved (e.g. remembered mode was disabled) and memory cache expired. Re-paste the invitation JSON to join. |
-| `INVALID_INPUT` | Submitting form data or changing settings. | Validation failure (e.g., display name contains invalid characters, empty group ID, or attempting to toggle `relayOnly` while groups are active). |
+| `INVALID_INPUT` | Submitting form data or changing settings. | Validation failure (e.g., display name contains invalid characters, empty group ID, or malformed invite code). |
+| `GROUP_EXISTS` | Creating a virtual group dynamically. | A group with this group ID already exists on the signaling server. Choose a different ID or join with an invite code. |
+| `GROUP_FULL` | Joining a virtual group. | The group has reached its maximum concurrent peer capacity on the signaling server. Wait for inactive peers to disconnect. |
 
 ---
 

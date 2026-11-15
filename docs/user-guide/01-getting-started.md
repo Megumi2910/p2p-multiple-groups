@@ -37,7 +37,19 @@ Before running the application, ensure your host environment satisfies the follo
    ```
    This runs static TypeScript checks for Node and Web environments, compiling output assets to `./out/main/`, `./out/preload/`, and `./out/renderer/`.
 
-4. **Launch the Application**:
+4. **Start the Signaling Infrastructure (Optional for local swarms)**:
+   You can launch the signaling server either using Docker Compose or directly via Node.js:
+   ```bash
+   # Option A: Docker Compose (background container)
+   cp .env.example .env
+   npm run docker:up
+
+   # Option B: Direct Node.js execution
+   cp .env.example .env
+   npm run signal:start
+   ```
+
+5. **Launch the Application**:
    - **Development Mode** (with Hot Module Replacement):
      ```bash
      npm run dev
@@ -46,7 +58,6 @@ Before running the application, ensure your host environment satisfies the follo
      ```bash
      npm run start
      ```
-
 ---
 
 ## 3. Desktop UI Structure
@@ -93,7 +104,7 @@ Pressing `Ctrl+K` (Windows/Linux) or `Cmd+K` (macOS) opens the global command pa
 
 ## 5. Next Steps
 
-Now that your client is running, proceed to join a virtual group or set up your shared library:
-- [02. Network & Virtual Groups](02-network-and-groups.md) — Learn how to join groups using cryptographic invitations.
+Now that your client is running, proceed to create or join a virtual group and set up your shared library:
+- [02. Network & Virtual Groups](02-network-and-groups.md) — Create a virtual group dynamically as owner or join via compact base64url invite codes or V2 JSON invitations.
 - [03. Library & File Grants](03-library-and-sharing.md) — Add local files and manage group permissions.
-- [06. Signaling Server Operations](06-signaling-and-ops.md) — Host your own local signaling server.
+- [06. Signaling Server Operations](06-signaling-and-ops.md) — Host and operate your own signaling node or Docker stack.

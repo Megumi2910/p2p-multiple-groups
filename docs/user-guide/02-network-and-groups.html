@@ -126,12 +126,11 @@
           </p>
 
           <div class="math-display">
-            GroupKey = signalingUrl || "#" || groupId
+            GroupKey = JSON.stringify([signalingUrl, groupId])
           </div>
 
           <p>For example:</p>
-          <pre><code class="language-text">ws://127.0.0.1:8787/signal#engineering-team</code></pre>
-
+          <pre><code class="language-json">["ws://127.0.0.1:8787/signal","engineering-team"]</code></pre>
           <p>
             Two groups on the same signaling server with different <code>groupId</code>s are strictly disjoint. Conversely, two groups with identical <code>groupId</code>s hosted on different signaling servers are completely independent.
           </p>
@@ -157,60 +156,47 @@
 
           <p>The interface consists of three primary sections:</p>
           <ul>
-            <li><strong>Joined Groups Table</strong>: Overview of all saved and active groups, showing group ID, connection status, node role, member count, auto-join toggle, supernode eligibility toggle, and actions (<code>Leave</code>, <code>Forget</code>).</li>
-            <li><strong>Active Group Details Panel</strong>: Detailed telemetry for the selected group, displaying connection health, assigned primary and standby supernodes, and the count of open WebRTC links.</li>
-            <li><strong>Join a Group Form</strong>: Form to submit cryptographic invitations and configure display name, supernode eligibility, auto-join, credential remembering, and privacy mode.</li>
+            <li><strong>Joined Groups Table</strong>: Overview of all saved and active groups, showing group ID, connection status, node role (Supernode vs. Ordinary, plus Owner badge), member count, auto-join toggle, supernode eligibility toggle, and actions (<code>Leave</code>, <code>Forget</code>).</li>
+            <li><strong>Active Group Details Panel</strong>: Detailed telemetry for the selected group, displaying connection health, owner information, short invite code copy button, assigned primary and standby supernodes, and open WebRTC links.</li>
+            <li><strong>Create &amp; Join Form</strong>: Tabbed form to either <strong>Create Group</strong> as the authoritative owner or <strong>Join Group</strong> using a short invite code or V2 invitation JSON.</li>
           </ul>
         </section>
 
         <hr>
 
         <section id="joining-a-virtual-group">
-          <h2>3. Joining a Virtual Group</h2>
-          <p>To join a group, you must obtain an invitation string from a signaling server operator or existing peer.</p>
+          <h2>3. Creating &amp; Joining Virtual Groups</h2>
+          <p>The system supports creating new virtual groups directly from the UI or joining existing groups via cryptographic credentials.</p>
 
-          <h3>Invitation Formats</h3>
-          <p>The client supports both V1 and V2 invitation payloads. Toggle between tabs below to inspect their structure:</p>
+          <h3>3.1. Creating a Virtual Group (Owner Mode)</h3>
+          <p>To establish a brand-new virtual group:</p>
+          <ol>
+            <li>In the <strong>Network &amp; Groups</strong> view, select <strong>Create Group</strong>.</li>
+            <li>Enter your desired <strong>Group ID</strong> (1–64 characters).</li>
+            <li>Click <strong>Create &amp; Join</strong>. The signaling server issues an initial short invite code and a 32-byte <code>ownerSecret</code>, securely stored in your OS keychain (<code>${groupKey}:owner</code>). Your peer is elected <strong>Owner</strong>.</li>
+          </ol>
 
-          <!-- Interactive Tabs for Invitation Formats -->
-          <div class="tabs-container">
-            <div class="tab-nav">
-              <button class="tab-btn active" type="button">V2 Invitation (Standard)</button>
-              <button class="tab-btn" type="button">V1 Invitation (Legacy)</button>
-            </div>
-            <div class="tab-pane active">
-              <pre><code class="language-json">{
+          <h3>3.2. Joining an Existing Virtual Group</h3>
+          <p>You can join a group using either a compact <strong>Short Invite Code</strong> or a <strong>V2 Invitation JSON</strong>:</p>
+          <pre><code class="language-text"># Option 1: Compact base64url Short Invite Code (8–64 characters)
+eng_team_invite_7k9Xm2Pq4w
+
+# Option 2: Full V2 Invitation JSON
+{
   "version": 2,
   "signalingUrl": "ws://127.0.0.1:8787/signal",
   "groupId": "engineering-team",
   "token": "a1b2c3d4...base64url-token..."
 }</code></pre>
-            </div>
-            <div class="tab-pane">
-              <pre><code class="language-json">{
-  "version": 1,
-  "signalingUrl": "ws://127.0.0.1:8787/signal",
-  "roomId": "engineering-team",
-  "token": "legacy-token..."
-}</code></pre>
-            </div>
-          </div>
 
-          <h3>Join Procedure</h3>
-          <ol>
-            <li>Navigate to the <strong>Network</strong> view.</li>
-            <li>Under <strong>Join a Group</strong>, enter your desired <strong>Display Name</strong> (1–32 characters).</li>
-            <li>Paste the invitation JSON string into the <strong>Invitation JSON</strong> field.</li>
-            <li>Configure optional settings:
-              <ul>
-                <li><strong>Supernode Eligible</strong>: Check this if your machine has stable bandwidth and open ports to assist in indexing and routing queries for the group.</li>
-                <li><strong>Auto-join on launch</strong>: Check this to automatically reconnect to this group whenever the desktop application starts.</li>
-                <li><strong>Remember invitation securely</strong>: Saves credentials encrypted on disk via OS keychain. If unchecked, credentials are held only in memory for the current process session.</li>
-                <li><strong>Privacy Mode (Relay Only)</strong>: Enforces TURN-only relay connections, concealing your public IP address from other peers.</li>
-              </ul>
-            </li>
-            <li>Click <strong>Join Group</strong>.</li>
-          </ol>
+          <h3>3.3. Group Ownership, Invite Rotation &amp; Member Management</h3>
+          <ul>
+            <li><strong>Owner Role Badge</strong>: Displays a gold <code>Owner</code> badge next to the group name.</li>
+            <li><strong>Copying Invite Codes</strong>: Owners can copy the active short invite code with one click.</li>
+            <li><strong>Rotating Invite Codes (<code>rotateGroupInvite</code>)</strong>: Generates a new short invite code on the signaling server via <code>ownerSecret</code>, invalidating old codes without dropping connected peers.</li>
+            <li><strong>Evicting Members (<code>removeGroupMember</code>)</strong>: Owners can kick abusive members from the roster table; the signaling server sends <code>group-kicked</code> and updates the roster.</li>
+            <li><strong>Auto-Reseeding</strong>: Reconnecting owners automatically restore ephemeral groups on restarted signaling servers.</li>
+          </ul>
         </section>
 
         <hr>
@@ -311,11 +297,11 @@
             <li><strong>Security Invariant</strong>: Host and Server-Reflexive (STUN) candidates are completely suppressed, preventing peer nodes from discovering your physical or public IP address.</li>
           </ul>
 
-          <div class="callout callout-warning">
-            <div class="callout-icon">⚠️</div>
+          <div class="callout callout-note">
+            <div class="callout-icon">💡</div>
             <div class="callout-content">
-              <div class="callout-title">Configuration Constraint</div>
-              <p>Changing the <code>relayOnly</code> policy requires disconnecting all active groups first to ensure that no open direct SCTP associations remain active.</p>
+              <div class="callout-title">Live Dynamic Update</div>
+              <p>Changing the <code>relayOnly</code> policy takes effect live; the transport manager immediately switches connection negotiation policies for all active swarms.</p>
             </div>
           </div>
         </section>

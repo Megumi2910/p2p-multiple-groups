@@ -46,19 +46,32 @@ Initial handshake when establishing the physical WebSocket link:
 }
 ```
 
-#### 2. `join-group`
+#### 2. `create-group`
+Dynamically create a new virtual group on this signaling server:
+```typescript
+{
+  v: 2,
+  type: 'create-group',
+  groupId: string,        // 1-32 chars alphanumeric/dash/underscore
+  ownerSecret: string,    // 32-byte secret hex/base64
+  supernodeEligible: boolean
+}
+```
+
+#### 3. `join-group`
 Join a specific virtual group on this signaling server:
 ```typescript
 {
   v: 2,
   type: 'join-group',
-  groupId: string,        // 1-32 chars alphanumeric/dash/underscore
-  token: string,          // Secret access token
+  groupId?: string,       // Optional if inviteCode is self-contained
+  token: string,          // Secret access token or invite code
+  ownerSecret?: string,   // Optional owner secret for reseeding
   supernodeEligible: boolean
 }
 ```
 
-#### 3. `leave-group`
+#### 4. `leave-group`
 Gracefully unregister from a virtual group:
 ```typescript
 {
@@ -68,7 +81,30 @@ Gracefully unregister from a virtual group:
 }
 ```
 
-#### 4. `eligibility`
+#### 5. `rotate-invite`
+Owner request to rotate the short invite code:
+```typescript
+{
+  v: 2,
+  type: 'rotate-invite',
+  groupId: string,
+  ownerSecret: string
+}
+```
+
+#### 6. `remove-member`
+Owner request to kick a peer from the group:
+```typescript
+{
+  v: 2,
+  type: 'remove-member',
+  groupId: string,
+  targetPeerId: string,
+  ownerSecret: string
+}
+```
+
+#### 7. `eligibility`
 Update election candidate status in an active group:
 ```typescript
 {
@@ -79,7 +115,26 @@ Update election candidate status in an active group:
 }
 ```
 
-#### 5. `signal`
+#### 8. `profile`
+Update peer display name across all active groups:
+```typescript
+{
+  v: 2,
+  type: 'profile',
+  displayName: string
+}
+```
+
+#### 9. `ice-config`
+Request updated STUN/TURN credentials:
+```typescript
+{
+  v: 2,
+  type: 'ice-config'
+}
+```
+
+#### 10. `signal`
 Exchange SDP offers, answers, or ICE candidates targeted to a specific peer:
 ```typescript
 {
@@ -93,7 +148,6 @@ Exchange SDP offers, answers, or ICE candidates targeted to a specific peer:
   payload: unknown
 }
 ```
-
 ---
 
 ### Server -> Client Messages (`ServerSignalingMessageV2`)
@@ -119,11 +173,55 @@ Confirmed admission to a virtual group:
   membershipId: string,   // Ephemeral membership UUID
   epoch: string,          // Server session UUID
   revision: number,       // Monotonic revision counter
-  peers: SignalingRosterPeerV2[]
+  peers: SignalingRosterPeerV2[],
+  ownerPeerId?: string | null,
+  inviteCode?: string
 }
 ```
 
-#### 3. `roster`
+#### 3. `group-left`
+Notification that local peer has successfully left a virtual group:
+```typescript
+{
+  v: 2,
+  type: 'group-left',
+  groupId: string
+}
+```
+
+#### 4. `invite-rotated`
+Broadcast notification that the group's invite code was rotated by the owner:
+```typescript
+{
+  v: 2,
+  type: 'invite-rotated',
+  groupId: string,
+  inviteCode: string
+}
+```
+
+#### 5. `group-kicked`
+Notification sent to a peer evicted from the group by the owner:
+```typescript
+{
+  v: 2,
+  type: 'group-kicked',
+  groupId: string,
+  reason: string
+}
+```
+
+#### 6. `ice-config`
+Push notification containing refreshed STUN/TURN server credentials:
+```typescript
+{
+  v: 2,
+  type: 'ice-config',
+  iceConfig: SignalingIceConfig
+}
+```
+
+#### 7. `roster`
 Authoritative group membership broadcast (triggers supernode re-election):
 ```typescript
 {
@@ -132,14 +230,8 @@ Authoritative group membership broadcast (triggers supernode re-election):
   groupId: string,
   epoch: string,
   revision: number,
-  peers: Array<{
-    peerId: string,
-    sessionId: string,
-    membershipId: string,
-    joinOrder: number,
-    displayName: string,
-    supernodeEligible: boolean
-  }>
+  peers: SignalingRosterPeerV2[],
+  ownerPeerId?: string | null
 }
 ```
 

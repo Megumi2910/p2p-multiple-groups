@@ -233,8 +233,11 @@ export interface PersistedSharedFileV2 {
 
         <section id="safe-credential-store">
           <h2>4. <code>SafeCredentialStore</code> Hardware Encryption</h2>
-          <p>Secret access tokens for virtual groups are decoupled from <code>peer-state.json</code> to prevent exposure via accidental file sharing or system diagnostics.</p>
-
+          <p>Secret access tokens and authoritative owner secrets for virtual groups are decoupled from <code>peer-state.json</code> to prevent exposure via accidental file sharing or system diagnostics:</p>
+          <ul>
+            <li><strong>Group Access Tokens</strong>: Persisted under the key <code>groupKey</code>.</li>
+            <li><strong>Group Owner Secrets</strong>: Persisted under the composite key <code>${groupKey}:owner</code> (authorizing invite rotation and member eviction).</li>
+          </ul>
           <h3>Storage Mechanics</h3>
           <ol>
             <li><strong>OS-Level Key Derivation</strong>: Uses Electron <code>safeStorage</code>:

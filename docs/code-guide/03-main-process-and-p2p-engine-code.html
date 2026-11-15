@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="vi" data-theme="dark" data-root="../">
+<html lang="en" data-theme="dark" data-root="../">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>03. Main &amp; P2P Engine Code — Code Guide — p2p-multiple-groups</title>
+  <title>03. Main Process &amp; P2P Engine Code — Code Guide — p2p-multiple-groups</title>
   <link rel="stylesheet" href="../assets/docs.css">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 </head>
@@ -101,128 +101,40 @@
     <!-- Center Content Viewport -->
     <main class="docs-content-wrapper">
       <article class="docs-article">
-        <!-- Breadcrumbs -->
-        <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
-          <a href="../index.html">Docs</a>
-          <span class="breadcrumb-separator">/</span>
-          <span>Source Code &amp; Syntax</span>
-          <span class="breadcrumb-separator">/</span>
-          <span>03. Main &amp; P2P Engine Code</span>
-        </nav>
-
-        <h1>Phần 3: Mã Nguồn Tiến Trình Main &amp; Bộ Điều Phối P2P Engine</h1>
-        <p class="lead-paragraph">
-          Khám phá chi tiết các cấu trúc logic vận hành phía hệ thống: từ kiểm soát an ninh 4 tầng của IPC, thuật toán bầu chọn Supernode HRW, cơ chế băm vân tay file siêu tốc, đến tầng truyền dẫn WebRTC đa kênh và điều khiển luồng cửa sổ trượt.
-        </p>
-
-        <div class="callout callout-note">
-          <div class="callout-icon">💡</div>
-          <div class="callout-content">
-            <div class="callout-title">Module cốt lõi</div>
-            <p>
-              Chương này phân tích trực tiếp các file: <code>src/main/index.ts</code>, <code>src/main/p2p/election.ts</code>, <code>credential-store.ts</code>, <code>peer-store.ts</code>, <code>library.ts</code>, <code>search-index.ts</code>, <code>signaling-client.ts</code>, <code>transport.ts</code>, <code>transfers.ts</code>, và <code>engine.ts</code>.
-            </p>
+        <header class="doc-header">
+          <div class="doc-badge-row">
+            <span class="badge badge-primary">Code Guide</span>
+            <span class="badge badge-info">Main Process Internals</span>
+            <span class="badge badge-success">Engine Core</span>
           </div>
-        </div>
-
-        <hr>
+          <h1>03. Main Process &amp; P2P Engine Core Walkthrough</h1>
+          <p class="lead-paragraph">
+            In-depth walkthrough of src/main/index.ts, single-instance locking, 4-tier IPC sender validation, HRW consistent hashing supernode election, SafeCredentialStore hardware encryption, and PeerEngine policy serialization.
+          </p>
+        </header>
 
         <!-- Section 1 -->
         <section id="main-entry">
-          <h2>1. Tiến trình chính Main Process &amp; An ninh IPC (<code>src/main/index.ts</code>)</h2>
-
-          <h3>1.1. Khởi động, Khóa đơn phiên và Di trú Profile Kazaa</h3>
+          <h2>1. Main Process &amp; IPC Security Boundaries (src/main/index.ts)</h2>
           <p>
-            Hàm <code>app.requestSingleInstanceLock()</code> bảo đảm chỉ có một phiên bản ứng dụng duy nhất được chạy trên máy tính, tránh tình trạng xung đột ghi đè file dữ liệu <code>peer-state.json</code>. Module <code>profile-migration.ts</code> tự động phát hiện và di chuyển dữ liệu cấu hình từ phiên bản cũ sang phiên bản mới mà không làm mất thông tin.
+            The Main process runs in a privileged Node.js environment. Key responsibilities include:
           </p>
-
-          <h3>1.2. Hàm thẩm định nguồn gửi <code>validateSender</code>: 4 tầng bảo vệ an ninh</h3>
-          <p>
-            Mọi thao tác gọi qua kênh IPC đều bắt buộc phải vượt qua 4 kiểm tra nghiêm ngặt:
-          </p>
-          <pre><code class="language-typescript">// src/main/index.ts:79-105
-function validateSender(event: IpcMainInvokeEvent): void {
-  // Tầng 1: Cửa sổ chính phải đang tồn tại và chưa bị hủy
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    throw new Error('Untrusted sender')
-  }
-
-  // Tầng 2: WebContents người gửi phải trùng khớp chính xác với mainWindow
-  if (event.sender !== mainWindow.webContents) {
-    throw new Error('Untrusted sender')
-  }
-
-  // Tầng 3: Khung gửi tin phải là Top-Level Frame (parent === null), cấm iframe lồng
-  const frame = event.senderFrame
-  if (!frame || frame.parent !== null) {
-    throw new Error('Untrusted sender')
-  }
-
-  // Tầng 4: Kiểm tra nguồn gốc Origin chính xác theo chế độ chạy
-  if (isDev) {
-    const parsed = new URL(frame.url)
-    if (parsed.origin !== expectedDevOrigin || parsed.pathname !== '/') {
-      throw new Error('Untrusted sender')
-    }
-  } else {
-    if (frame.url !== productionHtmlUrl) {
-      throw new Error('Untrusted sender')
-    }
-  }
-}</code></pre>
-
-          <h3>1.3. Điều phối luồng và Trailing Throttle 200ms</h3>
-          <p>
-            Hàm <code>dispatchStateToWindow</code> sử dụng bộ hẹn giờ 200ms để gom các cập nhật trạng thái dồn dập từ mạng P2P, ngăn chặn tình trạng nghẽn kênh IPC và giúp giao diện React luôn mượt mà.
-          </p>
-
-          <h3>1.4. Quản lý vòng đời <code>before-quit</code></h3>
-          <p>
-            Khi người dùng đóng ứng dụng, sự kiện <code>before-quit</code> tạm thời ngăn chặn việc thoát ngay lập tức để gọi <code>peerEngine.dispose()</code>, giải phóng socket và đóng kết nối WebRTC với bộ hẹn giờ bảo vệ tối đa 5 giây.
-          </p>
+          <ul>
+            <li><strong>Single-Instance Lock</strong>: Prevents multi-instance corruption on <code>peer-state.json</code>.</li>
+            <li><strong>Profile Migration</strong>: Migrates configurations from legacy profile locations to <code>p2p-multiple-groups</code>.</li>
+            <li><strong>4-Tier <code>validateSender</code></strong>: Origin verification rejecting unauthorized or orphaned frames.</li>
+            <li><strong>Trailing 200ms State Throttle</strong>: Coalesces <code>MultiGroupP2pState</code> updates before dispatching over <code>IPC_CHANNELS.P2P_V2_STATE</code>.</li>
+            <li><strong>IPC Handlers</strong>: Exposes <code>createGroup</code>, <code>rotateGroupInvite</code>, and <code>removeGroupMember</code>.</li>
+          </ul>
         </section>
 
         <hr>
 
         <!-- Section 2 -->
         <section id="election-module">
-          <h2>2. Bầu chọn Supernode &amp; Băm nhất quán HRW (<code>src/main/p2p/election.ts</code>)</h2>
-
-          <h3>2.1. Thuật toán <code>electSupernodes</code></h3>
+          <h2>2. Supernode Elections &amp; Rendezvous Consistent Hashing (src/main/p2p/election.ts)</h2>
           <p>
-            Mỗi nhóm bầu chọn tối đa 2 Supernode dựa trên:
-          </p>
-          <ol>
-            <li>Lọc các node có cờ <code>supernodeEligible === true</code>.</li>
-            <li>Sắp xếp ưu tiên tăng dần theo thời điểm gia nhập (<code>joinOrder</code>) nhằm tối đa hóa tính ổn định.</li>
-            <li>Nếu hòa điểm <code>joinOrder</code>, so sánh thứ tự từ điển của <code>peerId</code>.</li>
-          </ol>
-
-          <h3>2.2. Băm phân tán Rendezvous Hashing (HRW) với SHA-256</h3>
-          <p>
-            Các node bình thường (Ordinary Peers) tự động chọn Primary và Standby Supernode bằng thuật toán Highest Random Weight (HRW):
-          </p>
-          <pre><code class="language-typescript">// src/main/p2p/election.ts:44-61
-const scored = electedSupernodes.map((s) =&gt; {
-  // Tính điểm băm SHA-256 kết hợp giữa peerId của mình và supernodeId
-  const hash = createHash('sha256').update(`${peerId}:${s.peerId}`).digest('hex')
-  return { supernode: s, hash }
-})
-
-// Sắp xếp giảm dần theo mã băm hex
-scored.sort((a, b) =&gt; b.hash.localeCompare(a.hash) || b.supernode.peerId.localeCompare(a.supernode.peerId))
-
-return {
-  primary: scored[0].supernode,  // Điểm băm cao nhất làm Primary
-  standby: scored[1].supernode   // Điểm băm nhì làm Standby
-}</code></pre>
-          <p>
-            Thuật toán này bảo đảm mức độ phân bổ tải đồng đều và tối thiểu hóa sự xáo trộn (Minimal Churn) khi mạng có thành viên mới vào hoặc rời nhóm.
-          </p>
-
-          <h3>2.3. Vòng đệm lưu trữ sự kiện phục hồi: <code>RecoveryEventRingBuffer</code></h3>
-          <p>
-            Lưu giữ tối đa 100 sự kiện biến động cấu trúc mạng (thay đổi Supernode, mất tín hiệu) theo cấu trúc FIFO Ring Buffer phục vụ cho việc giám sát trạng thái trên giao diện.
+            Supernodes are elected deterministically based on eligibility, ascending <code>joinOrder</code>, and lexicographical tie-breaking. Ordinary peers use Highest Random Weight (HRW) consistent hashing to select supervising supernodes, minimizing client churn when nodes depart.
           </p>
         </section>
 
@@ -230,106 +142,53 @@ return {
 
         <!-- Section 3 -->
         <section id="storage-modules">
-          <h2>3. Lưu trữ đĩa &amp; Mã hóa phần cứng (<code>src/main/p2p/credential-store.ts</code>, <code>peer-store.ts</code>)</h2>
-
-          <h3>3.1. Két an toàn <code>SafeCredentialStore</code></h3>
-          <ul>
-            <li><strong>Mã hóa phần cứng</strong>: Tận dụng <code>electronSafeStorage</code> để gọi DPAPI trên Windows hoặc Keychain trên macOS.</li>
-            <li><strong>Phân quyền tập tin</strong>: File <code>credentials.enc</code> được lưu với quyền bảo mật <code>0o600</code> (chỉ cho phép user hiện tại của hệ điều hành đọc/ghi).</li>
-            <li><strong>Memory Fallback</strong>: Nếu chạy trên Linux không có môi trường Desktop Keyring, tự động chuyển sang lưu trữ tạm thời trong RAM.</li>
-            <li><strong>Hàng đợi tuần tự</strong>: Mọi thao tác truy cập két đều được đồng bộ hóa qua <code>queueOperation</code>.</li>
-          </ul>
-
-          <h3>3.2. Sổ cái peer <code>createMultiGroupPeerStore</code></h3>
+          <h2>3. Storage, Persistence &amp; Hardware Encryption (src/main/p2p/*)</h2>
           <p>
-            Quản lý tập tin <code>peer-state.json</code>: tự động tạo bản sao lưu <code>peer-state.v1.backup.json</code> khi nâng cấp từ định dạng cũ, và luôn sử dụng cơ chế ghi đĩa nguyên tử (Atomic Write via .tmp rename) để tránh hỏng file khi mất nguồn đột ngột.
+            The storage subsystem features:
           </p>
+          <ul>
+            <li><strong><code>SafeCredentialStore</code></strong>: Uses OS-level keychains (Windows DPAPI, macOS Keychain) to encrypt group tokens and <code>${groupKey}:owner</code> secrets. Falls back to in-memory caching during headless unit tests.</li>
+            <li><strong><code>MultiGroupPeerStore</code></strong>: Writes state updates to <code>.tmp</code> files before committing via atomic file renames.</li>
+          </ul>
         </section>
 
         <hr>
 
         <!-- Section 4 -->
         <section id="library-and-search-index">
-          <h2>4. Thư viện chia sẻ &amp; Chỉ mục tìm kiếm đảo ngược (<code>src/main/p2p/library.ts</code>, <code>search-index.ts</code>)</h2>
-
-          <h3>4.1. Bộ quản lý file <code>LibraryManager</code></h3>
-          <ul>
-            <li><strong>Giới hạn an toàn</strong>: Dung lượng tối đa 1 GiB/file, tối đa 1,000 file chia sẻ.</li>
-            <li><strong>Dấu vân tay siêu tốc (<code>statFingerprint</code>)</strong>: Lưu trữ bộ ba <code>{ size, mtimeMs, ino }</code> để kiểm tra tính toàn vẹn khi quét lại thư viện mà không cần đọc và băm lại nội dung file.</li>
-            <li><strong>Hàng đợi băm 2 luồng song song (<code>MAX_CONCURRENT_HASHING = 2</code>)</strong>: Ngăn ngừa quá tải CPU khi chia sẻ nhiều file dung lượng lớn.</li>
-            <li><strong>Cấp quyền nhóm (<code>groupKeys</code>)</strong>: Từng file được chỉ định rõ những nhóm nào có quyền tìm kiếm và tải về.</li>
-          </ul>
-
-          <h3>4.2. Quản lý chỉ mục Supernode <code>SupernodeIndexManager</code></h3>
+          <h2>4. Shared Library &amp; Inverted Search Indexing</h2>
           <p>
-            Supernode duy trì cây chỉ mục đảo ngược:
+            <code>LibraryManager</code> scans local files, generates stat fingerprints, and streams files through SHA-256 hashers. Supernodes maintain an inverted index with Unicode NFKC normalization and Boolean AND query matching.
           </p>
-          <ul>
-            <li><strong>Catalog Staging Buffer</strong>: Lưu tạm danh mục file từ node gửi với bộ đếm thời gian 5 giây (<code>CATALOG_STAGING_TTL_MS = 5000</code>). Nếu không nhận đủ dữ liệu trong 5 giây, bộ đệm tự hủy để bảo vệ bộ nhớ RAM.</li>
-            <li><strong>Chuẩn hóa Unicode NFKC</strong>: Khử khác biệt giữa bảng mã tiếng Việt dựng sẵn và tổ hợp trước khi kiểm tra logic VÀ (Boolean AND) với hàm <code>tokens.every()</code>.</li>
-            <li><strong>Bộ nhớ đệm câu truy vấn (Query Cache)</strong>: Ghi nhớ 256 kết quả tìm kiếm gần nhất trong 30 giây để phản hồi ngay lập tức.</li>
-          </ul>
         </section>
 
         <hr>
 
         <!-- Section 5 -->
         <section id="signaling-and-transport">
-          <h2>5. Client Signaling &amp; Tầng WebRTC gộp kết nối (<code>src/main/p2p/signaling-client.ts</code>, <code>transport.ts</code>)</h2>
-
-          <h3>5.1. Máy khách báo hiệu <code>SignalingClient</code></h3>
+          <h2>5. Signaling Client &amp; Transport Multiplexing</h2>
           <p>
-            Duy trì kết nối WebSocket tới máy chủ Signaling, kiểm tra tính đơn điệu của số thứ tự <code>(epoch, revision)</code> để bỏ qua các gói tin cũ đến chậm, và áp dụng thuật toán ngắt quãng lũy thừa (Exponential Backoff with Jitter) khi kết nối lại.
+            <code>SignalingClient</code> manages active virtual group memberships with exponential backoff reconnection. <code>TransportManager</code> aggregates multiple virtual groups over a single <code>RTCPeerConnection</code>, resolving WebRTC glare collisions and dynamically toggling TURN relay modes.
           </p>
-
-          <h3>5.2. Quản lý truyền dẫn <code>TransportManager</code></h3>
-          <p>
-            Sử dụng thư viện <strong>Werift WebRTC</strong>:
-          </p>
-          <ul>
-            <li><strong>Gộp kết nối (Connection Pooling)</strong>: Duy trì duy nhất 1 đối tượng <code>RTCPeerConnection</code> giữa 2 máy bất kỳ dù có cùng tham gia nhiều nhóm, và dồn kênh qua Data Channel <code>p2p-multiple-groups-control-v2</code>.</li>
-            <li><strong>Giải quyết đụng độ Glare</strong>: Khi cả hai máy cùng gửi Offer cho nhau, máy có chuỗi <code>localPeerId</code> nhỏ hơn theo thứ tự từ điển sẽ nắm quyền chủ động tạo Offer, máy còn lại chuyển sang chế độ chờ.</li>
-            <li><strong>Nhận diện lộ trình</strong>: Kiểm tra trạng thái ứng viên ICE để thông báo đường truyền kết nối là <code>Direct</code> (trực tiếp) hay <code>Relayed (TURN)</code>.</li>
-          </ul>
         </section>
 
         <hr>
 
         <!-- Section 6 -->
         <section id="transfers-module">
-          <h2>6. Chuyển giao file &amp; Điều khiển luồng cửa sổ trượt SCTP (<code>src/main/p2p/transfers.ts</code>)</h2>
-
-          <h3>6.1. Hạn mức đồng thời và Watchdog 30 giây</h3>
+          <h2>6. Transfers &amp; SCTP Sliding-Window Flow Control</h2>
           <p>
-            Giới hạn tối đa 2 upload và 2 download cùng lúc. Đồng hồ giám sát (Stall Watchdog) sẽ tự động hủy các lượt truyền bị đơ quá 30 giây không phát sinh dữ liệu.
+            File transfers operate over 16 KiB chunks with cumulative 256 KiB ACKs, a 512 KiB inflight cap, high/low watermark stream suspension, and atomic commit upon SHA-256 digest verification.
           </p>
-
-          <h3>6.2. Vòng lặp phát khối 16 KiB &amp; Thu hồi quyền tức thì giữa chừng</h3>
-          <p>
-            Dữ liệu được chia thành các khối 16 KiB. Trước mỗi khối được phát đi, hàm <code>isPeerAuthorized(...)</code> được gọi để kiểm tra quyền. Nếu chủ sở hữu file gỡ bỏ quyền của nhóm trong lúc file đang tải dở, quá trình truyền sẽ bị ngắt ngay lập tức với mã lỗi <code>FORBIDDEN</code>.
-          </p>
-
-          <h3>6.3. Kiểm soát dòng chảy Backpressure và Cam kết file nguyên tử</h3>
-          <ul>
-            <li><strong>Cửa sổ trượt</strong>: Bên nhận gửi gói <code>ack</code> sau mỗi 256 KiB. Bên gửi sẽ tạm dừng luồng đọc đĩa nếu số byte chưa xác nhận vượt quá 512 KiB hoặc bộ đệm socket vượt ngưỡng 256 KiB.</li>
-            <li><strong>Cam kết file nguyên tử</strong>: Tải về file tạm <code>.&lt;filename&gt;.tmp.&lt;transferId&gt;</code>, thẩm định mã băm SHA-256 toàn vẹn, rồi dùng lệnh <code>link()</code> để tạo hard link tới file đích. Nếu file đích đã tồn tại, hệ điều hành trả về <code>EEXIST</code> để bảo vệ dữ liệu cũ của người dùng.</li>
-          </ul>
         </section>
 
         <hr>
 
         <!-- Section 7 -->
         <section id="peer-engine">
-          <h2>7. Nhạc trưởng PeerEngine (<code>src/main/p2p/engine.ts</code>)</h2>
-
-          <h3>7.1. Cấu trúc dữ liệu <code>GroupRuntime</code> và <code>policyQueue</code></h3>
+          <h2>7. PeerEngine Orchestrator</h2>
           <p>
-            Mỗi nhóm được đóng gói trong một đối tượng <code>GroupRuntime</code>. Mọi hành động can thiệp vào trạng thái mạng đều phải đi qua hàng đợi tuần tự <code>queueAction&lt;T&gt;</code>, loại trừ hoàn toàn các lỗi Race Condition.
-          </p>
-
-          <h3>7.2. Cân bằng Topo và Giám sát hiệu lực <code>monitorTimer</code></h3>
-          <p>
-            Định kỳ mỗi 2 giây, <code>monitorTimer</code> kiểm tra tính tươi mới của quyền lực trong nhóm. Nếu mất liên lạc với máy chủ Signaling quá 6 giây (<code>ROSTER_FRESHNESS_LEASE_MS = 6000</code>), vai trò Supernode tự động hết hạn để bảo vệ tính nhất quán của mạng phân tán.
+            <code>PeerEngine</code> coordinates subsystems via a serialized <code>policyQueue</code>, monitoring 6000ms freshness leases and dispatching state snapshots to the UI.
           </p>
         </section>
 
@@ -351,12 +210,12 @@ return {
         <div class="toc-title">On This Page</div>
         <ul class="toc-list">
           <li><a href="#main-entry" class="toc-link">1. Main Process &amp; IPC Security</a></li>
-          <li><a href="#election-module" class="toc-link">2. Election &amp; HRW Hashing</a></li>
-          <li><a href="#storage-modules" class="toc-link">3. Storage &amp; Credentials</a></li>
-          <li><a href="#library-and-search-index" class="toc-link">4. Library &amp; Inverted Index</a></li>
-          <li><a href="#signaling-and-transport" class="toc-link">5. Signaling &amp; WebRTC Transport</a></li>
+          <li><a href="#election-module" class="toc-link">2. Supernode Election &amp; HRW</a></li>
+          <li><a href="#storage-modules" class="toc-link">3. Storage &amp; Encryption</a></li>
+          <li><a href="#library-and-search-index" class="toc-link">4. Library &amp; Search Index</a></li>
+          <li><a href="#signaling-and-transport" class="toc-link">5. Signaling &amp; Transport</a></li>
           <li><a href="#transfers-module" class="toc-link">6. Transfers &amp; Flow Control</a></li>
-          <li><a href="#peer-engine" class="toc-link">7. PeerEngine Coordinator</a></li>
+          <li><a href="#peer-engine" class="toc-link">7. PeerEngine Orchestrator</a></li>
         </ul>
       </aside>
     </main>

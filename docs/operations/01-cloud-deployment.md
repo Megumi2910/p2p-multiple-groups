@@ -189,6 +189,8 @@ Open the following ports on your Azure Network Security Group and host UFW:
 | `5349` | TCP | `*` | Coturn TURNS listener |
 | `49152:65535` | UDP | `*` | Coturn Relay UDP Port Range |
 
+*(Note: `ops/azure/kazaa-signaling.service` is the legacy systemd service template filename preserved in `ops/azure/` for backward compatibility).*
+
 Start and enable all services:
 ```bash
 sudo systemctl daemon-reload
@@ -199,7 +201,38 @@ sudo systemctl restart nginx
 
 ---
 
-## 3. Turnkey PaaS Deployment (Render.com)
+## 3. Docker & Docker Compose Deployment
+
+For containerized environments, the repository includes a standalone multi-stage Alpine `Dockerfile` and `docker-compose.yml`:
+
+### Deployment Steps
+1. Copy and configure the environment variables:
+   ```bash
+   cp .env.example .env
+   ```
+2. Launch the signaling container in the background:
+   ```bash
+   npm run docker:up
+   ```
+   This runs `docker compose --env-file .env up -d --build`.
+3. Check container logs and health check status:
+   ```bash
+   docker compose logs -f
+   ```
+4. Stop and tear down the container stack:
+   ```bash
+   npm run docker:down
+   ```
+5. Rebuild the container image directly:
+   ```bash
+   npm run docker:build
+   ```
+
+The container includes a built-in Alpine `HEALTHCHECK` probing `http://127.0.0.1:8787/healthz` every 15 seconds.
+
+---
+
+## 4. Turnkey PaaS Deployment (Render.com)
 
 For lightweight deployments without managing virtual machines, the repository includes a ready-to-use **Render Blueprint** in `render.yaml`.
 

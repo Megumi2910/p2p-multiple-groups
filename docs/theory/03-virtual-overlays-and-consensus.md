@@ -32,8 +32,8 @@ flowchart TD
     subgraph TransportPipe["Shared Transport Layer"]
         PC["Single RTCPeerConnection\n(Werift DTLS 1.2 + SCTP)"]
         DC_CTRL["Control Channel\n'p2p-multiple-groups-control-v2'"]
-        DC_FILE1["Data Channel G1\n'p2p-multiple-groups-file-v2:<fileId>:<groupKey1>'"]
-        DC_FILE2["Data Channel G2\n'p2p-multiple-groups-file-v2:<fileId>:<groupKey2>'"]
+        DC_FILE1["Data Channel G1\n'p2p-multiple-groups-file-v2:groupId1:transferId1'"]
+        DC_FILE2["Data Channel G2\n'p2p-multiple-groups-file-v2:groupId2:transferId2'"]
         PC --- DC_CTRL
         PC --- DC_FILE1
         PC --- DC_FILE2
@@ -53,8 +53,8 @@ flowchart TD
 
 ### Protocol Isolation Guarantees
 1. **Control Multiplexing**: Every control message across the shared `p2p-multiple-groups-control-v2` channel explicitly carries its destination `groupKey`. The engine routes payloads strictly to the matching local `GroupRuntime`.
-2. **Channel Label Scoping**: File transfer data channels encode the group key directly into their protocol label:
-   $$\text{Label} = \text{"p2p-multiple-groups-file-v2:"} \parallel \text{fileId} \parallel \text{":"} \parallel \text{groupKey}$$
+2. **Channel Label Scoping**: File transfer data channels encode the group ID and transfer ID directly into their protocol label:
+   $$\text{Label} = \text{"p2p-multiple-groups-file-v2:"} \parallel \text{groupId} \parallel \text{":"} \parallel \text{transferId}$$
 3. **Zero Cross-Contamination**: If Peer $B$ attempts to request a file using $G_1$'s data channel while authenticated only for $G_2$, the request is rejected with `FORBIDDEN` and the channel is torn down without affecting $G_2$'s active streams.
 
 ---

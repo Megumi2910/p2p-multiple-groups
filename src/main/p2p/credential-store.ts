@@ -192,7 +192,14 @@ export class SafeCredentialStore implements CredentialStore {
         obj[k] = v
       }
       const rawJson = JSON.stringify(obj)
-      const encrypted = this.encrypt(rawJson)
+      let encrypted: Buffer
+      try {
+        encrypted = this.encrypt(rawJson)
+      } catch (encryptErr) {
+        console.warn('[credential-store] Encryption failed or cancelled; operating in memory-only mode:', encryptErr)
+        this.memoryCache.set(groupKey, token)
+        return 'memory'
+      }
 
       const tempPath = `${this.filePath}.${randomUUID()}.tmp`
       try {
@@ -244,7 +251,14 @@ export class SafeCredentialStore implements CredentialStore {
         obj[k] = v
       }
       const rawJson = JSON.stringify(obj)
-      const encrypted = this.encrypt(rawJson)
+      let encrypted: Buffer
+      try {
+        encrypted = this.encrypt(rawJson)
+      } catch (encryptErr) {
+        console.warn('[credential-store] Encryption failed or cancelled; operating in memory-only mode:', encryptErr)
+        this.memoryCache.delete(groupKey)
+        return
+      }
 
       const tempPath = `${this.filePath}.${randomUUID()}.tmp`
       try {

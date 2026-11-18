@@ -42,6 +42,65 @@ export function sanitizeDestinationFileName(name: string): string {
   return cleaned
 }
 
+export interface ResumableDownloadRecord {
+  transferId: string
+  groupKey: string
+  groupId: string
+  epoch: string
+  fileId: string
+  fileName: string
+  destinationPath: string
+  partPath: string
+  size: number
+  sha256: string
+  peerId: string
+  peerName: string
+  transferredBytes: number
+  localMembershipId: string
+  remoteMembershipId: string
+  remoteSessionId: string
+}
+
+export async function preparePartialDownload(
+  partPath: string,
+  expectedTotalBytes?: number
+): Promise<{ fileHandle: FileHandle; startOffset: number; hasher: Hash }> {
+  const hasher = createHash('sha256')
+  let existingSize = 0
+  try {
+    const st = await stat(partPath)
+    existingSize = st.size
+  } catch {
+    existingSize = 0
+  }
+
+  if (existingSize <= 0 || (expectedTotalBytes !== undefined && existingSize >= expectedTotalBytes)) {
+    const fileHandle = await open(partPath, 'w')
+    return { fileHandle, startOffset: 0, hasher }
+  }
+
+  const fileHandle = await open(partPath, 'r+')
+  try {
+    const buf = Buffer.allocUnsafe(64 * 1024)
+    let pos = 0
+    while (pos < existingSize) {
+      const toRead = Math.min(buf.byteLength, existingSize - pos)
+      const { bytesRead } = await fileHandle.read(buf, 0, toRead, pos)
+      if (bytesRead <= 0) break
+      hasher.update(buf.subarray(0, bytesRead))
+      pos += bytesRead
+    }
+    if (pos !== existingSize) {
+      await fileHandle.truncate(pos)
+      existingSize = pos
+    }
+    return { fileHandle, startOffset: existingSize, hasher }
+  } catch (err) {
+    await fileHandle.close().catch(() => {})
+    throw err
+  }
+}
+
 export interface TransferAuthorizationContext {
   direction: P2pTransferDirection
   groupKey: string
@@ -84,6 +143,8 @@ interface TransferSession {
   localMembershipId: string
   remoteMembershipId: string
   authContext?: TransferAuthorizationContext
+  canResume?: boolean
+  resumedFromBytes?: number
   // Upload-specific
   filePath?: string
   lastAckedBytes?: number
@@ -100,11 +161,29 @@ interface TransferSession {
 export class TransferManager {
   private readonly transfers = new Map<string, TransferSession>()
   private readonly terminalHistory: MultiGroupTransfer[] = []
+  private readonly resumableDownloads = new Map<string, ResumableDownloadRecord>()
   private readonly callbacks: TransferCallbacks
   private isDisposed = false
 
   constructor(callbacks: TransferCallbacks) {
     this.callbacks = callbacks
+  }
+
+  getResumableDownload(transferId: string): ResumableDownloadRecord | undefined {
+    return this.resumableDownloads.get(transferId)
+  }
+
+  removeResumableDownload(transferId: string): void {
+    this.resumableDownloads.delete(transferId)
+  }
+
+  forceCloseTransferChannel(transferId: string): boolean {
+    const session = this.transfers.get(transferId)
+    if (session?.channel) {
+      session.channel.close()
+      return true
+    }
+    return false
   }
 
   getActiveUploadsCount(): number {
@@ -143,7 +222,9 @@ export class TransferManager {
         sha256: t.sha256,
         state: t.state,
         path: t.path,
-        message: t.message
+        message: t.message,
+        canResume: t.canResume,
+        resumedFromBytes: t.resumedFromBytes
       })
     }
     return [...list, ...this.terminalHistory]
@@ -177,6 +258,8 @@ export class TransferManager {
     remoteSessionId: string
     localMembershipId: string
     remoteMembershipId: string
+    isResume?: boolean
+    partPath?: string
   }): Promise<void> {
     if (this.isDisposed) throw new Error('TransferManager is disposed')
 
@@ -202,7 +285,7 @@ export class TransferManager {
       throw new Error('NOT_AUTHORIZED')
     }
 
-    // Refuse existing destination
+    // Refuse existing completed destination
     try {
       await stat(params.destination)
       throw new Error('DESTINATION_EXISTS')
@@ -212,12 +295,32 @@ export class TransferManager {
       }
     }
 
-    const partPath = join(dirname(params.destination), `.p2p-multiple-groups-${params.transferId}.part`)
+    const partPath = params.partPath || join(dirname(params.destination), `.p2p-multiple-groups-${params.transferId}.part`)
     let fileHandle: FileHandle
-    try {
-      fileHandle = await open(partPath, 'wx')
-    } catch {
-      throw new Error('IO_ERROR')
+    let startOffset = 0
+    let hasher: Hash
+
+    if (params.isResume) {
+      try {
+        const prep = await preparePartialDownload(partPath, params.size)
+        fileHandle = prep.fileHandle
+        startOffset = prep.startOffset
+        hasher = prep.hasher
+      } catch {
+        throw new Error('IO_ERROR')
+      }
+    } else {
+      try {
+        fileHandle = await open(partPath, 'w')
+        hasher = createHash('sha256')
+      } catch {
+        throw new Error('IO_ERROR')
+      }
+    }
+
+    const histIdx = this.terminalHistory.findIndex((t) => t.id === params.transferId)
+    if (histIdx !== -1) {
+      this.terminalHistory.splice(histIdx, 1)
     }
 
     const session: TransferSession = {
@@ -227,11 +330,13 @@ export class TransferManager {
       peerId: params.peerId,
       peerName: params.peerName,
       size: params.size,
-      transferredBytes: 0,
+      transferredBytes: startOffset,
+      lastAckedBytes: startOffset,
+      resumedFromBytes: startOffset,
       sha256: params.sha256,
       state: 'connecting',
       path: this.callbacks.getPeerPath(params.peerId),
-      message: 'Connecting to peer...',
+      message: startOffset > 0 ? `Resuming from byte ${startOffset}...` : 'Connecting to peer...',
       channel: null,
       stallTimer: null,
       groupKey: params.groupKey,
@@ -245,7 +350,8 @@ export class TransferManager {
       destinationPath: params.destination,
       partPath,
       fileHandle,
-      hasher: createHash('sha256')
+      hasher,
+      canResume: true
     }
 
     this.transfers.set(session.id, session)
@@ -258,13 +364,13 @@ export class TransferManager {
 
       // Recheck authorization after channel opening
       if (!this.callbacks.isAuthorized(authContext)) {
-        await this.failTransfer(session, 'Transfer authorization revoked')
+        await this.failTransfer(session, 'Transfer authorization revoked', false)
         return
       }
 
       this.setupDownloadChannel(session, channel, params.fileId)
     } catch (err) {
-      await this.failTransfer(session, `Failed to open file channel: ${err instanceof Error ? err.message : String(err)}`)
+      await this.failTransfer(session, `Failed to open file channel: ${err instanceof Error ? err.message : String(err)}`, true)
     }
   }
 
@@ -279,7 +385,8 @@ export class TransferManager {
       ownerMembershipId: session.remoteMembershipId,
       fileId,
       size: session.size,
-      sha256: session.sha256
+      sha256: session.sha256,
+      ...(session.transferredBytes > 0 ? { offset: session.transferredBytes } : {})
     }
 
     channel.send(JSON.stringify(requestMsg))
@@ -291,7 +398,7 @@ export class TransferManager {
 
       if (typeof data === 'string') {
         if (Buffer.byteLength(data, 'utf-8') > MAX_CONTROL_PAYLOAD_BYTES) {
-          await this.failTransfer(session, 'Control message exceeded maximum allowed size (1 KiB)')
+          await this.failTransfer(session, 'Control message exceeded maximum allowed size (1 KiB)', false)
           return
         }
 
@@ -299,16 +406,34 @@ export class TransferManager {
         try {
           parsed = JSON.parse(data)
         } catch {
-          await this.failTransfer(session, 'Invalid control message from peer')
+          await this.failTransfer(session, 'Invalid control message from peer', false)
           return
         }
         if (isTransferControlMessageV2(parsed)) {
           if (parsed.groupId !== session.groupId || parsed.transferId !== session.id) {
-            await this.failTransfer(session, 'Mismatched group or transfer context')
+            await this.failTransfer(session, 'Mismatched group or transfer context', false)
             return
           }
 
           if (parsed.type === 'accepted') {
+            if (parsed.sha256 !== session.sha256 || parsed.size !== session.size) {
+              await this.failTransfer(session, 'Remote file metadata mismatch', false)
+              return
+            }
+            const remoteOffset = parsed.offset ?? 0
+            if (remoteOffset !== session.transferredBytes) {
+              if (remoteOffset === 0 && session.transferredBytes > 0 && session.fileHandle) {
+                // Remote peer does not support resume or fell back to 0; restart download from 0
+                await session.fileHandle.truncate(0)
+                session.hasher = createHash('sha256')
+                session.transferredBytes = 0
+                session.lastAckedBytes = 0
+                session.resumedFromBytes = 0
+              } else {
+                await this.failTransfer(session, `Remote accepted unexpected offset: ${remoteOffset}`, false)
+                return
+              }
+            }
             session.state = 'transferring'
             session.message = 'Transfer in progress'
             this.callbacks.onStateChange()
@@ -324,7 +449,7 @@ export class TransferManager {
           }
 
           if (parsed.type === 'error') {
-            await this.failTransfer(session, `Remote peer rejected transfer: ${parsed.code}`)
+            await this.failTransfer(session, `Remote peer rejected transfer: ${parsed.code}`, true)
             return
           }
 
@@ -333,24 +458,24 @@ export class TransferManager {
             return
           }
         } else {
-          await this.failTransfer(session, 'Invalid control message from peer')
+          await this.failTransfer(session, 'Invalid control message from peer', false)
           return
         }
       } else {
         const chunkBuf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer)
 
         if (session.state !== 'transferring') {
-          await this.failTransfer(session, 'Received binary frame before acceptance')
+          await this.failTransfer(session, 'Received binary frame before acceptance', false)
           return
         }
 
         if (session.authContext && !this.callbacks.isAuthorized(session.authContext)) {
-          await this.failTransfer(session, 'Transfer authorization revoked')
+          await this.failTransfer(session, 'Transfer authorization revoked', false)
           return
         }
 
         if (chunkBuf.length < 8) {
-          await this.failTransfer(session, 'Malformed binary frame (missing offset)')
+          await this.failTransfer(session, 'Malformed binary frame (missing offset)', false)
           return
         }
 
@@ -358,19 +483,20 @@ export class TransferManager {
         const chunk = chunkBuf.subarray(8)
 
         if (chunk.length > MAX_TRANSFER_CHUNK_SIZE) {
-          await this.failTransfer(session, 'Chunk exceeds maximum allowed size')
+          await this.failTransfer(session, 'Chunk exceeds maximum allowed size', false)
           return
         }
         if (offset !== session.transferredBytes) {
-          await this.failTransfer(session, `Offset gap: expected ${session.transferredBytes}, got ${offset}`)
+          await this.failTransfer(session, `Offset gap: expected ${session.transferredBytes}, got ${offset}`, false)
           return
         }
 
         if (session.transferredBytes + chunk.length > session.size) {
-          await this.failTransfer(session, 'Transfer exceeded advertised file size')
+          await this.failTransfer(session, 'Transfer exceeded advertised file size', false)
           return
         }
 
+        const chunkOffset = session.transferredBytes
         session.transferredBytes += chunk.length
         session.hasher!.update(chunk)
         this.callbacks.onStateChange()
@@ -390,13 +516,14 @@ export class TransferManager {
         session.writeQueue = (session.writeQueue || Promise.resolve())
           .then(async () => {
             if (session.fileHandle) {
-              await session.fileHandle.write(chunk)
+              await session.fileHandle.write(chunk, 0, chunk.length, chunkOffset)
             }
           })
           .catch((writeErr) => {
             void this.failTransfer(
               session,
-              `Disk write error: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`
+              `Disk write error: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`,
+              true
             )
           })
       }
@@ -404,7 +531,7 @@ export class TransferManager {
 
     channel.onclose = () => {
       if (session.state === 'transferring' || session.state === 'connecting') {
-        void this.failTransfer(session, 'Peer closed connection')
+        void this.failTransfer(session, 'Peer closed connection', true)
       }
     }
   }
@@ -442,6 +569,8 @@ export class TransferManager {
       await rename(session.partPath!, session.destinationPath!)
       await unlink(session.partPath!).catch(() => {})
 
+      this.resumableDownloads.delete(session.id)
+      session.canResume = false
       session.state = 'completed'
       session.message = 'Transfer completed and verified.'
       if (session.stallTimer) {
@@ -466,7 +595,7 @@ export class TransferManager {
       this.archiveSession(session)
       this.callbacks.onStateChange()
     } catch (err) {
-      await this.failTransfer(session, `Finalization error: ${err instanceof Error ? err.message : String(err)}`)
+      await this.failTransfer(session, `Finalization error: ${err instanceof Error ? err.message : String(err)}`, false)
     }
   }
 
@@ -502,6 +631,22 @@ export class TransferManager {
       } catch {}
       channel.close()
       return
+    }
+
+    const existingSession = this.transfers.get(transferId)
+    if (existingSession) {
+      if (existingSession.stallTimer) {
+        clearTimeout(existingSession.stallTimer)
+        existingSession.stallTimer = null
+      }
+      if (existingSession.readStream) {
+        try { existingSession.readStream.destroy() } catch {}
+        existingSession.readStream = undefined
+      }
+      if (existingSession.channel && existingSession.channel !== channel) {
+        try { existingSession.channel.close() } catch {}
+      }
+      this.transfers.delete(transferId)
     }
 
     const session: TransferSession = {
@@ -647,13 +792,34 @@ export class TransferManager {
             return
           }
 
+          const startOffset = parsed.offset ?? 0
+          if (
+            startOffset < 0 ||
+            !Number.isSafeInteger(startOffset) ||
+            startOffset > authorized.size ||
+            (startOffset === authorized.size && authorized.size > 0)
+          ) {
+            const err: TransferControlMessageV2 = {
+              v: 2,
+              type: 'error',
+              groupId: parsed.groupId,
+              transferId: parsed.transferId,
+              code: 'OFFSET_OUT_OF_BOUNDS'
+            }
+            try { channel.send(JSON.stringify(err)) } catch {}
+            await this.failTransfer(session, 'Invalid resume offset', false)
+            return
+          }
+
           session.fileName = sanitizeDestinationFileName(authorized.path.split(/[\\/]/).pop() || 'file')
           session.size = authorized.size
           session.sha256 = authorized.sha256
           session.filePath = authorized.path
-          session.lastAckedBytes = 0
+          session.lastAckedBytes = startOffset
+          session.transferredBytes = startOffset
+          session.resumedFromBytes = startOffset
           session.state = 'transferring'
-          session.message = 'Sending file data...'
+          session.message = startOffset > 0 ? `Resuming file data from byte ${startOffset}...` : 'Sending file data...'
           this.callbacks.onStateChange()
 
           const acceptedMsg: TransferControlMessageV2 = {
@@ -666,11 +832,12 @@ export class TransferManager {
             ownerMembershipId: session.localMembershipId,
             fileId: parsed.fileId,
             size: authorized.size,
-            sha256: authorized.sha256
+            sha256: authorized.sha256,
+            offset: startOffset
           }
           channel.send(JSON.stringify(acceptedMsg))
 
-          void this.startStreamingUpload(session, channel, authorized.path)
+          void this.startStreamingUpload(session, channel, authorized.path, startOffset)
           return
         }
 
@@ -714,24 +881,25 @@ export class TransferManager {
   private async startStreamingUpload(
     session: TransferSession,
     channel: RTCDataChannel,
-    filePath: string
+    filePath: string,
+    startOffset = 0
   ): Promise<void> {
-    if (session.size === 0) {
+    if (session.size === 0 || startOffset >= session.size) {
       const endMsg: TransferControlMessageV2 = {
         v: 2,
         type: 'end',
         groupId: session.groupId,
         transferId: session.id,
-        size: 0,
+        size: session.size,
         sha256: session.sha256
       }
       channel.send(JSON.stringify(endMsg))
       return
     }
 
-    let offset = 0
+    let offset = startOffset
     channel.bufferedAmountLowThreshold = LOW_WATER_BUFFER
-    const stream = createReadStream(filePath, { highWaterMark: CHUNK_SIZE })
+    const stream = createReadStream(filePath, { start: startOffset, highWaterMark: CHUNK_SIZE })
     session.readStream = stream
 
     const resumeIfNeeded = (): void => {
@@ -804,6 +972,21 @@ export class TransferManager {
     const session = this.transfers.get(transferId)
     if (session) {
       await this.cancelSession(session, true)
+      return
+    }
+    const resumable = this.resumableDownloads.get(transferId)
+    if (resumable) {
+      this.resumableDownloads.delete(transferId)
+      if (resumable.partPath) {
+        await unlink(resumable.partPath).catch(() => {})
+      }
+      const hist = this.terminalHistory.find((t) => t.id === transferId)
+      if (hist) {
+        hist.canResume = false
+        hist.state = 'cancelled'
+        hist.message = 'Transfer cancelled.'
+      }
+      this.callbacks.onStateChange()
     }
   }
 
@@ -881,10 +1064,19 @@ export class TransferManager {
       }
     }
 
+    if (session.writeQueue) {
+      try {
+        await session.writeQueue
+      } catch {}
+    }
+
     if (session.fileHandle) {
       await session.fileHandle.close().catch(() => {})
       session.fileHandle = undefined
     }
+
+    this.resumableDownloads.delete(session.id)
+    session.canResume = false
 
     if (session.partPath) {
       await unlink(session.partPath).catch(() => {})
@@ -894,10 +1086,8 @@ export class TransferManager {
     this.callbacks.onStateChange()
   }
 
-  private async failTransfer(session: TransferSession, reason: string): Promise<void> {
+  private async failTransfer(session: TransferSession, reason: string, preservePart = false): Promise<void> {
     if (session.state === 'completed' || session.state === 'cancelled' || session.state === 'failed') return
-    session.state = 'failed'
-    session.message = reason
     if (session.stallTimer) {
       clearTimeout(session.stallTimer)
       session.stallTimer = null
@@ -917,7 +1107,7 @@ export class TransferManager {
           type: 'error',
           groupId: session.groupId,
           transferId: session.id,
-          code: reason
+          code: reason.slice(0, 64)
         }
         session.channel.send(JSON.stringify(errMsg))
       } catch {
@@ -930,21 +1120,62 @@ export class TransferManager {
       }
     }
 
+    if (session.writeQueue) {
+      try {
+        await session.writeQueue
+      } catch {}
+    }
+
     if (session.fileHandle) {
       await session.fileHandle.close().catch(() => {})
       session.fileHandle = undefined
     }
 
-    if (session.partPath) {
-      await unlink(session.partPath).catch(() => {})
+    session.state = 'failed'
+    session.message = reason
+
+    const isCurrentSession = this.transfers.get(session.id) === session
+
+    if (preservePart && session.direction === 'download' && session.transferredBytes > 0 && session.partPath && session.destinationPath) {
+      session.canResume = true
+      this.resumableDownloads.set(session.id, {
+        transferId: session.id,
+        groupKey: session.groupKey,
+        groupId: session.groupId,
+        epoch: session.epoch,
+        fileId: session.fileId,
+        fileName: session.fileName,
+        destinationPath: session.destinationPath,
+        partPath: session.partPath,
+        size: session.size,
+        sha256: session.sha256,
+        peerId: session.peerId,
+        peerName: session.peerName,
+        transferredBytes: session.transferredBytes,
+        localMembershipId: session.localMembershipId,
+        remoteMembershipId: session.remoteMembershipId,
+        remoteSessionId: session.remoteSessionId
+      })
+    } else {
+      session.canResume = false
+      if (isCurrentSession) {
+        this.resumableDownloads.delete(session.id)
+      }
+      if (session.partPath) {
+        await unlink(session.partPath).catch(() => {})
+      }
     }
 
-    this.archiveSession(session)
-    this.callbacks.onStateChange()
+    if (isCurrentSession) {
+      this.archiveSession(session)
+      this.callbacks.onStateChange()
+    }
   }
 
   private archiveSession(session: TransferSession): void {
-    this.transfers.delete(session.id)
+    if (this.transfers.get(session.id) === session) {
+      this.transfers.delete(session.id)
+    }
     this.terminalHistory.unshift({
       id: session.id,
       groupKey: session.groupKey,
@@ -958,7 +1189,9 @@ export class TransferManager {
       sha256: session.sha256,
       state: session.state,
       path: session.path,
-      message: session.message
+      message: session.message,
+      canResume: session.canResume,
+      resumedFromBytes: session.resumedFromBytes
     })
     if (this.terminalHistory.length > 50) {
       this.terminalHistory.pop()

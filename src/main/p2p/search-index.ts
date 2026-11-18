@@ -157,6 +157,31 @@ export class SupernodeIndexManager {
     this.ownerCatalogues.delete(peerId)
   }
 
+  getCatalogForOwner(peerId: string): OwnerCatalogue | undefined {
+    return this.ownerCatalogues.get(peerId)
+  }
+
+  findFileBySha256(
+    sha256: string,
+    size: number,
+    excludePeerId?: string
+  ): { ownerPeerId: string; ownerSessionId: string; ownerMembershipId: string; file: P2pFileMetadata } | undefined {
+    for (const catalogue of this.ownerCatalogues.values()) {
+      if (excludePeerId && catalogue.peerId === excludePeerId) continue
+      for (const file of catalogue.entries) {
+        if (file.sha256 === sha256 && file.size === size) {
+          return {
+            ownerPeerId: catalogue.peerId,
+            ownerSessionId: catalogue.sessionId,
+            ownerMembershipId: catalogue.membershipId || catalogue.sessionId,
+            file
+          }
+        }
+      }
+    }
+    return undefined
+  }
+
   search(
     query: string,
     originPeerId: string,

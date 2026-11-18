@@ -85,7 +85,9 @@ export interface PeerEngine {
   setFileGroups(fileId: string, groupKeys: GroupKey[]): Promise<ActionResult>
   search(groupKey: GroupKey, queryText: string): Promise<ActionResult>
   download(groupKey: GroupKey, resultId: string, destination: string): Promise<ActionResult>
+  resumeTransfer(transferId: string, preferredPeerId?: string): Promise<ActionResult>
   cancelTransfer(transferId: string): Promise<ActionResult>
+  forceCloseTransferChannel(transferId: string): boolean
   resolveSearchResult(groupKey: GroupKey, resultId: string): MultiGroupSearchResult | undefined
   getAuthorizedFile(groupKeyOrFileId: string, fileId?: string): Promise<{ path: string; size: number; sha256: string }>
   dispose(): Promise<void>
@@ -1922,10 +1924,155 @@ export async function createPeerEngine(
       }
     },
 
+    resumeTransfer: async (transferId: string, preferredPeerId?: string): Promise<ActionResult> => {
+      const resumable = transfers.getResumableDownload(transferId)
+      if (!resumable) {
+        return { ok: false, code: 'NOT_FOUND', message: 'No resumable transfer found' }
+      }
+
+      const runtime = groups.get(resumable.groupKey)
+      if (!runtime || !hasFreshGroupAuthority(runtime)) {
+        return { ok: false, code: 'DISCONNECTED', message: 'Group is not connected or roster authority has expired' }
+      }
+
+      const transport = endpointTransports.get(runtime.signalingUrl)
+      if (!transport) return { ok: false, code: 'NOT_FOUND', message: 'Transport not found' }
+
+      // Target Peer & File Resolution
+      let targetPeerId = ''
+      let targetFileId = resumable.fileId
+      let targetPeerName = resumable.peerName
+      let targetRemoteSessionId = resumable.remoteSessionId
+      let targetRemoteMembershipId = resumable.remoteMembershipId
+
+      // Case A: Preferred Peer specified
+      if (preferredPeerId) {
+        const mem = runtime.members.find((m) => m.peerId === preferredPeerId)
+        if (mem) {
+          let matched = false
+          if (runtime.role === 'supernode') {
+            const cat = runtime.supernodeIndex.getCatalogForOwner(preferredPeerId)
+            const f = cat?.entries.find((e) => e.sha256 === resumable.sha256 && e.size === resumable.size)
+            if (f) {
+              targetFileId = f.fileId
+              matched = true
+            }
+          }
+          if (!matched) {
+            const allResults = runtime.searchResults.getResults()
+            const match = allResults.find(
+              (r) => r.ownerPeerId === preferredPeerId && r.file.sha256 === resumable.sha256 && r.file.size === resumable.size
+            )
+            if (match) {
+              targetFileId = match.file.fileId
+              matched = true
+            }
+          }
+          if (matched || preferredPeerId === resumable.peerId) {
+            targetPeerId = preferredPeerId
+            targetPeerName = mem.displayName || `Peer-${preferredPeerId.slice(0, 6)}`
+            targetRemoteSessionId = mem.sessionId
+            targetRemoteMembershipId = mem.membershipId
+          }
+        }
+      }
+
+      // Case B: Same-Host Resume (original peer is online)
+      if (!targetPeerId) {
+        const origMember = runtime.members.find((m) => m.peerId === resumable.peerId)
+        if (origMember) {
+          targetPeerId = resumable.peerId
+          targetFileId = resumable.fileId
+          targetPeerName = origMember.displayName || resumable.peerName
+          targetRemoteSessionId = origMember.sessionId
+          targetRemoteMembershipId = origMember.membershipId
+        }
+      }
+
+      // Case C: Multi-Host Failover via Supernode Index (if local peer is supernode)
+      if (!targetPeerId && runtime.role === 'supernode') {
+        const found = runtime.supernodeIndex.findFileBySha256(resumable.sha256, resumable.size, store.get().peerId)
+        if (found) {
+          const mem = runtime.members.find((m) => m.peerId === found.ownerPeerId)
+          if (mem) {
+            targetPeerId = found.ownerPeerId
+            targetFileId = found.file.fileId
+            targetPeerName = mem.displayName || `Peer-${found.ownerPeerId.slice(0, 6)}`
+            targetRemoteSessionId = mem.sessionId
+            targetRemoteMembershipId = mem.membershipId
+          }
+        }
+      }
+
+      // Case D: Multi-Host Failover via Search Results
+      if (!targetPeerId) {
+        const allResults = runtime.searchResults.getResults()
+        for (const res of allResults) {
+          if (res.file.sha256 === resumable.sha256 && res.file.size === resumable.size) {
+            const mem = runtime.members.find((m) => m.peerId === res.ownerPeerId)
+            if (mem) {
+              targetPeerId = res.ownerPeerId
+              targetFileId = res.file.fileId
+              targetPeerName = res.ownerName || mem.displayName
+              targetRemoteSessionId = mem.sessionId
+              targetRemoteMembershipId = mem.membershipId
+              break
+            }
+          }
+        }
+      }
+
+      // Case E: Not Found
+      if (!targetPeerId) {
+        return {
+          ok: false,
+          code: 'NOT_FOUND',
+          message: 'No online host currently has this file (matching SHA-256) to resume from'
+        }
+      }
+
+      try {
+        await transfers.startDownload({
+          transferId: resumable.transferId,
+          groupKey: runtime.groupKey,
+          groupId: runtime.groupId,
+          epoch: runtime.epoch || '',
+          remoteSessionId: targetRemoteSessionId,
+          localMembershipId: runtime.membershipId || '',
+          remoteMembershipId: targetRemoteMembershipId,
+          fileId: targetFileId,
+          fileName: resumable.fileName,
+          size: resumable.size,
+          sha256: resumable.sha256,
+          peerId: targetPeerId,
+          peerName: targetPeerName,
+          destination: resumable.destinationPath,
+          partPath: resumable.partPath,
+          isResume: true,
+          openChannel: () => transport.openFileChannel(runtime.groupId, targetPeerId, resumable.transferId)
+        })
+        publishState()
+        return { ok: true }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        let code: P2pErrorCode = 'IO_ERROR'
+        if (msg === 'BUSY') code = 'BUSY'
+        else if (msg === 'DESTINATION_EXISTS') code = 'DESTINATION_EXISTS'
+        else if (msg === 'NOT_AUTHORIZED') code = 'FORBIDDEN'
+        return { ok: false, code, message: msg }
+      }
+    },
+
     cancelTransfer: async (transferId: string): Promise<ActionResult> => {
       await transfers.cancelTransfer(transferId)
       publishState()
       return { ok: true }
+    },
+
+    forceCloseTransferChannel: (transferId: string): boolean => {
+      const res = transfers.forceCloseTransferChannel(transferId)
+      publishState()
+      return res
     },
 
     resolveSearchResult: (groupKey: GroupKey, resultId: string): MultiGroupSearchResult | undefined => {

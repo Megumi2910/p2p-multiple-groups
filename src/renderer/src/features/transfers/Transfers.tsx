@@ -9,6 +9,7 @@ interface TransfersProps {
   headingRef: React.RefObject<HTMLHeadingElement | null>
   transfers: MultiGroupTransfer[]
   groups?: P2pGroupState[]
+  onResumeTransfer?: (transferId: string) => Promise<ActionResult>
   onCancelTransfer: (transferId: string) => Promise<ActionResult>
   onSearchAgain?: (filename: string, groupKey: string) => void
 }
@@ -35,6 +36,7 @@ export const Transfers: React.FC<TransfersProps> = ({
   headingRef,
   transfers,
   groups = [],
+  onResumeTransfer,
   onCancelTransfer,
   onSearchAgain
 }) => {
@@ -184,9 +186,22 @@ export const Transfers: React.FC<TransfersProps> = ({
                         <span className={`badge badge-direction-${t.direction}`}>{t.direction}</span>
                       </td>
                       <td>{t.peerName}</td>
-                      <td>{formatBytes(t.size)}</td>
                       <td>
-                        <span className={`badge badge-${t.state}`}>{t.state}</span>
+                        {t.state === 'failed' && t.canResume && t.size > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span>{formatBytes(t.transferredBytes)} / {formatBytes(t.size)}</span>
+                            <span style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
+                              {Math.round((t.transferredBytes / t.size) * 100)}% saved
+                            </span>
+                          </div>
+                        ) : (
+                          formatBytes(t.size)
+                        )}
+                      </td>
+                      <td>
+                        <span className={`badge badge-${t.state}`}>
+                          {t.state === 'failed' && t.canResume ? 'Interrupted' : t.state}
+                        </span>
                         {t.message && (
                           <div style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
                             {t.message}
@@ -194,16 +209,38 @@ export const Transfers: React.FC<TransfersProps> = ({
                         )}
                       </td>
                       <td>
-                        {t.state === 'failed' && onSearchAgain && t.direction === 'download' && (
-                          <button
-                            type="button"
-                            className="action-button secondary-button"
-                            style={{ padding: '2px 8px', fontSize: '12px' }}
-                            onClick={() => onSearchAgain(t.fileName, t.groupKey)}
-                          >
-                            Search Again
-                          </button>
-                        )}
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          {t.state === 'failed' && t.canResume && onResumeTransfer && t.direction === 'download' && (
+                            <button
+                              type="button"
+                              className="action-button primary-button"
+                              style={{ padding: '2px 8px', fontSize: '12px' }}
+                              onClick={() => onResumeTransfer(t.id)}
+                            >
+                              Resume
+                            </button>
+                          )}
+                          {t.state === 'failed' && t.canResume && t.direction === 'download' && (
+                            <button
+                              type="button"
+                              className="action-button secondary-button"
+                              style={{ padding: '2px 8px', fontSize: '12px' }}
+                              onClick={() => onCancelTransfer(t.id)}
+                            >
+                              Cancel
+                            </button>
+                          )}
+                          {t.state === 'failed' && onSearchAgain && t.direction === 'download' && (
+                            <button
+                              type="button"
+                              className="action-button secondary-button"
+                              style={{ padding: '2px 8px', fontSize: '12px' }}
+                              onClick={() => onSearchAgain(t.fileName, t.groupKey)}
+                            >
+                              Search Again
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )

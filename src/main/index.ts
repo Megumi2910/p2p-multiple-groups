@@ -370,6 +370,20 @@ function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_RESUME_TRANSFER, async (event, transferId: unknown, preferredPeerId?: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof transferId !== 'string') {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Invalid transfer ID' }
+    }
+    const peerId = typeof preferredPeerId === 'string' ? preferredPeerId : undefined
+    try {
+      return await peerEngine.resumeTransfer(transferId, peerId)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.P2P_V2_CANCEL_TRANSFER, async (event, transferId: unknown) => {
     validateSender(event)
     if (!peerEngine) throw new Error('Peer engine uninitialized')

@@ -260,6 +260,94 @@ describe('P2P Protocol & Shared Contracts', () => {
     assert.equal(label, `p2p-multiple-groups-file-v2:grp1:${connectionId}`)
     assert.deepEqual(parseFileChannelLabelV2(label), { groupId: 'grp1', transferId: connectionId })
     assert.equal(parseFileChannelLabelV2('invalid-label'), null)
+
+    // Transfer control V2 request & accepted with offset
+    const sampleSha = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    assert.equal(
+      isTransferControlMessageV2({
+        v: 2,
+        type: 'request',
+        groupId: 'grp1',
+        transferId: connectionId,
+        epoch,
+        requesterMembershipId: membershipId,
+        ownerMembershipId: '',
+        fileId: randomUUID(),
+        size: 1048576,
+        sha256: sampleSha,
+        offset: 524288
+      }),
+      true
+    )
+
+    assert.equal(
+      isTransferControlMessageV2({
+        v: 2,
+        type: 'accepted',
+        groupId: 'grp1',
+        transferId: connectionId,
+        epoch,
+        requesterMembershipId: membershipId,
+        ownerMembershipId: membershipId,
+        fileId: randomUUID(),
+        size: 1048576,
+        sha256: sampleSha,
+        offset: 524288
+      }),
+      true
+    )
+
+    // Invalid offsets rejected
+    assert.equal(
+      isTransferControlMessageV2({
+        v: 2,
+        type: 'request',
+        groupId: 'grp1',
+        transferId: connectionId,
+        epoch,
+        requesterMembershipId: membershipId,
+        ownerMembershipId: '',
+        fileId: randomUUID(),
+        size: 1048576,
+        sha256: sampleSha,
+        offset: -1
+      }),
+      false
+    )
+
+    assert.equal(
+      isTransferControlMessageV2({
+        v: 2,
+        type: 'request',
+        groupId: 'grp1',
+        transferId: connectionId,
+        epoch,
+        requesterMembershipId: membershipId,
+        ownerMembershipId: '',
+        fileId: randomUUID(),
+        size: 1048576,
+        sha256: sampleSha,
+        offset: 12.5
+      }),
+      false
+    )
+
+    assert.equal(
+      isTransferControlMessageV2({
+        v: 2,
+        type: 'request',
+        groupId: 'grp1',
+        transferId: connectionId,
+        epoch,
+        requesterMembershipId: membershipId,
+        ownerMembershipId: '',
+        fileId: randomUUID(),
+        size: 1048576,
+        sha256: sampleSha,
+        offset: '524288'
+      }),
+      false
+    )
   })
 })
 

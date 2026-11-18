@@ -363,6 +363,7 @@ export default function App(): React.ReactElement {
             headingRef={workspaceHeadingRef}
             transfers={peer.state.transfers}
             groups={peer.state.groups}
+            onResumeTransfer={peer.resumeTransfer}
             onCancelTransfer={peer.cancelTransfer}
             onSearchAgain={(filename, groupKey) => {
               navigateTo('search')

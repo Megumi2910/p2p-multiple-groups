@@ -398,7 +398,9 @@ export class TransportManager {
           }
           record.activeFileChannels.set(parsed.transferId, channel)
           channel.onclose = () => {
-            record.activeFileChannels.delete(parsed.transferId)
+            if (record.activeFileChannels.get(parsed.transferId) === channel) {
+              record.activeFileChannels.delete(parsed.transferId)
+            }
           }
           this.events.onFileChannel(parsed.groupId, remotePeerId, remoteSessionId, parsed.transferId, channel)
         } else {
@@ -791,7 +793,9 @@ export class TransportManager {
 
     currentRecord.activeFileChannels.set(transferId, channel)
     channel.onclose = () => {
-      currentRecord.activeFileChannels.delete(transferId)
+      if (currentRecord.activeFileChannels.get(transferId) === channel) {
+        currentRecord.activeFileChannels.delete(transferId)
+      }
     }
 
     const { promise, resolve, reject } = Promise.withResolvers<RTCDataChannel>()

@@ -336,6 +336,7 @@ export type TransferControlMessageV2 =
       fileId: string
       size: number
       sha256: string
+      offset?: number
     }
   | {
       v: 2
@@ -348,6 +349,7 @@ export type TransferControlMessageV2 =
       fileId: string
       size: number
       sha256: string
+      offset?: number
     }
   | {
       v: 2
@@ -690,7 +692,8 @@ export function isTransferControlMessageV2(val: unknown): val is TransferControl
         (isUuid(r.ownerMembershipId) || r.ownerMembershipId === '') &&
         isUuid(r.fileId) &&
         isNonNegativeSafeInteger(r.size) &&
-        isSha256(r.sha256)
+        isSha256(r.sha256) &&
+        (r.offset === undefined || isNonNegativeSafeInteger(r.offset))
       )
     case 'ack':
       return isNonNegativeSafeInteger(r.receivedBytes)

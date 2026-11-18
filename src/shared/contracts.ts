@@ -33,6 +33,7 @@ export const IPC_CHANNELS = {
   P2P_V2_SET_FILE_GROUPS: 'p2p:setFileGroups',
   P2P_V2_SEARCH: 'p2p:search',
   P2P_V2_DOWNLOAD: 'p2p:download',
+  P2P_V2_RESUME_TRANSFER: 'p2p:resumeTransfer',
   P2P_V2_CANCEL_TRANSFER: 'p2p:cancelTransfer'
 } as const
 

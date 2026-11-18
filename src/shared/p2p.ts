@@ -154,6 +154,8 @@ export interface MultiGroupTransfer {
   state: P2pTransferState
   path: P2pCandidatePath
   message: string | null
+  canResume?: boolean
+  resumedFromBytes?: number
 }
 
 export type P2pRecoveryEventType =
@@ -259,6 +261,7 @@ export interface P2pMultipleGroupsP2pApi {
   setFileGroups(fileId: string, groupKeys: GroupKey[]): Promise<ActionResult>
   search(groupKey: GroupKey, query: string): Promise<ActionResult>
   download(groupKey: GroupKey, resultId: string): Promise<ActionResult>
+  resumeTransfer(transferId: string, preferredPeerId?: string): Promise<ActionResult>
   cancelTransfer(transferId: string): Promise<ActionResult>
 }
 

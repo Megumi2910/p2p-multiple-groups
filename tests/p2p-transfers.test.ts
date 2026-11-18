@@ -848,4 +848,239 @@ describe('End-to-End Verified Peer Transfers', () => {
       await server.close()
     }
   })
+
+  it('fails over to another host sharing identical file by sha256 when original host unshares file while remaining online in group', async () => {
+    const groupId = `group-${randomUUID().slice(0, 8)}`
+    const token = Buffer.alloc(32, 17).toString('base64url')
+
+    const server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [{ groupId, token }]
+    })
+
+    const signalUrl = `ws://127.0.0.1:${server.address.port}/signal`
+    const groupKey = makeGroupKey(signalUrl, groupId)
+
+    async function createEngine(name: string, supernodeEligible: boolean): Promise<PeerEngine> {
+      const dir = await mkdtemp(join(tmpdir(), `p2p-unshare-failover-${name}-`))
+      tempDirs.push(dir)
+      const engine = await createPeerEngine({ dataDirectory: dir })
+      await engine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId, token },
+        displayName: name,
+        supernodeEligible,
+        relayOnly: false,
+        rememberInvitation: false
+      })
+      return engine
+    }
+
+    function waitForState(
+      engine: PeerEngine,
+      predicate: (state: MultiGroupP2pState) => boolean,
+      timeoutMs = 25000,
+      label?: string
+    ): Promise<MultiGroupP2pState> {
+      const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState>()
+      let done = false
+      const timer = setTimeout(() => {
+        if (!done) {
+          done = true
+          unsub()
+          reject(new Error(`Timeout (${timeoutMs}ms) waiting for: ${label || 'peer state condition'}`))
+        }
+      }, timeoutMs)
+
+      const check = (s: MultiGroupP2pState) => {
+        if (done) return
+        if (predicate(s)) {
+          done = true
+          clearTimeout(timer)
+          unsub()
+          resolve(s)
+        }
+      }
+
+      const unsub = engine.subscribe(check)
+      check(engine.getState())
+      return promise
+    }
+
+    function waitForPeers(engine: PeerEngine, count: number): Promise<MultiGroupP2pState> {
+      return waitForState(engine, (s) => (s.groups[0]?.network.members.length || 0) === count, 25000, 'peers-count-' + count)
+    }
+
+    function waitForLink(engine: PeerEngine, targetPeerId: string): Promise<MultiGroupP2pState> {
+      return waitForState(
+        engine,
+        (s) => Boolean(s.groups[0]?.network.links.some((l) => l.peerId === targetPeerId && l.state === 'open')),
+        25000,
+        'link-open-' + targetPeerId.slice(0, 8)
+      )
+    }
+
+    let downloader: PeerEngine | null = null
+    let uploaderA: PeerEngine | null = null
+    let uploaderB: PeerEngine | null = null
+
+    try {
+      downloader = await createEngine('DownloaderSN', true)
+      uploaderA = await createEngine('UploaderA', false)
+      uploaderB = await createEngine('UploaderB', false)
+
+      await Promise.all([waitForPeers(downloader, 3), waitForPeers(uploaderA, 3), waitForPeers(uploaderB, 3)])
+      await Promise.all([
+        waitForLink(uploaderA, downloader.getState().identity.peerId),
+        waitForLink(uploaderB, downloader.getState().identity.peerId)
+      ])
+
+      const upDirA = await mkdtemp(join(tmpdir(), 'up-unshare-a-'))
+      const upDirB = await mkdtemp(join(tmpdir(), 'up-unshare-b-'))
+      tempDirs.push(upDirA, upDirB)
+
+      const binaryPayload = Buffer.alloc(1024 * 1024)
+      for (let i = 0; i < binaryPayload.length; i++) {
+        binaryPayload[i] = (i * 29 + 11) & 0xff
+      }
+      const pathA = join(upDirA, 'file-unshare.bin')
+      const pathB = join(upDirB, 'file-unshare.bin')
+      await writeFile(pathA, binaryPayload)
+      await writeFile(pathB, binaryPayload)
+
+      const ackA = waitForState(
+        uploaderA,
+        (s) =>
+          s.groups[0]?.catalog.acknowledgedGeneration !== null &&
+          s.groups[0]?.catalog.acknowledgedGeneration === s.groups[0]?.catalog.advertisedGeneration &&
+          s.library.files.length === 1 &&
+          s.library.files.every((f) => f.status === 'shared'),
+        25000,
+        'upA-ack'
+      )
+      const ackB = waitForState(
+        uploaderB,
+        (s) =>
+          s.groups[0]?.catalog.acknowledgedGeneration !== null &&
+          s.groups[0]?.catalog.acknowledgedGeneration === s.groups[0]?.catalog.advertisedGeneration &&
+          s.library.files.length === 1 &&
+          s.library.files.every((f) => f.status === 'shared'),
+        25000,
+        'upB-ack'
+      )
+
+      await uploaderA.addFiles(groupKey, [pathA])
+      await uploaderB.addFiles(groupKey, [pathB])
+      await Promise.all([ackA, ackB])
+
+      await downloader.search(groupKey, 'unshare')
+      await waitForState(
+        downloader,
+        (s) =>
+          s.groups[0]?.search.status === 'complete' &&
+          (s.groups[0]?.search.results.length || 0) >= 2 &&
+          s.groups[0]?.search.results.some((r) => r.ownerPeerId === uploaderA!.getState().identity.peerId) &&
+          s.groups[0]?.search.results.some((r) => r.ownerPeerId === uploaderB!.getState().identity.peerId),
+        25000,
+        'search-results'
+      )
+
+      const searchResults = downloader.getState().groups[0]?.search.results || []
+      const targetResult = searchResults.find((r) => r.ownerPeerId === uploaderA!.getState().identity.peerId)!
+      assert.ok(targetResult)
+
+      const dlDir = await mkdtemp(join(tmpdir(), 'dl-unshare-'))
+      tempDirs.push(dlDir)
+      const dlDest = join(dlDir, 'unshare-dl.bin')
+
+      let transferId = ''
+      const progressPromise = waitForState(
+        downloader,
+        (s) => {
+          const t = s.transfers.find((x) => x.fileName === 'unshare-dl.bin' || x.fileName === 'file-unshare.bin')
+          if (t && t.transferredBytes >= 256 * 1024 && t.state === 'transferring') {
+            transferId = t.id
+            return true
+          }
+          return false
+        },
+        25000,
+        'progress-256k'
+      )
+
+      await downloader.download(groupKey, targetResult.resultId, dlDest)
+      await progressPromise
+
+      // Force close channel to simulate drop
+      const closed = downloader.forceCloseTransferChannel(transferId)
+      assert.equal(closed, true)
+
+      const failedState = await waitForState(
+        downloader,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === transferId)
+          return t?.state === 'failed' && Boolean(t?.canResume)
+        },
+        25000,
+        'transfer-failed'
+      )
+
+      const failedTransfer = failedState.transfers.find((x) => x.id === transferId)!
+      assert.ok(failedTransfer.canResume)
+      assert.ok(failedTransfer.transferredBytes >= 256 * 1024)
+
+      // Host A unshares the file while REMAINING ONLINE in the group
+      const fileIdA = uploaderA.getState().library.files[0]!.fileId
+      const unshareAckA = waitForState(
+        uploaderA,
+        (s) =>
+          s.groups[0]?.catalog.acknowledgedGeneration !== null &&
+          s.groups[0]?.catalog.acknowledgedGeneration === s.groups[0]?.catalog.advertisedGeneration &&
+          s.library.files.length === 0,
+        25000,
+        'upA-unshare-ack'
+      )
+      await uploaderA.removeFile(fileIdA)
+      await unshareAckA
+
+      // Verify Host A is STILL online in the group roster
+      assert.ok(downloader.getState().groups[0]?.network.members.some((m) => m.peerId === uploaderA!.getState().identity.peerId))
+
+      // Wait for uploaderA's transfer to settle
+      await waitForState(
+        uploaderA,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === transferId)
+          return !t || t.state === 'failed' || t.state === 'completed' || t.state === 'cancelled'
+        },
+        25000,
+        'uploaderA-settled'
+      )
+
+      // Resume download - should skip Host A (unshared) and failover to Host B
+      const completedPromise = waitForState(
+        downloader,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === failedTransfer.id)
+          return t?.state === 'completed'
+        },
+        120000,
+        'failover-unshared-completed'
+      )
+
+      const resumeRes = await downloader.resumeTransfer(failedTransfer.id)
+      assert.equal(resumeRes.ok, true)
+      await completedPromise
+
+      const downloadedBytes = await readFile(dlDest)
+      assert.equal(downloadedBytes.length, binaryPayload.length)
+      const digest = createHash('sha256').update(downloadedBytes).digest('hex')
+      assert.equal(digest, targetResult.file.sha256)
+    } finally {
+      if (downloader) await downloader.dispose()
+      if (uploaderA) await uploaderA.dispose()
+      if (uploaderB) await uploaderB.dispose()
+      await server.close()
+    }
+  })
 })

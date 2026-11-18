@@ -59,6 +59,7 @@ export interface ResumableDownloadRecord {
   localMembershipId: string
   remoteMembershipId: string
   remoteSessionId: string
+  lastRejectedByPeerId?: string
 }
 
 export async function preparePartialDownload(
@@ -145,6 +146,7 @@ interface TransferSession {
   authContext?: TransferAuthorizationContext
   canResume?: boolean
   resumedFromBytes?: number
+  lastRejectedByPeerId?: string
   // Upload-specific
   filePath?: string
   lastAckedBytes?: number
@@ -237,7 +239,7 @@ export class TransferManager {
     }
     if (session.state === 'transferring' || session.state === 'connecting' || session.state === 'verifying') {
       session.stallTimer = setTimeout(() => {
-        void this.failTransfer(session, 'Transfer stalled (no progress for 30s)')
+        void this.failTransfer(session, 'Transfer stalled (no progress for 30s)', true)
       }, STALL_TIMEOUT_MS)
     }
   }
@@ -351,7 +353,8 @@ export class TransferManager {
       partPath,
       fileHandle,
       hasher,
-      canResume: true
+      canResume: true,
+      lastRejectedByPeerId: this.resumableDownloads.get(params.transferId)?.lastRejectedByPeerId
     }
 
     this.transfers.set(session.id, session)
@@ -364,7 +367,7 @@ export class TransferManager {
 
       // Recheck authorization after channel opening
       if (!this.callbacks.isAuthorized(authContext)) {
-        await this.failTransfer(session, 'Transfer authorization revoked', false)
+        await this.failTransfer(session, 'Transfer authorization revoked', true)
         return
       }
 
@@ -398,7 +401,7 @@ export class TransferManager {
 
       if (typeof data === 'string') {
         if (Buffer.byteLength(data, 'utf-8') > MAX_CONTROL_PAYLOAD_BYTES) {
-          await this.failTransfer(session, 'Control message exceeded maximum allowed size (1 KiB)', false)
+          await this.failTransfer(session, 'Control message exceeded maximum allowed size (1 KiB)', true)
           return
         }
 
@@ -406,18 +409,18 @@ export class TransferManager {
         try {
           parsed = JSON.parse(data)
         } catch {
-          await this.failTransfer(session, 'Invalid control message from peer', false)
+          await this.failTransfer(session, 'Invalid control message from peer', true)
           return
         }
         if (isTransferControlMessageV2(parsed)) {
           if (parsed.groupId !== session.groupId || parsed.transferId !== session.id) {
-            await this.failTransfer(session, 'Mismatched group or transfer context', false)
+            await this.failTransfer(session, 'Mismatched group or transfer context', true)
             return
           }
 
           if (parsed.type === 'accepted') {
             if (parsed.sha256 !== session.sha256 || parsed.size !== session.size) {
-              await this.failTransfer(session, 'Remote file metadata mismatch', false)
+              await this.failTransfer(session, 'Remote file metadata mismatch', true)
               return
             }
             const remoteOffset = parsed.offset ?? 0
@@ -449,6 +452,7 @@ export class TransferManager {
           }
 
           if (parsed.type === 'error') {
+            session.lastRejectedByPeerId = session.peerId
             await this.failTransfer(session, `Remote peer rejected transfer: ${parsed.code}`, true)
             return
           }
@@ -458,7 +462,7 @@ export class TransferManager {
             return
           }
         } else {
-          await this.failTransfer(session, 'Invalid control message from peer', false)
+          await this.failTransfer(session, 'Invalid control message from peer', true)
           return
         }
       } else {
@@ -990,6 +994,24 @@ export class TransferManager {
     }
   }
 
+  interruptGroupTransfers(groupKey: string, reason: string): void {
+    for (const session of this.transfers.values()) {
+      if (session.groupKey === groupKey) {
+        const preservePart = session.direction === 'download' && session.transferredBytes > 0
+        void this.failTransfer(session, reason, preservePart)
+      }
+    }
+  }
+
+  interruptPeerTransfers(peerId: string, reason: string): void {
+    for (const session of this.transfers.values()) {
+      if (session.peerId === peerId) {
+        const preservePart = session.direction === 'download' && session.transferredBytes > 0
+        void this.failTransfer(session, reason, preservePart)
+      }
+    }
+  }
+
   cancelGroup(groupKey: string): void {
     for (const session of this.transfers.values()) {
       if (session.groupKey === groupKey) {
@@ -1138,6 +1160,7 @@ export class TransferManager {
 
     if (preservePart && session.direction === 'download' && session.transferredBytes > 0 && session.partPath && session.destinationPath) {
       session.canResume = true
+      const prev = this.resumableDownloads.get(session.id)
       this.resumableDownloads.set(session.id, {
         transferId: session.id,
         groupKey: session.groupKey,
@@ -1154,7 +1177,8 @@ export class TransferManager {
         transferredBytes: session.transferredBytes,
         localMembershipId: session.localMembershipId,
         remoteMembershipId: session.remoteMembershipId,
-        remoteSessionId: session.remoteSessionId
+        remoteSessionId: session.remoteSessionId,
+        lastRejectedByPeerId: session.lastRejectedByPeerId || prev?.lastRejectedByPeerId
       })
     } else {
       session.canResume = false

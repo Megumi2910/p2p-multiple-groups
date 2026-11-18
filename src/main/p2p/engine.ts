@@ -337,7 +337,7 @@ export async function createPeerEngine(
       runtime.searchMessage = 'Roster freshness expired'
     }
 
-    transfers.cancelGroup(runtime.groupKey)
+    transfers.interruptGroupTransfers(runtime.groupKey, 'Roster freshness expired')
 
     const transport = endpointTransports.get(runtime.signalingUrl)
     if (transport) {
@@ -666,11 +666,12 @@ export async function createPeerEngine(
         )
       }
 
-      // Clean up departed members from index and cancel active transfers
+      // Clean up departed members from index and interrupt active transfers
       const activeIds = new Set(peers.map((p) => p.peerId))
       for (const member of runtime.members) {
         if (!activeIds.has(member.peerId)) {
           runtime.supernodeIndex.removeOwner(member.peerId)
+          transfers.interruptPeerTransfers(member.peerId, 'Peer departed group')
         }
       }
 
@@ -1977,21 +1978,32 @@ export async function createPeerEngine(
         }
       }
 
-      // Case B: Same-Host Resume (original peer is online)
+      // Case B: Same-Host Resume (original peer is online and has not unshared/rejected this transfer)
       if (!targetPeerId) {
-        const origMember = runtime.members.find((m) => m.peerId === resumable.peerId)
-        if (origMember) {
-          targetPeerId = resumable.peerId
-          targetFileId = resumable.fileId
-          targetPeerName = origMember.displayName || resumable.peerName
-          targetRemoteSessionId = origMember.sessionId
-          targetRemoteMembershipId = origMember.membershipId
+        const isRejected = resumable.lastRejectedByPeerId === resumable.peerId
+        let hasFile = true
+        if (runtime.role === 'supernode') {
+          const cat = runtime.supernodeIndex.getCatalogForOwner(resumable.peerId)
+          hasFile = Boolean(cat?.entries.some((e) => e.sha256 === resumable.sha256 && e.size === resumable.size))
+        }
+
+        if (!isRejected && hasFile) {
+          const origMember = runtime.members.find((m) => m.peerId === resumable.peerId)
+          if (origMember) {
+            targetPeerId = resumable.peerId
+            targetFileId = resumable.fileId
+            targetPeerName = origMember.displayName || resumable.peerName
+            targetRemoteSessionId = origMember.sessionId
+            targetRemoteMembershipId = origMember.membershipId
+          }
         }
       }
 
       // Case C: Multi-Host Failover via Supernode Index (if local peer is supernode)
       if (!targetPeerId && runtime.role === 'supernode') {
-        const found = runtime.supernodeIndex.findFileBySha256(resumable.sha256, resumable.size, store.get().peerId)
+        const excludes = [store.get().peerId, resumable.peerId]
+        if (resumable.lastRejectedByPeerId) excludes.push(resumable.lastRejectedByPeerId)
+        const found = runtime.supernodeIndex.findFileBySha256(resumable.sha256, resumable.size, excludes)
         if (found) {
           const mem = runtime.members.find((m) => m.peerId === found.ownerPeerId)
           if (mem) {
@@ -2009,6 +2021,8 @@ export async function createPeerEngine(
         const allResults = runtime.searchResults.getResults()
         for (const res of allResults) {
           if (res.file.sha256 === resumable.sha256 && res.file.size === resumable.size) {
+            if (res.ownerPeerId === resumable.peerId) continue
+            if (resumable.lastRejectedByPeerId && res.ownerPeerId === resumable.lastRejectedByPeerId) continue
             const mem = runtime.members.find((m) => m.peerId === res.ownerPeerId)
             if (mem) {
               targetPeerId = res.ownerPeerId

@@ -164,10 +164,16 @@ export class SupernodeIndexManager {
   findFileBySha256(
     sha256: string,
     size: number,
-    excludePeerId?: string
+    excludePeerIds?: string | string[]
   ): { ownerPeerId: string; ownerSessionId: string; ownerMembershipId: string; file: P2pFileMetadata } | undefined {
+    const excludes = Array.isArray(excludePeerIds)
+      ? new Set(excludePeerIds)
+      : excludePeerIds
+        ? new Set([excludePeerIds])
+        : new Set<string>()
+
     for (const catalogue of this.ownerCatalogues.values()) {
-      if (excludePeerId && catalogue.peerId === excludePeerId) continue
+      if (excludes.has(catalogue.peerId)) continue
       for (const file of catalogue.entries) {
         if (file.sha256 === sha256 && file.size === size) {
           return {

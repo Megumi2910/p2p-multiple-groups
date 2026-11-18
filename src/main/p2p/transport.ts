@@ -70,6 +70,58 @@ interface GroupContext {
   renewedAt: number
 }
 
+function ensureSctpAssociationHealthy(pc: RTCPeerConnection): void {
+  try {
+    const sctp = (pc as any).sctpTransport?.sctp
+    if (!sctp) return
+
+    // 1. Prevent receiver window exhaustion due to unconsumed buffer leaks on closed streams
+    if (typeof sctp.advertisedRwnd === 'number' && sctp.advertisedRwnd < 512 * 1024) {
+      sctp.advertisedRwnd = 1024 * 1024
+      try {
+        void sctp.sendSack?.()
+      } catch {}
+    }
+
+    // 2. Prevent sender window deadlock from unacked packets on previously closed streams
+    if (typeof sctp.peerAdvertisedRwnd === 'number' && sctp.peerAdvertisedRwnd < 512 * 1024) {
+      sctp.peerAdvertisedRwnd = 1024 * 1024
+    }
+
+    // 3. Clear any orphaned chunks in sentQueue where flightSize is stuck
+    if (Array.isArray(sctp.sentQueue) && sctp.sentQueue.length > 0) {
+      const dcs: any[] = Object.values((pc as any).sctpTransport?.dataChannels || {})
+      const activeStreamIds = new Set<number>(
+        dcs
+          .filter((dc) => dc && (dc.readyState === 'open' || dc.readyState === 'connecting'))
+          .map((dc) => dc.id)
+      )
+      for (let i = sctp.sentQueue.length - 1; i >= 0; i--) {
+        const chunk = sctp.sentQueue[i]
+        if (chunk && !activeStreamIds.has(chunk.streamId)) {
+          if (typeof sctp.flightSizeDecrease === 'function') {
+            try { sctp.flightSizeDecrease(chunk) } catch {}
+          }
+          sctp.sentQueue.splice(i, 1)
+        }
+      }
+    }
+
+    // 4. Clear any orphaned outbound chunks on inactive streams
+    if (Array.isArray(sctp.outboundQueue) && sctp.outboundQueue.length > 0) {
+      const dcs: any[] = Object.values((pc as any).sctpTransport?.dataChannels || {})
+      const activeStreamIds = new Set<number>(
+        dcs
+          .filter((dc) => dc && (dc.readyState === 'open' || dc.readyState === 'connecting'))
+          .map((dc) => dc.id)
+      )
+      sctp.outboundQueue = sctp.outboundQueue.filter((c: any) => !c || activeStreamIds.has(c.streamId))
+    }
+  } catch {
+    // Ignore internal inspection errors
+  }
+}
+
 export class TransportManager {
   private readonly events: TransportEvents
   private readonly options: TransportManagerOptions
@@ -397,11 +449,13 @@ export class TransportManager {
             return
           }
           record.activeFileChannels.set(parsed.transferId, channel)
-          channel.onclose = () => {
+          channel.addEventListener('close', () => {
             if (record.activeFileChannels.get(parsed.transferId) === channel) {
               record.activeFileChannels.delete(parsed.transferId)
             }
-          }
+            ensureSctpAssociationHealthy(record.pc)
+          })
+          ensureSctpAssociationHealthy(record.pc)
           this.events.onFileChannel(parsed.groupId, remotePeerId, remoteSessionId, parsed.transferId, channel)
         } else {
           try {
@@ -785,6 +839,7 @@ export class TransportManager {
       throw new Error(`Cannot open file channel: group "${groupId}" authority expired`)
     }
 
+    ensureSctpAssociationHealthy(currentRecord.pc)
     const channelLabel = makeFileChannelLabelV2(groupId, transferId)
 
     const channel = currentRecord.pc.createDataChannel(channelLabel, {
@@ -792,16 +847,17 @@ export class TransportManager {
     })
 
     currentRecord.activeFileChannels.set(transferId, channel)
-    channel.onclose = () => {
+    channel.addEventListener('close', () => {
       if (currentRecord.activeFileChannels.get(transferId) === channel) {
         currentRecord.activeFileChannels.delete(transferId)
       }
-    }
+      ensureSctpAssociationHealthy(currentRecord.pc)
+    })
 
     const { promise, resolve, reject } = Promise.withResolvers<RTCDataChannel>()
     const timeout = setTimeout(() => {
       reject(new Error(`Timeout opening file channel to peer ${targetPeerId}`))
-    }, 10000)
+    }, 25000)
 
     channel.onopen = () => {
       clearTimeout(timeout)

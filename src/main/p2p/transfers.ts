@@ -533,11 +533,11 @@ export class TransferManager {
       }
     }
 
-    channel.onclose = () => {
+    channel.addEventListener('close', () => {
       if (session.state === 'transferring' || session.state === 'connecting') {
         void this.failTransfer(session, 'Peer closed connection', true)
       }
-    }
+    })
   }
 
   private async finalizeDownload(session: TransferSession): Promise<void> {
@@ -875,11 +875,11 @@ export class TransferManager {
       }
     }
 
-    channel.onclose = () => {
+    channel.addEventListener('close', () => {
       if (session.state === 'transferring' || session.state === 'connecting') {
         void this.failTransfer(session, 'Peer closed connection')
       }
-    }
+    })
   }
 
   private async startStreamingUpload(

@@ -4,18 +4,31 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash, randomBytes } from 'node:crypto'
 import { createPeerEngine, type PeerEngine } from '../src/main/p2p/engine.ts'
-import { makeGroupKey, type MultiGroupP2pState } from '../src/shared/p2p.ts'
+import { sanitizeDestinationFileName } from '../src/main/p2p/transfers.ts'
+import type { MultiGroupP2pState, MultiGroupSearchResult } from '../src/shared/p2p.ts'
 
 interface VmStatusResponse {
   ready: boolean
   peerId: string
+  sessionId: string | null
   groupKey: string
   groupId: string
   token: string
   signalingUrl: string
   peersConnected: number
+  links?: Array<{ peerId: string; state: string; path: string }>
   files: Record<string, { name: string; path: string; size: number; sha256: string }>
+  transfers?: Array<{
+    id: string
+    name: string
+    direction: string
+    state: string
+    transferred: number
+    total: number
+  }>
 }
+
+const VM_HOST = process.env.VM_PEER_HOST || '192.168.123.128'
 
 function waitForState(
   engine: PeerEngine,
@@ -42,7 +55,7 @@ function waitForState(
         done = true
         clearTimeout(timer)
         unsub()
-        reject(new Error(`Condition rejected: ${err}`))
+        reject(new Error(`Condition rejected (${label || 'unknown'}): ${err}`))
         return
       }
     }
@@ -59,46 +72,144 @@ function waitForState(
   return promise
 }
 
-const VM_HOST = process.env.VM_PEER_HOST || '192.168.123.128'
-
 async function fetchVmStatus(): Promise<VmStatusResponse> {
   const res = await fetch(`http://${VM_HOST}:8766/status`)
   if (!res.ok) throw new Error(`HTTP error ${res.status}: ${res.statusText}`)
   return (await res.json()) as VmStatusResponse
 }
 
+async function postVm(path: string, body?: unknown): Promise<any> {
+  const res = await fetch(`http://${VM_HOST}:8766${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : '{}'
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(`VM POST ${path} failed (${res.status}): ${text}`)
+  }
+  return JSON.parse(text)
+}
+
+async function searchFile(
+  engine: PeerEngine,
+  groupKey: string,
+  query: string,
+  expectedName: string,
+  ownerPeerId?: string,
+  minOwnerMatches = 1
+): Promise<MultiGroupSearchResult> {
+  const prevQueryId = engine.getState().groups.find((x) => x.groupKey === groupKey)?.search.queryId ?? null
+  const donePromise = waitForState(
+    engine,
+    (s) => {
+      const g = s.groups.find((x) => x.groupKey === groupKey)
+      const matches =
+        g?.search.results.filter(
+          (r) => r.file.name === expectedName && (!ownerPeerId || r.ownerPeerId === ownerPeerId)
+        ) || []
+      return (
+        g?.search.queryId !== prevQueryId &&
+        g?.search.status === 'complete' &&
+        matches.length >= minOwnerMatches
+      )
+    },
+    25000,
+    undefined,
+    `search:${expectedName}`
+  )
+  const dispatch = await engine.search(groupKey, query)
+  assert.equal(dispatch.ok, true, `Search failed for ${query}: ${!dispatch.ok ? dispatch.message : ''}`)
+  await donePromise
+
+  const results = engine.getState().groups.find((x) => x.groupKey === groupKey)?.search.results || []
+  const found = results.find((r) => r.file.name === expectedName && (!ownerPeerId || r.ownerPeerId === ownerPeerId))
+  assert.ok(found, `Expected search result ${expectedName}`)
+  return found
+}
+
+async function startTrackedDownload(
+  engine: PeerEngine,
+  groupKey: string,
+  resultId: string,
+  destPath: string,
+  fileName: string
+): Promise<string> {
+  const beforeIds = new Set(engine.getState().transfers.map((t) => t.id))
+  const idPromise = waitForState(
+    engine,
+    (s) => s.transfers.some((t) => !beforeIds.has(t.id) && t.direction === 'download' && t.fileName === fileName),
+    10000,
+    undefined,
+    `track-start:${fileName}`
+  )
+  const dlRes = await engine.download(groupKey, resultId, destPath)
+  assert.equal(dlRes.ok, true, `Download failed to start for ${fileName}: ${!dlRes.ok ? dlRes.message : ''}`)
+  const st = await idPromise
+  const created = st.transfers.find((t) => !beforeIds.has(t.id) && t.direction === 'download' && t.fileName === fileName)!
+  return created.id
+}
+
+async function waitForTransferCompletion(
+  engine: PeerEngine,
+  transferId: string,
+  destPath: string,
+  expectedSize: number,
+  expectedSha256: string,
+  timeoutMs = 60000
+): Promise<void> {
+  await waitForState(
+    engine,
+    (s) => s.transfers.find((t) => t.id === transferId)?.state === 'completed',
+    timeoutMs,
+    (s) => {
+      const t = s.transfers.find((x) => x.id === transferId)
+      return t?.state === 'failed' ? `Transfer ${transferId} failed: ${t.message}` : null
+    },
+    `complete:${transferId.slice(0, 8)}`
+  )
+
+  const bytes = await readFile(destPath)
+  assert.equal(bytes.length, expectedSize, `Size mismatch at ${destPath}: expected ${expectedSize}, got ${bytes.length}`)
+  const sha = createHash('sha256').update(bytes).digest('hex')
+  assert.equal(sha, expectedSha256, `SHA-256 mismatch at ${destPath}`)
+
+  const partPath = join(destPath, '..', `.p2p-multiple-groups-${transferId}.part`)
+  await assert.rejects(async () => stat(partPath), (err: NodeJS.ErrnoException) => err.code === 'ENOENT')
+}
+
+async function waitForVmTransferSettled(transferId: string): Promise<void> {
+  for (let i = 0; i < 30; i++) {
+    const st = await fetchVmStatus()
+    const t = st.transfers?.find((x) => x.id === transferId)
+    if (!t || t.state === 'failed' || t.state === 'completed' || t.state === 'cancelled') {
+      return
+    }
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error(`Timeout waiting for VM transfer ${transferId} to settle`)
+}
+
 async function main() {
   console.log('=================================================================')
-  console.log('  CROSS-OS P2P END-TO-END VERIFICATION (Windows <-> Linux VM)')
+  console.log('  CROSS-OS EDGE-CASE SUITE (Windows <-> Ubuntu Linux VM)')
   console.log('=================================================================\n')
 
-  // 1. Check VM Peer Status
-  console.log(`[1/5] Checking Linux VM Peer Status on http://${VM_HOST}:8766/status...`)
-  let vmStatus: VmStatusResponse
-  try {
-    vmStatus = await fetchVmStatus()
-    console.log(`  -> Linux VM Peer online: ${vmStatus.peerId}`)
-    console.log(`  -> Group: ${vmStatus.groupId} | Signaling: ${vmStatus.signalingUrl}`)
-    console.log(`  -> Available Files on VM:`)
-    for (const [k, v] of Object.entries(vmStatus.files)) {
-      console.log(`     - ${v.name}: ${v.size} bytes (SHA: ${v.sha256.slice(0, 16)}...)`)
-    }
-  } catch (err) {
-    console.error('  FAIL: Could not connect to Linux VM Peer:', err)
-    process.exit(1)
-  }
+  console.log(`[Setup] Checking Linux VM Peer on http://${VM_HOST}:8766/status...`)
+  const vmStatus = await fetchVmStatus()
+  console.log(`  -> VM Peer: ${vmStatus.peerId} | Files: ${Object.keys(vmStatus.files).length}`)
 
   const tempDirs: string[] = []
-  const dataDir = await mkdtemp(join(tmpdir(), 'win-p2p-engine-'))
+  const dataDir = await mkdtemp(join(tmpdir(), 'win-p2p-edge-'))
+  const seed2DataDir = await mkdtemp(join(tmpdir(), 'win-p2p-seed2-'))
   const dlDir = await mkdtemp(join(tmpdir(), 'win-p2p-dl-'))
   const upDir = await mkdtemp(join(tmpdir(), 'win-p2p-up-'))
-  tempDirs.push(dataDir, dlDir, upDir)
+  tempDirs.push(dataDir, seed2DataDir, dlDir, upDir)
 
   let winEngine: PeerEngine | null = null
+  let winSeed2: PeerEngine | null = null
 
   try {
-    // 2. Initialize Windows PeerEngine
-    console.log('\n[2/5] Initializing Windows PeerEngine...')
     winEngine = await createPeerEngine({ dataDirectory: dataDir })
     await winEngine.joinGroup({
       invitation: {
@@ -107,269 +218,562 @@ async function main() {
         groupId: vmStatus.groupId,
         token: vmStatus.token
       },
-      displayName: 'WindowsHost-Downloader',
+      displayName: 'WindowsHost-EdgeRunner',
       supernodeEligible: false,
       relayOnly: false,
       rememberInvitation: false
     })
 
-    console.log('  -> Waiting for WebRTC connection to Linux VM Peer...')
     await waitForState(
       winEngine,
-      (s) => {
-        const g = s.groups.find((x) => x.groupKey === vmStatus.groupKey)
-        const link = g?.network.links.find((l) => l.peerId === vmStatus.peerId)
-        console.log(`     [Link check] members=${g?.network.members.length ?? 0}, links=${g?.network.links.length ?? 0}, targetLinkState=${link?.state ?? 'none'}, path=${link?.path ?? 'none'}`)
-        return link?.state === 'open'
-      },
+      (s) => s.groups.find((x) => x.groupKey === vmStatus.groupKey)?.network.links.find((l) => l.peerId === vmStatus.peerId)?.state === 'open',
       30000,
       undefined,
-      'webrtc-connected-to-linux-peer'
+      'win-link-open'
     )
-    console.log('  -> PASS: Windows WebRTC data connection established with Linux VM Peer!')
 
-    // Verify bidirectional link readiness on VM side
-    console.log('  -> Verifying bidirectional link readiness on Linux VM...')
-    let vmLinkOpen = false
     const winId = winEngine.getState().identity.peerId
+    let vmLinkOpen = false
     for (let i = 0; i < 20; i++) {
-      const st = (await fetchVmStatus()) as any
-      const l = st.links?.find((x: any) => x.peerId === winId)
-      console.log(`     [VM side check] VM links to Windows: state=${l?.state ?? 'none'}`)
-      if (l?.state === 'open') {
+      const st = await fetchVmStatus()
+      if (st.links?.some((l) => l.peerId === winId && l.state === 'open')) {
         vmLinkOpen = true
         break
       }
-      await new Promise((r) => setTimeout(r, 500))
+      await new Promise((r) => setTimeout(r, 300))
     }
-    assert.ok(vmLinkOpen, 'Linux VM must also confirm WebRTC link state as open')
-    console.log('  -> PASS: Bidirectional WebRTC connection confirmed open on both Windows and Linux!')
+    assert.ok(vmLinkOpen, 'VM must confirm open link to Windows')
+    console.log('  -> Bidirectional WebRTC connection established.\n')
 
-    // 3. Test Case 1: Baseline Complete Download (Windows <- Linux)
-    console.log('\n[3/5] TEST CASE 1: Full Baseline File Transfer (Windows <- Linux)...')
-    const file1Info = vmStatus.files['file-complete.bin']
-    assert.ok(file1Info, 'file-complete.bin should exist on VM')
+    // ------------------------------------------------------------------
+    // TC1: Zero-byte and 1-byte files (Windows <- Linux)
+    // ------------------------------------------------------------------
+    console.log('[TC1] Zero-byte & 1-byte files (Windows <- Linux)...')
+    for (const name of ['file-empty.txt', 'file-1byte.bin']) {
+      const info = vmStatus.files[name]
+      const res = await searchFile(winEngine, vmStatus.groupKey, name.slice(0, 8), name)
+      const dest = join(dlDir, name)
+      const tid = await startTrackedDownload(winEngine, vmStatus.groupKey, res.resultId, dest, name)
+      await waitForTransferCompletion(winEngine, tid, dest, info.size, info.sha256)
+    }
+    console.log('  -> PASS: 0-byte and 1-byte transfers verified.\n')
 
-    const winNet = winEngine.getState().groups.find((x) => x.groupKey === vmStatus.groupKey)?.network
-    console.log(`  -> Windows Group Network State: role=${winNet?.role}, primaryPeerId=${winNet?.primaryPeerId}, links=${winNet?.links.map(l => `${l.peerId}:${l.state}`).join(', ')}`)
+    // ------------------------------------------------------------------
+    // TC2: Odd-sized non-chunk-aligned file + DESTINATION_EXISTS
+    // ------------------------------------------------------------------
+    console.log('[TC2] Odd-sized file (1,234,567 bytes) + DESTINATION_EXISTS...')
+    {
+      const info = vmStatus.files['file-odd-size.bin']
+      const res = await searchFile(winEngine, vmStatus.groupKey, 'odd-size', info.name)
+      const dest = join(dlDir, info.name)
+      const tid = await startTrackedDownload(winEngine, vmStatus.groupKey, res.resultId, dest, info.name)
+      await waitForTransferCompletion(winEngine, tid, dest, info.size, info.sha256)
 
-    console.log(`  -> Initiating search for 'file-complete'...`)
-    const searchPromise = waitForState(
-      winEngine,
-      (s) => {
-        const g = s.groups.find((x) => x.groupKey === vmStatus.groupKey)
-        console.log(`     [Search check] status=${g?.search.status}, results=${g?.search.results.length}, message=${g?.search.message}`)
-        return g?.search.status === 'complete' && Boolean(g.search.results.some((r) => r.file.name === file1Info.name))
-      },
-      25000,
-      undefined,
-      'search-file-complete'
-    )
-    const searchRes = await winEngine.search(vmStatus.groupKey, 'file-complete')
-    console.log(`  -> Search dispatch result:`, searchRes)
-    assert.equal(searchRes.ok, true, `Search initiation failed: ${!searchRes.ok ? searchRes.message : ''}`)
-    await searchPromise
+      const dupRes = await winEngine.download(vmStatus.groupKey, res.resultId, dest)
+      assert.equal(dupRes.ok, false)
+      assert.equal(dupRes.code, 'DESTINATION_EXISTS')
+    }
+    console.log('  -> PASS: Odd-size integrity & DESTINATION_EXISTS verified.\n')
 
-    const searchResults = winEngine.getState().groups.find((x) => x.groupKey === vmStatus.groupKey)?.search.results || []
-    const file1Result = searchResults.find((r) => r.file.name === file1Info.name)!
-    assert.ok(file1Result, 'file-complete search result must exist')
+    // ------------------------------------------------------------------
+    // TC3: Cross-OS special NTFS characters & Unicode filenames
+    // ------------------------------------------------------------------
+    console.log('[TC3] Cross-OS NTFS-illegal chars & Unicode filenames (Windows <- Linux)...')
+    {
+      const illegalName = 'report:2026?.txt'
+      const illegalInfo = vmStatus.files[illegalName]
+      const illegalRes = await searchFile(winEngine, vmStatus.groupKey, 'report', illegalName)
+      const sanitized = sanitizeDestinationFileName(illegalRes.file.name)
+      assert.equal(sanitized, 'report_2026_.txt')
+      const illegalDest = join(dlDir, sanitized)
+      const tid1 = await startTrackedDownload(winEngine, vmStatus.groupKey, illegalRes.resultId, illegalDest, illegalName)
+      await waitForTransferCompletion(winEngine, tid1, illegalDest, illegalInfo.size, illegalInfo.sha256)
 
-    const file1Dest = join(dlDir, 'file-complete-downloaded.bin')
-    console.log(`  -> Downloading ${file1Info.name} (${file1Info.size} bytes) from Linux VM...`)
+      const uniName = 'tài liệu kiểm thử (v1).bin'
+      const uniInfo = vmStatus.files[uniName]
+      const uniRes = await searchFile(winEngine, vmStatus.groupKey, 'kiểm thử', uniName)
+      const uniDest = join(dlDir, sanitizeDestinationFileName(uniRes.file.name))
+      const tid2 = await startTrackedDownload(winEngine, vmStatus.groupKey, uniRes.resultId, uniDest, uniName)
+      await waitForTransferCompletion(winEngine, tid2, uniDest, uniInfo.size, uniInfo.sha256)
+    }
+    console.log('  -> PASS: NTFS filename sanitization & Unicode transfer verified.\n')
 
-    const file1Done = waitForState(
-      winEngine,
-      (s) => {
-        const t = s.transfers.find((x) => x.fileName === file1Info.name || x.fileName === 'file-complete-downloaded.bin')
-        console.log(`     [File1 Progress] state=${t?.state}, transferred=${t?.transferredBytes}/${t?.size}`)
-        return t?.state === 'completed'
-      },
-      30000,
-      (s) => {
-        const t = s.transfers.find((x) => x.fileName === file1Info.name || x.fileName === 'file-complete-downloaded.bin')
-        return t?.state === 'failed' ? `Transfer failed: ${t.message}` : null
-      },
-      'file1-download-completed'
-    )
+    // ------------------------------------------------------------------
+    // TC4: Large 12 MiB sustained SCTP flow control transfer
+    // ------------------------------------------------------------------
+    console.log('[TC4] Large 12 MiB sustained flow-control transfer (Windows <- Linux)...')
+    {
+      const info = vmStatus.files['file-large.bin']
+      const res = await searchFile(winEngine, vmStatus.groupKey, 'file-large', info.name)
+      const dest = join(dlDir, 'file-large-12mb.bin')
+      const t0 = Date.now()
+      const tid = await startTrackedDownload(winEngine, vmStatus.groupKey, res.resultId, dest, info.name)
+      await waitForTransferCompletion(winEngine, tid, dest, info.size, info.sha256, 90000)
+      console.log(`  -> PASS: 12 MiB transferred & SHA-256 verified in ${Date.now() - t0}ms.\n`)
+    }
 
-    const dlRes = await winEngine.download(vmStatus.groupKey, file1Result.resultId, file1Dest)
-    console.log(`  -> winEngine.download response:`, dlRes)
-    assert.equal(dlRes.ok, true, `Download failed to initiate: ${!dlRes.ok ? dlRes.message : ''}`)
-    await file1Done
+    // ------------------------------------------------------------------
+    // TC5: Multiple consecutive interruptions + IMMEDIATE resume (0ms sleep)
+    // ------------------------------------------------------------------
+    console.log('[TC5] Multi-interrupt (2x drops) + IMMEDIATE resume (0ms sleep) on 4 MiB file...')
+    {
+      const info = vmStatus.files['file-resumable.bin']
+      const res = await searchFile(winEngine, vmStatus.groupKey, 'file-resumable', info.name)
+      const dest = join(dlDir, 'file-resumable-multi.bin')
+      const tid = await startTrackedDownload(winEngine, vmStatus.groupKey, res.resultId, dest, info.name)
 
-    const file1DownloadedBytes = await readFile(file1Dest)
-    assert.equal(file1DownloadedBytes.length, file1Info.size, 'File size must match')
-    const file1DownloadedSha = createHash('sha256').update(file1DownloadedBytes).digest('hex')
-    assert.equal(file1DownloadedSha, file1Info.sha256, 'SHA-256 must match exactly')
+      // Drop #1 at >= 512 KiB
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid)
+          return Boolean(t && t.state === 'transferring' && t.transferredBytes >= 512 * 1024)
+        },
+        30000,
+        undefined,
+        'tc5-drop1'
+      )
+      assert.equal(winEngine.forceCloseTransferChannel(tid), true)
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid)
+          return t?.state === 'failed' && Boolean(t?.canResume)
+        },
+        20000,
+        undefined,
+        'tc5-failed1'
+      )
+      await waitForVmTransferSettled(tid)
 
-    console.log(`  -> PASS: Downloaded ${file1DownloadedBytes.length} bytes cleanly.`)
-    console.log(`  -> SHA-256 match verified: ${file1DownloadedSha}`)
+      // Immediate resume #1 (NO artificial 4s sleep!)
+      const r1 = await winEngine.resumeTransfer(tid)
+      assert.equal(r1.ok, true, `Immediate resume #1 failed: ${!r1.ok ? r1.message : ''}`)
 
-    // 4. Test Case 2: Interrupted Transfer & Resumption (Windows <- Linux)
-    console.log('\n[4/5] TEST CASE 2: Interruption Simulation & Resumption across OS boundaries...')
-    const file2Info = vmStatus.files['file-resumable.bin']
-    assert.ok(file2Info, 'file-resumable.bin should exist on VM')
+      // Drop #2 at >= 2.2 MiB
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid)
+          return Boolean(t && t.state === 'transferring' && t.transferredBytes >= 2200 * 1024)
+        },
+        30000,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid)
+          return t?.state === 'failed' ? `Unexpected fail before drop #2: ${t.message}` : null
+        },
+        'tc5-drop2'
+      )
+      assert.equal(winEngine.forceCloseTransferChannel(tid), true)
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid)
+          return t?.state === 'failed' && Boolean(t?.canResume)
+        },
+        20000,
+        undefined,
+        'tc5-failed2'
+      )
+      await waitForVmTransferSettled(tid)
 
-    const search2Promise = waitForState(
-      winEngine,
-      (s) => {
-        const g = s.groups.find((x) => x.groupKey === vmStatus.groupKey)
-        return g?.search.status === 'complete' && Boolean(g.search.results.some((r) => r.file.name === file2Info.name))
-      },
-      25000,
-      undefined,
-      'search-file-resumable'
-    )
-    await winEngine.search(vmStatus.groupKey, 'file-resumable')
-    await search2Promise
+      // Immediate resume #2
+      const r2 = await winEngine.resumeTransfer(tid)
+      assert.equal(r2.ok, true, `Immediate resume #2 failed: ${!r2.ok ? r2.message : ''}`)
 
-    const file2Results = winEngine.getState().groups.find((x) => x.groupKey === vmStatus.groupKey)?.search.results || []
-    const file2Result = file2Results.find((r) => r.file.name === file2Info.name)!
-    assert.ok(file2Result, 'file-resumable search result must exist')
+      await waitForTransferCompletion(winEngine, tid, dest, info.size, info.sha256, 60000)
+      console.log('  -> PASS: 2 consecutive interruptions + immediate resumes completed with exact SHA-256.\n')
+    }
 
-    const file2Dest = join(dlDir, 'file-resumable-downloaded.bin')
-    let resumableTransferId = ''
+    // ------------------------------------------------------------------
+    // TC6: Concurrency Cap (MAX=2, 3rd=BUSY) + Simultaneous Bidirectional
+    // ------------------------------------------------------------------
+    console.log('[TC6] Concurrency cap (BUSY on 3rd) + Simultaneous Bidirectional transfers...')
+    {
+      // Prepare Windows 2 MiB file for simultaneous reverse upload
+      const winBidirData = randomBytes(2 * 1024 * 1024)
+      const winBidirSha = createHash('sha256').update(winBidirData).digest('hex')
+      const winBidirPath = join(upDir, 'win-bidir.bin')
+      await writeFile(winBidirPath, winBidirData)
+      const ackBidir = waitForState(
+        winEngine,
+        (s) => {
+          const g = s.groups.find((x) => x.groupKey === vmStatus.groupKey)
+          return (
+            g?.catalog.acknowledgedGeneration !== null &&
+            g?.catalog.acknowledgedGeneration === g?.catalog.advertisedGeneration &&
+            s.library.files.some((f) => f.name === 'win-bidir.bin' && f.status === 'shared')
+          )
+        },
+        25000,
+        undefined,
+        'bidir-ack'
+      )
+      await winEngine.addFiles(vmStatus.groupKey, [winBidirPath])
+      await ackBidir
 
-    console.log(`  -> Starting 4MB download of ${file2Info.name} from Linux VM...`)
-    const progressPromise = waitForState(
-      winEngine,
-      (s) => {
-        const t = s.transfers.find((x) => x.fileName === file2Info.name || x.fileName === 'file-resumable-downloaded.bin')
-        if (t && t.transferredBytes >= 512 * 1024 && t.state === 'transferring') {
-          resumableTransferId = t.id
-          return true
-        }
-        return false
-      },
-      30000,
-      undefined,
-      'file2-partial-progress'
-    )
+      const infoLarge = vmStatus.files['file-large.bin']
+      const infoResum = vmStatus.files['file-resumable.bin']
+      const infoComplete = vmStatus.files['file-complete.bin']
+      await searchFile(winEngine, vmStatus.groupKey, 'file-', infoLarge.name)
+      const allRes = winEngine.getState().groups.find((x) => x.groupKey === vmStatus.groupKey)?.search.results || []
+      const resLarge = allRes.find((r) => r.file.name === infoLarge.name)!
+      const resResum = allRes.find((r) => r.file.name === infoResum.name)!
+      const resComplete = allRes.find((r) => r.file.name === infoComplete.name)!
+      assert.ok(resLarge && resResum && resComplete, 'Must find all 3 files in single search')
 
-    await winEngine.download(vmStatus.groupKey, file2Result.resultId, file2Dest)
-    await progressPromise
+      const destA = join(dlDir, 'conc-large.bin')
+      const destB = join(dlDir, 'conc-resum.bin')
+      const destC = join(dlDir, 'conc-busy.bin')
 
-    console.log(`  -> Reached partial transfer: ${winEngine.getState().transfers.find((t) => t.id === resumableTransferId)?.transferredBytes} bytes`)
-    console.log(`  -> Simulating sudden network drop by closing transfer data channel...`)
-    const closed = winEngine.forceCloseTransferChannel(resumableTransferId)
-    assert.equal(closed, true, 'Channel should close successfully')
+      const tidA = await startTrackedDownload(winEngine, vmStatus.groupKey, resLarge.resultId, destA, infoLarge.name)
+      const tidB = await startTrackedDownload(winEngine, vmStatus.groupKey, resResum.resultId, destB, infoResum.name)
 
-    const failedState = await waitForState(
-      winEngine,
-      (s) => {
-        const t = s.transfers.find((x) => x.id === resumableTransferId)
-        return t?.state === 'failed' && Boolean(t?.canResume)
-      },
-      25000,
-      undefined,
-      'transfer-failed-with-can-resume'
-    )
+      // 3rd simultaneous download must reject with BUSY
+      const busyRes = await winEngine.download(vmStatus.groupKey, resComplete.resultId, destC)
+      assert.equal(busyRes.ok, false)
+      assert.equal(busyRes.code, 'BUSY')
 
-    const failedTransfer = failedState.transfers.find((x) => x.id === resumableTransferId)!
-    console.log(`  -> Transfer transitioned to: ${failedTransfer.state} (canResume: ${failedTransfer.canResume})`)
-    assert.ok(failedTransfer.canResume, 'canResume must be true')
+      // Trigger Linux <- Windows download AT THE SAME TIME!
+      const revPromise = postVm('/reverse-download', { fileName: 'win-bidir.bin' })
 
-    const partFilePath = join(dlDir, `.p2p-multiple-groups-${resumableTransferId}.part`)
-    const partStat = await stat(partFilePath)
-    console.log(`  -> Verified .part file on Windows disk: ${partStat.size} bytes preserved`)
-    assert.ok(partStat.size > 0, '.part file must have nonzero bytes')
+      await Promise.all([
+        waitForTransferCompletion(winEngine, tidA, destA, infoLarge.size, infoLarge.sha256, 90000),
+        waitForTransferCompletion(winEngine, tidB, destB, infoResum.size, infoResum.sha256, 90000),
+        revPromise.then((revJson) => {
+          assert.equal(revJson.ok, true)
+          assert.equal(revJson.size, winBidirData.length)
+          assert.equal(revJson.sha256, winBidirSha)
+        })
+      ])
+      console.log('  -> PASS: Concurrency cap (BUSY) & full-duplex bidirectional multiplexing verified.\n')
+    }
 
-    // Wait for Linux VM uploader to detect disconnection and settle
-    console.log('  -> Waiting for Linux VM uploader to detect disconnection and settle...')
-    let uploaderSettled = false
-    for (let i = 0; i < 30; i++) {
-      const st = (await fetchVmStatus()) as any
-      const t = st.transfers?.find((x: any) => x.id === resumableTransferId)
-      console.log(`     [VM Uploader check] transfer state=${t?.state ?? 'none'}`)
-      if (!t || t.state === 'failed' || t.state === 'completed' || t.state === 'cancelled') {
-        uploaderSettled = true
-        break
+    // ------------------------------------------------------------------
+    // TC7: Cancel active & failed resumable transfers (.part cleanup)
+    // ------------------------------------------------------------------
+    console.log('[TC7] Cancel active & failed resumable transfers (.part cleanup)...')
+    {
+      const info = vmStatus.files['file-cancel.bin']
+      const res = await searchFile(winEngine, vmStatus.groupKey, 'file-cancel', info.name)
+
+      // 7a: Interrupt then cancel failed resumable transfer
+      const dest1 = join(dlDir, 'cancel-failed.bin')
+      const tid1 = await startTrackedDownload(winEngine, vmStatus.groupKey, res.resultId, dest1, info.name)
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid1)
+          return Boolean(t && t.state === 'transferring' && t.transferredBytes >= 256 * 1024)
+        },
+        25000,
+        undefined,
+        'tc7a-progress'
+      )
+      winEngine.forceCloseTransferChannel(tid1)
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid1)
+          return t?.state === 'failed' && Boolean(t?.canResume)
+        },
+        20000,
+        undefined,
+        'tc7a-failed'
+      )
+      const part1 = join(dlDir, `.p2p-multiple-groups-${tid1}.part`)
+      assert.ok((await stat(part1)).size > 0)
+      await winEngine.cancelTransfer(tid1)
+      await assert.rejects(async () => stat(part1), (e: NodeJS.ErrnoException) => e.code === 'ENOENT')
+      const resumeAfterCancel = await winEngine.resumeTransfer(tid1)
+      assert.equal(resumeAfterCancel.ok, false)
+      assert.equal(resumeAfterCancel.code, 'NOT_FOUND')
+
+      // 7b: Cancel while actively transferring
+      const dest2 = join(dlDir, 'cancel-active.bin')
+      const tid2 = await startTrackedDownload(winEngine, vmStatus.groupKey, res.resultId, dest2, info.name)
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid2)
+          return Boolean(t && t.state === 'transferring' && t.transferredBytes >= 128 * 1024)
+        },
+        25000,
+        undefined,
+        'tc7b-progress'
+      )
+      await winEngine.cancelTransfer(tid2)
+      await waitForState(
+        winEngine,
+        (s) => s.transfers.find((x) => x.id === tid2)?.state === 'cancelled',
+        15000,
+        undefined,
+        'tc7b-cancelled'
+      )
+      await waitForVmTransferSettled(tid2)
+      const part2 = join(dlDir, `.p2p-multiple-groups-${tid2}.part`)
+      await assert.rejects(async () => stat(part2), (e: NodeJS.ErrnoException) => e.code === 'ENOENT')
+      console.log('  -> PASS: Active and failed-resumable cancel cleanup verified.\n')
+    }
+
+    // ------------------------------------------------------------------
+    // TC8: File modified on disk (FILE_CHANGED)
+    // ------------------------------------------------------------------
+    console.log('[TC8] File modified on disk after indexing (FILE_CHANGED)...')
+    {
+      const info = vmStatus.files['file-mutable.bin']
+      const res = await searchFile(winEngine, vmStatus.groupKey, 'file-mutable', info.name)
+      await postVm('/modify-file', { name: info.name })
+
+      const dest = join(dlDir, 'mutable-should-fail.bin')
+      const tid = await startTrackedDownload(winEngine, vmStatus.groupKey, res.resultId, dest, info.name)
+      const failedSt = await waitForState(
+        winEngine,
+        (s) => s.transfers.find((x) => x.id === tid)?.state === 'failed',
+        20000,
+        undefined,
+        'tc8-failed'
+      )
+      const failedT = failedSt.transfers.find((x) => x.id === tid)!
+      assert.ok(failedT.message?.includes('FILE_CHANGED'), `Expected FILE_CHANGED rejection, got: ${failedT.message}`)
+      await assert.rejects(async () => stat(dest), (e: NodeJS.ErrnoException) => e.code === 'ENOENT')
+      console.log(`  -> PASS: Rejected cleanly with "${failedT.message}".\n`)
+    }
+
+    // ------------------------------------------------------------------
+    // TC9: Cross-OS Multi-Host Failover (Linux VM unshares -> Windows Seed2)
+    // ------------------------------------------------------------------
+    console.log('[TC9] Cross-OS Multi-Host Failover (Linux VM unshares -> Windows Seed2)...')
+    {
+      const info = vmStatus.files['file-failover.bin']
+      // First download full copy to winSeed2's folder so both Linux VM and Windows Seed2 have identical SHA-256!
+      const resForSeed = await searchFile(winEngine, vmStatus.groupKey, 'file-failover', info.name, vmStatus.peerId)
+      const seedFilePath = join(upDir, 'file-failover.bin')
+      const seedPrepTid = await startTrackedDownload(winEngine, vmStatus.groupKey, resForSeed.resultId, seedFilePath, info.name)
+      await waitForTransferCompletion(winEngine, seedPrepTid, seedFilePath, info.size, info.sha256)
+
+      // Launch winSeed2
+      winSeed2 = await createPeerEngine({ dataDirectory: seed2DataDir })
+      await winSeed2.joinGroup({
+        invitation: {
+          version: 2,
+          signalingUrl: vmStatus.signalingUrl,
+          groupId: vmStatus.groupId,
+          token: vmStatus.token
+        },
+        displayName: 'Windows-Seed2',
+        supernodeEligible: false,
+        relayOnly: false,
+        rememberInvitation: false
+      })
+      await waitForState(
+        winSeed2,
+        (s) => s.groups[0]?.network.links.some((l) => l.peerId === vmStatus.peerId && l.state === 'open') ?? false,
+        25000,
+        undefined,
+        'seed2-link-open'
+      )
+      const seed2Ack = waitForState(
+        winSeed2,
+        (s) =>
+          s.groups[0]?.catalog.acknowledgedGeneration !== null &&
+          s.groups[0]?.catalog.acknowledgedGeneration === s.groups[0]?.catalog.advertisedGeneration &&
+          s.library.files.some((f) => f.name === 'file-failover.bin' && f.status === 'shared'),
+        25000,
+        undefined,
+        'seed2-ack'
+      )
+      await winSeed2.addFiles(vmStatus.groupKey, [seedFilePath])
+      await seed2Ack
+
+      const seed2Id = winSeed2.getState().identity.peerId
+      await waitForState(
+        winEngine,
+        (s) => (s.groups[0]?.network.members.length || 0) === 3 && Boolean(s.groups[0]?.network.links.some((l) => l.peerId === seed2Id && l.state === 'open')),
+        25000,
+        undefined,
+        'win-sees-seed2'
+      )
+
+      // Search & verify both Linux VM and Windows-Seed2 are indexed, then download from Linux VM
+      await searchFile(winEngine, vmStatus.groupKey, 'file-failover', info.name, undefined, 2)
+      const failoverResults = winEngine.getState().groups.find((x) => x.groupKey === vmStatus.groupKey)?.search.results || []
+      const resFromLinux = failoverResults.find((r) => r.file.name === info.name && r.ownerPeerId === vmStatus.peerId)!
+      assert.ok(resFromLinux, 'Linux VM result must be present')
+      const destFailover = join(dlDir, 'failover-final.bin')
+      const failoverTid = await startTrackedDownload(winEngine, vmStatus.groupKey, resFromLinux.resultId, destFailover, info.name)
+
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === failoverTid)
+          return Boolean(t && t.state === 'transferring' && t.transferredBytes >= 256 * 1024)
+        },
+        25000,
+        undefined,
+        'tc9-partial'
+      )
+      winEngine.forceCloseTransferChannel(failoverTid)
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === failoverTid)
+          return t?.state === 'failed' && Boolean(t?.canResume)
+        },
+        20000,
+        undefined,
+        'tc9-failed'
+      )
+      await waitForVmTransferSettled(failoverTid)
+
+      // Linux VM unshares file-failover.bin while staying online
+      await postVm('/unshare', { name: info.name })
+
+      // Ordinary peer does not hold supernode index: 1st resume detects rejection from Linux VM,
+      // records lastRejectedByPeerId, and preserves .part; 2nd resume fails over to Windows-Seed2.
+      const firstAttempt = await winEngine.resumeTransfer(failoverTid)
+      assert.equal(firstAttempt.ok, true)
+      const rejectedSt = await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === failoverTid)
+          if (t?.state === 'failed') {
+            console.log(`  -> [TC9] 1st resume state: state=${t.state}, canResume=${t.canResume}, msg=${t.message}`)
+          }
+          return t?.state === 'failed' && Boolean(t?.canResume)
+        },
+        20000,
+        undefined,
+        'tc9-rejected-by-unshared-linux'
+      )
+      assert.ok(rejectedSt.transfers.find((x) => x.id === failoverTid)?.canResume)
+
+      const failoverResume = await winEngine.resumeTransfer(failoverTid)
+      assert.equal(failoverResume.ok, true, `Failover resume failed: ${!failoverResume.ok ? failoverResume.message : ''}`)
+      await waitForTransferCompletion(winEngine, failoverTid, destFailover, info.size, info.sha256, 60000)
+
+      const completedTransfer = winEngine.getState().transfers.find((t) => t.id === failoverTid)!
+      assert.equal(completedTransfer.peerId, seed2Id, 'Resumed failover transfer must complete from Windows-Seed2')
+
+      await winSeed2.dispose()
+      winSeed2 = null
+      console.log('  -> PASS: Failover from Linux VM (unshared) to Windows-Seed2 verified.\n')
+    }
+
+    // ------------------------------------------------------------------
+    // TC10: Reverse Transfers & Reverse Interruption + Resume (Linux <- Windows)
+    // ------------------------------------------------------------------
+    console.log('[TC10] Reverse Transfers & Reverse Interruption + Resume (Linux <- Windows)...')
+    {
+      const revSpecs = [
+        { name: 'win-empty.txt', data: Buffer.alloc(0) },
+        { name: 'win-odd.bin', data: randomBytes(987654) },
+        { name: 'win-tài-liệu.bin', data: randomBytes(256 * 1024) },
+        { name: 'win-resumable.bin', data: randomBytes(4 * 1024 * 1024) }
+      ]
+      const revMeta = new Map<string, { size: number; sha256: string }>()
+      const paths: string[] = []
+      for (const s of revSpecs) {
+        const p = join(upDir, s.name)
+        await writeFile(p, s.data)
+        revMeta.set(s.name, { size: s.data.length, sha256: createHash('sha256').update(s.data).digest('hex') })
+        paths.push(p)
       }
-      await new Promise((r) => setTimeout(r, 500))
+
+      const ackRev = waitForState(
+        winEngine,
+        (s) => {
+          const g = s.groups.find((x) => x.groupKey === vmStatus.groupKey)
+          return (
+            g?.catalog.acknowledgedGeneration !== null &&
+            g?.catalog.acknowledgedGeneration === g?.catalog.advertisedGeneration &&
+            revSpecs.every((sp) => s.library.files.some((f) => f.name === sp.name && f.status === 'shared'))
+          )
+        },
+        25000,
+        undefined,
+        'rev-files-ack'
+      )
+      await winEngine.addFiles(vmStatus.groupKey, paths)
+      await ackRev
+
+      for (const name of ['win-empty.txt', 'win-odd.bin', 'win-tài-liệu.bin']) {
+        const m = revMeta.get(name)!
+        const out = await postVm('/reverse-download', { fileName: name })
+        assert.equal(out.ok, true)
+        assert.equal(out.size, m.size)
+        assert.equal(out.sha256, m.sha256)
+      }
+
+      const resumMeta = revMeta.get('win-resumable.bin')!
+      const resumOut = await postVm('/reverse-download', {
+        fileName: 'win-resumable.bin',
+        interruptAtBytes: 512 * 1024,
+        resumeAfterInterrupt: true
+      })
+      assert.equal(resumOut.ok, true)
+      assert.ok(resumOut.interruptedBytes >= 512 * 1024)
+      assert.equal(resumOut.size, resumMeta.size)
+      assert.equal(resumOut.sha256, resumMeta.sha256)
+      console.log(`  -> PASS: Reverse 0B, odd-size, Unicode, and interrupted/resumed 4 MiB verified (interrupted at ${resumOut.interruptedBytes}B).\n`)
     }
-    assert.ok(uploaderSettled, 'Linux VM uploader should detect connection closure')
 
-    // Wait 4 seconds for SCTP stream reset to propagate cleanly across VM network
-    await new Promise((r) => setTimeout(r, 4000))
+    // ------------------------------------------------------------------
+    // TC11: Peer Leave & Rejoin (new sessionId) -> Resume Across Sessions
+    // ------------------------------------------------------------------
+    console.log('[TC11] Peer Leave & Rejoin (new sessionId) -> Resume Across Sessions (Windows <- Linux)...')
+    {
+      const info = vmStatus.files['file-large.bin']
+      const res = await searchFile(winEngine, vmStatus.groupKey, 'file-large', info.name, vmStatus.peerId)
+      const dest = join(dlDir, 'leave-rejoin-12mb.bin')
+      const tid = await startTrackedDownload(winEngine, vmStatus.groupKey, res.resultId, dest, info.name)
 
-    console.log(`  -> Resuming transfer from byte offset ${failedTransfer.transferredBytes}...`)
-    const resumeRes = await winEngine.resumeTransfer(resumableTransferId)
-    assert.equal(resumeRes.ok, true, 'resumeTransfer must return ok: true')
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid)
+          return Boolean(t && t.state === 'transferring' && t.transferredBytes >= 1024 * 1024)
+        },
+        30000,
+        undefined,
+        'tc11-1mb-progress'
+      )
 
-    const resumedCompletion = waitForState(
-      winEngine,
-      (s) => {
-        const t = s.transfers.find((x) => x.id === resumableTransferId)
-        console.log(`     [Resumed Progress] state=${t?.state}, transferred=${t?.transferredBytes}/${t?.size}`)
-        return t?.state === 'completed'
-      },
-      60000,
-      (s) => {
-        const t = s.transfers.find((x) => x.id === resumableTransferId)
-        return t?.state === 'failed' ? `Resumed transfer failed: ${t.message}` : null
-      },
-      'resumed-transfer-completed'
-    )
-    await resumedCompletion
+      const leaveRejoinPromise = postVm('/leave-rejoin', { delayMs: 800 })
 
-    const file2DownloadedBytes = await readFile(file2Dest)
-    assert.equal(file2DownloadedBytes.length, file2Info.size, 'Resumed file size must match original 4MB exactly')
-    const file2DownloadedSha = createHash('sha256').update(file2DownloadedBytes).digest('hex')
-    assert.equal(file2DownloadedSha, file2Info.sha256, 'Resumed file SHA-256 must match original exactly')
+      await waitForState(
+        winEngine,
+        (s) => {
+          const t = s.transfers.find((x) => x.id === tid)
+          return t?.state === 'failed' && Boolean(t?.canResume)
+        },
+        20000,
+        undefined,
+        'tc11-interrupted-on-leave'
+      )
 
-    // Verify .part file removed
-    await assert.rejects(async () => stat(partFilePath), (err: NodeJS.ErrnoException) => err.code === 'ENOENT')
+      const rejoinRes = await leaveRejoinPromise
+      assert.notEqual(rejoinRes.beforeSession, rejoinRes.afterSession, 'VM peer must obtain a fresh sessionId on rejoin')
 
-    console.log(`  -> PASS: Resumed transfer finished successfully: ${file2DownloadedBytes.length} bytes!`)
-    console.log(`  -> SHA-256 match verified: ${file2DownloadedSha}`)
+      await waitForState(
+        winEngine,
+        (s) => s.groups.find((x) => x.groupKey === vmStatus.groupKey)?.network.links.find((l) => l.peerId === vmStatus.peerId)?.state === 'open',
+        25000,
+        undefined,
+        'tc11-link-reopened'
+      )
 
-    // 5. Test Case 3: Reverse Transfer (Linux VM <- Windows Host)
-    console.log('\n[5/5] TEST CASE 3: Reverse Transfer (Linux VM downloads from Windows Host)...')
-    const winFileData = randomBytes(1024 * 1024) // 1MB
-    const winFileSha = createHash('sha256').update(winFileData).digest('hex')
-    const winFilePath = join(upDir, 'windows-reverse.bin')
-    await writeFile(winFilePath, winFileData)
-    console.log(`  -> Windows host created test file: windows-reverse.bin (1048576 bytes, SHA: ${winFileSha.slice(0, 16)}...)`)
+      const partStat = await stat(join(dlDir, `.p2p-multiple-groups-${tid}.part`))
+      assert.ok(partStat.size >= 1024 * 1024, 'Partial file must be preserved when uploader leaves group')
 
-    const uploadAck = waitForState(
-      winEngine,
-      (s) => {
-        const g = s.groups.find((x) => x.groupKey === vmStatus.groupKey)
-        return (
-          g?.catalog.acknowledgedGeneration !== null &&
-          g?.catalog.acknowledgedGeneration === g?.catalog.advertisedGeneration &&
-          s.library.files.some((f) => f.name === 'windows-reverse.bin' && f.status === 'shared')
-        )
-      },
-      25000,
-      undefined,
-      'windows-upload-catalog-ack'
-    )
-
-    await winEngine.addFiles(vmStatus.groupKey, [winFilePath])
-    await uploadAck
-    console.log('  -> Catalog update advertised and acknowledged by Linux VM supernode.')
-
-    console.log('  -> Triggering Linux VM to search and download windows-reverse.bin...')
-    const revRes = await fetch(`http://${VM_HOST}:8766/reverse-download`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName: 'windows-reverse.bin' })
-    })
-
-    if (!revRes.ok) {
-      throw new Error(`Reverse download HTTP error: ${revRes.status} ${await revRes.text()}`)
+      const resumeRes = await winEngine.resumeTransfer(tid)
+      assert.equal(resumeRes.ok, true, `Resume after rejoin failed: ${!resumeRes.ok ? resumeRes.message : ''}`)
+      await waitForTransferCompletion(winEngine, tid, dest, info.size, info.sha256, 90000)
+      console.log(`  -> PASS: Resumed across new Linux sessionId (${rejoinRes.beforeSession?.slice(0, 8)} -> ${rejoinRes.afterSession?.slice(0, 8)}) cleanly!\n`)
     }
-    const revJson = (await revRes.json()) as { ok: boolean; sha256: string; size: number }
-    assert.equal(revJson.ok, true, 'Reverse download response must be ok')
-    assert.equal(revJson.size, winFileData.length, 'Size on Linux VM must match Windows original')
-    assert.equal(revJson.sha256, winFileSha, 'SHA-256 on Linux VM must match Windows original exactly')
 
-    console.log(`  -> PASS: Linux VM successfully downloaded file from Windows host!`)
-    console.log(`  -> Linux received size: ${revJson.size} bytes, SHA-256: ${revJson.sha256}`)
-
-    console.log('\n=================================================================')
-    console.log('  ALL CROSS-OS TESTS PASSED (100% SUCCESS)')
+    console.log('=================================================================')
+    console.log('  ALL 11 CROSS-OS EDGE-CASE TESTS PASSED (100% SUCCESS)')
     console.log('=================================================================\n')
   } finally {
     console.log('[CLEANUP] Cleaning up local and remote peers...')
@@ -379,12 +783,13 @@ async function main() {
     } catch {
       // Ignored if already shut down
     }
-
+    if (winSeed2) {
+      await winSeed2.dispose().catch(() => {})
+    }
     if (winEngine) {
-      await winEngine.dispose()
+      await winEngine.dispose().catch(() => {})
       console.log('  -> Windows engine disposed.')
     }
-
     for (const d of tempDirs) {
       await rm(d, { recursive: true, force: true }).catch(() => {})
     }

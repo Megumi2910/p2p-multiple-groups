@@ -58,6 +58,7 @@ interface PeerConnectionRecord {
   state: P2pLinkState
   path: P2pCandidatePath
   activeFileChannels: Map<string, RTCDataChannel>
+  nextFileStreamId?: number
   negotiationGroupId?: string
 }
 
@@ -75,47 +76,47 @@ function ensureSctpAssociationHealthy(pc: RTCPeerConnection): void {
     const sctp = (pc as any).sctpTransport?.sctp
     if (!sctp) return
 
-    // 1. Prevent receiver window exhaustion due to unconsumed buffer leaks on closed streams
-    if (typeof sctp.advertisedRwnd === 'number' && sctp.advertisedRwnd < 512 * 1024) {
-      sctp.advertisedRwnd = 1024 * 1024
-      try {
-        void sctp.sendSack?.()
-      } catch {}
-    }
+    const dcs: any[] = Object.values((pc as any).sctpTransport?.dataChannels || {})
+    const activeStreamIds = new Set<number>(
+      dcs
+        .filter((dc) => dc && (dc.readyState === 'open' || dc.readyState === 'connecting'))
+        .map((dc) => dc.id)
+        .filter((id) => typeof id === 'number')
+    )
 
-    // 2. Prevent sender window deadlock from unacked packets on previously closed streams
-    if (typeof sctp.peerAdvertisedRwnd === 'number' && sctp.peerAdvertisedRwnd < 512 * 1024) {
-      sctp.peerAdvertisedRwnd = 1024 * 1024
-    }
-
-    // 3. Clear any orphaned chunks in sentQueue where flightSize is stuck
-    if (Array.isArray(sctp.sentQueue) && sctp.sentQueue.length > 0) {
-      const dcs: any[] = Object.values((pc as any).sctpTransport?.dataChannels || {})
-      const activeStreamIds = new Set<number>(
-        dcs
-          .filter((dc) => dc && (dc.readyState === 'open' || dc.readyState === 'connecting'))
-          .map((dc) => dc.id)
-      )
-      for (let i = sctp.sentQueue.length - 1; i >= 0; i--) {
-        const chunk = sctp.sentQueue[i]
-        if (chunk && !activeStreamIds.has(chunk.streamId)) {
-          if (typeof sctp.flightSizeDecrease === 'function') {
-            try { sctp.flightSizeDecrease(chunk) } catch {}
+    // Reclaim any inbound reassembly buffers belonging to closed/reset streams
+    // (werift deletes inboundStreams[id] on stream reset without refunding advertisedRwnd)
+    let activeReassemblyBytes = 0
+    if (sctp.inboundStreams && typeof sctp.inboundStreams === 'object') {
+      for (const [idStr, stream] of Object.entries<any>(sctp.inboundStreams)) {
+        const streamId = Number(idStr)
+        if (!activeStreamIds.has(streamId)) {
+          delete sctp.inboundStreams[idStr]
+        } else if (Array.isArray(stream?.reassembly)) {
+          for (const chunk of stream.reassembly) {
+            if (typeof chunk?.userData?.length === 'number') {
+              activeReassemblyBytes += chunk.userData.length
+            }
           }
-          sctp.sentQueue.splice(i, 1)
         }
       }
     }
 
-    // 4. Clear any orphaned outbound chunks on inactive streams
-    if (Array.isArray(sctp.outboundQueue) && sctp.outboundQueue.length > 0) {
-      const dcs: any[] = Object.values((pc as any).sctpTransport?.dataChannels || {})
-      const activeStreamIds = new Set<number>(
-        dcs
-          .filter((dc) => dc && (dc.readyState === 'open' || dc.readyState === 'connecting'))
-          .map((dc) => dc.id)
-      )
-      sctp.outboundQueue = sctp.outboundQueue.filter((c: any) => !c || activeStreamIds.has(c.streamId))
+    const expectedRwnd = Math.max(0, 1024 * 1024 - activeReassemblyBytes)
+    if (typeof sctp.advertisedRwnd === 'number' && sctp.advertisedRwnd < expectedRwnd) {
+      sctp.advertisedRwnd = expectedRwnd
+      if (sctp.associationState === 4) {
+        sctp.sackNeeded = true
+        try {
+          void sctp.sendSack?.()
+        } catch {}
+      }
+    }
+
+    // Never splice sentQueue or outboundQueue: deleting already-assigned TSNs
+    // creates permanent TSN gaps that freeze lastSackedTsn / lastReceivedTsn.
+    if (typeof sctp.peerAdvertisedRwnd === 'number' && sctp.peerAdvertisedRwnd < 512 * 1024 && sctp.flightSize === 0) {
+      sctp.peerAdvertisedRwnd = 1024 * 1024
     }
   } catch {
     // Ignore internal inspection errors
@@ -842,8 +843,30 @@ export class TransportManager {
     ensureSctpAssociationHealthy(currentRecord.pc)
     const channelLabel = makeFileChannelLabelV2(groupId, transferId)
 
+    // Assign monotonically advancing stream IDs to avoid colliding with
+    // in-flight SCTP SSN-reset (Reconfig) handshakes on recently closed streams.
+    const sctpTransport = (currentRecord.pc as any).sctpTransport
+    let chosenStreamId: number | undefined
+    if (sctpTransport && typeof sctpTransport.dataChannelId === 'number' && sctpTransport.dataChannels) {
+      const parity = sctpTransport.dataChannelId % 2
+      let candidate = currentRecord.nextFileStreamId ?? (sctpTransport.dataChannelId + 2)
+      if (candidate % 2 !== parity) candidate += 1
+      for (let tries = 0; tries < 32760; tries++) {
+        if (candidate > 65530) {
+          candidate = sctpTransport.dataChannelId + 2
+        }
+        if (!sctpTransport.dataChannels[candidate]) {
+          chosenStreamId = candidate
+          currentRecord.nextFileStreamId = candidate + 2
+          break
+        }
+        candidate += 2
+      }
+    }
+
     const channel = currentRecord.pc.createDataChannel(channelLabel, {
-      ordered: true
+      ordered: true,
+      ...(chosenStreamId !== undefined ? { id: chosenStreamId } : {})
     })
 
     currentRecord.activeFileChannels.set(transferId, channel)

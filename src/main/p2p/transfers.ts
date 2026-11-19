@@ -750,23 +750,30 @@ export class TransferManager {
               code: 'NOT_AUTHORIZED'
             }
             try { channel.send(JSON.stringify(err)) } catch {}
-            await this.failTransfer(session, 'File not authorized for transfer')
+            await this.failTransfer(session, 'File not authorized for transfer', false, false)
             return
           }
 
           let authorized: { path: string; size: number; sha256: string }
           try {
             authorized = await this.callbacks.getAuthorizedFile(authContext)
-          } catch {
+          } catch (getFileErr) {
+            const code =
+              getFileErr instanceof Error && getFileErr.message === 'FILE_CHANGED' ? 'FILE_CHANGED' : 'NOT_FOUND'
             const err: TransferControlMessageV2 = {
               v: 2,
               type: 'error',
               groupId: parsed.groupId,
               transferId: parsed.transferId,
-              code: 'NOT_FOUND'
+              code
             }
             try { channel.send(JSON.stringify(err)) } catch {}
-            await this.failTransfer(session, 'File not authorized or modified on disk')
+            await this.failTransfer(
+              session,
+              code === 'FILE_CHANGED' ? 'File modified on disk since indexed' : 'File not authorized or modified on disk',
+              false,
+              false
+            )
             return
           }
 
@@ -779,7 +786,7 @@ export class TransferManager {
               code: 'NOT_AUTHORIZED'
             }
             try { channel.send(JSON.stringify(err)) } catch {}
-            await this.failTransfer(session, 'File authorization revoked during check')
+            await this.failTransfer(session, 'File authorization revoked during check', false, false)
             return
           }
 
@@ -792,7 +799,7 @@ export class TransferManager {
               code: 'FILE_CHANGED'
             }
             try { channel.send(JSON.stringify(err)) } catch {}
-            await this.failTransfer(session, 'File changed on disk')
+            await this.failTransfer(session, 'File changed on disk', false, false)
             return
           }
 
@@ -811,7 +818,7 @@ export class TransferManager {
               code: 'OFFSET_OUT_OF_BOUNDS'
             }
             try { channel.send(JSON.stringify(err)) } catch {}
-            await this.failTransfer(session, 'Invalid resume offset', false)
+            await this.failTransfer(session, 'Invalid resume offset', false, false)
             return
           }
 
@@ -1015,7 +1022,8 @@ export class TransferManager {
   cancelGroup(groupKey: string): void {
     for (const session of this.transfers.values()) {
       if (session.groupKey === groupKey) {
-        void this.cancelSession(session, true)
+        // For uploads, close without sending 'cancel' so remote downloaders preserve .part for resume/failover
+        void this.cancelSession(session, session.direction === 'download')
       }
     }
   }
@@ -1108,7 +1116,12 @@ export class TransferManager {
     this.callbacks.onStateChange()
   }
 
-  private async failTransfer(session: TransferSession, reason: string, preservePart = false): Promise<void> {
+  private async failTransfer(
+    session: TransferSession,
+    reason: string,
+    preservePart = false,
+    sendError = true
+  ): Promise<void> {
     if (session.state === 'completed' || session.state === 'cancelled' || session.state === 'failed') return
     if (session.stallTimer) {
       clearTimeout(session.stallTimer)
@@ -1123,23 +1136,31 @@ export class TransferManager {
     }
 
     if (session.channel && session.channel.readyState === 'open') {
-      try {
-        const errMsg: TransferControlMessageV2 = {
-          v: 2,
-          type: 'error',
-          groupId: session.groupId,
-          transferId: session.id,
-          code: reason.slice(0, 64)
+      const ch = session.channel
+      if (sendError) {
+        try {
+          const errMsg: TransferControlMessageV2 = {
+            v: 2,
+            type: 'error',
+            groupId: session.groupId,
+            transferId: session.id,
+            code: reason.slice(0, 64)
+          }
+          ch.send(JSON.stringify(errMsg))
+        } catch {
+          // ignore
         }
-        session.channel.send(JSON.stringify(errMsg))
-      } catch {
-        // ignore
       }
-      try {
-        session.channel.close()
-      } catch {
-        // ignore
-      }
+      // Defer close slightly so any just-sent error control frame flushes before SCTP stream reset
+      setTimeout(() => {
+        try {
+          if (ch.readyState !== 'closed') {
+            ch.close()
+          }
+        } catch {
+          // ignore
+        }
+      }, 150).unref?.()
     }
 
     if (session.writeQueue) {

@@ -60,6 +60,10 @@ interface PeerConnectionRecord {
   activeFileChannels: Map<string, RTCDataChannel>
   nextFileStreamId?: number
   negotiationGroupId?: string
+  localDescriptionSent: boolean
+  pendingLocalCandidates: unknown[]
+  remoteDescriptionSet: boolean
+  pendingRemoteCandidates: RTCIceCandidate[]
 }
 
 interface GroupContext {
@@ -127,6 +131,10 @@ export class TransportManager {
   private readonly events: TransportEvents
   private readonly options: TransportManagerOptions
   private readonly connections = new Map<string, PeerConnectionRecord>() // peerId -> record
+  private readonly earlyRemoteCandidates = new Map<
+    string,
+    { peerId: string; candidates: RTCIceCandidate[]; createdAt: number }
+  >()
 
   private localPeerId: string = ''
   private localSessionId: string = ''
@@ -397,16 +405,20 @@ export class TransportManager {
       state: 'connecting',
       path: 'unknown',
       activeFileChannels: new Map(),
-      negotiationGroupId
+      negotiationGroupId,
+      localDescriptionSent: false,
+      pendingLocalCandidates: [],
+      remoteDescriptionSet: false,
+      pendingRemoteCandidates: []
     }
 
-    // Enforce 10s handshake timeout
+    // Enforce 15s handshake timeout (accommodates WAN/TURN allocation & relay setup)
     record.attemptTimer = setTimeout(() => {
       if (this.connections.get(remotePeerId) === record && record.state !== 'open') {
         void this.cleanupRecord(record, 'failed')
         this.connections.delete(remotePeerId)
       }
-    }, 10000)
+    }, 15000)
 
     pc.onicecandidate = (event) => {
       if (!event.candidate || record.attemptId !== connectionId) return
@@ -417,20 +429,12 @@ export class TransportManager {
           ? (event.candidate as { toJSON: () => unknown }).toJSON()
           : event.candidate
 
-      const shared = this.getSharedGroups(remotePeerId)
-      const freshShared = shared.filter((g) => this.isGroupFresh(g))
-      const sigGroupId = (record.negotiationGroupId && this.isGroupFresh(record.negotiationGroupId))
-        ? record.negotiationGroupId
-        : freshShared[0] || record.negotiationGroupId || shared[0]
+      if (!record.localDescriptionSent) {
+        record.pendingLocalCandidates.push(candidateObj)
+        return
+      }
 
-      this.events.onSendSignal({
-        groupId: sigGroupId,
-        targetPeerId: remotePeerId,
-        targetSessionId: remoteSessionId,
-        connectionId,
-        kind: 'candidate',
-        payload: candidateObj
-      })
+      this.sendLocalCandidate(record, candidateObj)
     }
 
     pc.ondatachannel = (event) => {
@@ -494,8 +498,10 @@ export class TransportManager {
 
       pc.createOffer()
         .then(async (offer) => {
-          if (record.attemptId !== connectionId) return
+          if (!this.isRecordActive(record, connectionId)) return
           await pc.setLocalDescription(offer)
+          if (!this.isRecordActive(record, connectionId)) return
+          const localDesc = pc.localDescription ?? offer
           const shared = this.getSharedGroups(remotePeerId)
           const freshShared = shared.filter((g) => this.isGroupFresh(g))
           const sigGroupId = (record.negotiationGroupId && this.isGroupFresh(record.negotiationGroupId))
@@ -508,8 +514,10 @@ export class TransportManager {
             targetSessionId: remoteSessionId,
             connectionId,
             kind: 'offer',
-            payload: { type: offer.type, sdp: offer.sdp }
+            payload: { type: localDesc.type, sdp: localDesc.sdp }
           })
+          record.localDescriptionSent = true
+          this.flushLocalCandidates(record, localDesc.sdp)
         })
         .catch(() => {
           void this.cleanupRecord(record, 'failed')
@@ -517,6 +525,97 @@ export class TransportManager {
     }
 
     return record
+  }
+
+  private isRecordActive(record: PeerConnectionRecord, connectionId: string): boolean {
+    return (
+      !this.isDisposed &&
+      record.attemptId === connectionId &&
+      record.state !== 'failed' &&
+      this.connections.get(record.peerId) === record
+    )
+  }
+
+  private sendLocalCandidate(record: PeerConnectionRecord, candidateObj: unknown): void {
+    const shared = this.getSharedGroups(record.peerId)
+    const freshShared = shared.filter((g) => this.isGroupFresh(g))
+    const sigGroupId = (record.negotiationGroupId && this.isGroupFresh(record.negotiationGroupId))
+      ? record.negotiationGroupId
+      : freshShared[0] || record.negotiationGroupId || shared[0]
+
+    this.events.onSendSignal({
+      groupId: sigGroupId,
+      targetPeerId: record.peerId,
+      targetSessionId: record.sessionId,
+      connectionId: record.attemptId,
+      kind: 'candidate',
+      payload: candidateObj
+    })
+  }
+
+  private flushLocalCandidates(record: PeerConnectionRecord, sentSdp: string): void {
+    if (record.pendingLocalCandidates.length === 0) return
+    const queued = record.pendingLocalCandidates.splice(0)
+    for (const candidateObj of queued) {
+      const candStr =
+        candidateObj && typeof candidateObj === 'object' && typeof (candidateObj as { candidate?: unknown }).candidate === 'string'
+          ? (candidateObj as { candidate: string }).candidate.replace(/^candidate:/, '')
+          : ''
+      // Avoid redundant trickle frames for candidates already embedded in localDescription.sdp
+      if (candStr && sentSdp.includes(candStr)) {
+        continue
+      }
+      this.sendLocalCandidate(record, candidateObj)
+    }
+  }
+
+  private bufferEarlyRemoteCandidate(peerId: string, connectionId: string, candidate: RTCIceCandidate): void {
+    const now = Date.now()
+    for (const [k, entry] of this.earlyRemoteCandidates.entries()) {
+      if (now - entry.createdAt > 30000) {
+        this.earlyRemoteCandidates.delete(k)
+      }
+    }
+    const key = `${peerId}:${connectionId}`
+    let entry = this.earlyRemoteCandidates.get(key)
+    if (!entry) {
+      if (this.earlyRemoteCandidates.size >= 32) {
+        const oldestKey = this.earlyRemoteCandidates.keys().next().value
+        if (oldestKey) this.earlyRemoteCandidates.delete(oldestKey)
+      }
+      entry = { peerId, candidates: [], createdAt: now }
+      this.earlyRemoteCandidates.set(key, entry)
+    }
+    if (entry.candidates.length < 64) {
+      entry.candidates.push(candidate)
+    }
+  }
+
+  private async flushRemoteCandidates(record: PeerConnectionRecord): Promise<void> {
+    const key = `${record.peerId}:${record.attemptId}`
+    const early = this.earlyRemoteCandidates.get(key)
+    if (early) {
+      this.earlyRemoteCandidates.delete(key)
+      for (const cand of early.candidates) {
+        if (record.state === 'failed' || this.isDisposed) return
+        try {
+          await record.pc.addIceCandidate(cand)
+        } catch {
+          // ignore candidate addition error
+        }
+      }
+    }
+    if (record.pendingRemoteCandidates.length > 0) {
+      const queued = record.pendingRemoteCandidates.splice(0)
+      for (const cand of queued) {
+        if (record.state === 'failed' || this.isDisposed) return
+        try {
+          await record.pc.addIceCandidate(cand)
+        } catch {
+          // ignore candidate addition error
+        }
+      }
+    }
   }
 
   private setupControlChannel(record: PeerConnectionRecord, channel: RTCDataChannel): void {
@@ -709,8 +808,14 @@ export class TransportManager {
       const newRecord = this.createPeerConnection(fromPeerId, fromSessionId, connectionId, false, groupId)
       try {
         await newRecord.pc.setRemoteDescription(offerPayload)
+        if (!this.isRecordActive(newRecord, connectionId)) return
+        newRecord.remoteDescriptionSet = true
+        await this.flushRemoteCandidates(newRecord)
+
         const answer = await newRecord.pc.createAnswer()
         await newRecord.pc.setLocalDescription(answer)
+        if (!this.isRecordActive(newRecord, connectionId)) return
+        const localDesc = newRecord.pc.localDescription ?? answer
         const freshShared = sharedGroups.filter((g) => this.isGroupFresh(g))
         const chosenGroupId = (groupId && this.isGroupFresh(groupId))
           ? groupId
@@ -721,8 +826,10 @@ export class TransportManager {
           targetSessionId: fromSessionId,
           connectionId,
           kind: 'answer',
-          payload: { type: answer.type, sdp: answer.sdp }
+          payload: { type: localDesc.type, sdp: localDesc.sdp }
         })
+        newRecord.localDescriptionSent = true
+        this.flushLocalCandidates(newRecord, localDesc.sdp)
       } catch {
         void this.cleanupRecord(newRecord, 'failed')
       }
@@ -734,6 +841,9 @@ export class TransportManager {
       if (!record || record.attemptId !== connectionId || !answerPayload?.sdp) return
       try {
         await record.pc.setRemoteDescription(answerPayload)
+        if (!this.isRecordActive(record, connectionId)) return
+        record.remoteDescriptionSet = true
+        await this.flushRemoteCandidates(record)
       } catch {
         void this.cleanupRecord(record, 'failed')
       }
@@ -741,9 +851,19 @@ export class TransportManager {
     }
 
     if (kind === 'candidate') {
-      if (!record || record.attemptId !== connectionId) return
+      const candidatePayload = payload as RTCIceCandidate
+      if (!record || record.attemptId !== connectionId) {
+        this.bufferEarlyRemoteCandidate(fromPeerId, connectionId, candidatePayload)
+        return
+      }
+      if (!record.remoteDescriptionSet) {
+        if (record.pendingRemoteCandidates.length < 64) {
+          record.pendingRemoteCandidates.push(candidatePayload)
+        }
+        return
+      }
       try {
-        await record.pc.addIceCandidate(payload as RTCIceCandidate)
+        await record.pc.addIceCandidate(candidatePayload)
       } catch {
         // ignore candidate addition error
       }
@@ -942,6 +1062,7 @@ export class TransportManager {
       cleanups.push(this.cleanupRecord(record, 'failed'))
     }
     this.connections.clear()
+    this.earlyRemoteCandidates.clear()
     this.groupContexts.clear()
     await Promise.all(cleanups)
   }

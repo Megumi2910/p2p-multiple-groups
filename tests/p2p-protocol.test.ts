@@ -538,4 +538,106 @@ describe('TransportManager Loopback Peer Connection', () => {
       await tmB.dispose()
     }
   })
+
+  it('embeds gathered ICE candidates in offer/answer SDPs, orders candidates after SDP, and buffers early remote candidates', async () => {
+    const epoch = randomUUID()
+    const peerAId = '00000000-0000-4000-8000-000000000011'
+    const peerBId = '00000000-0000-4000-8000-000000000022'
+    const sessionAId = randomUUID()
+    const sessionBId = randomUUID()
+    const memAId = randomUUID()
+    const memBId = randomUUID()
+
+    const { promise: openA, resolve: resolveOpenA } = Promise.withResolvers<void>()
+    const { promise: openB, resolve: resolveOpenB } = Promise.withResolvers<void>()
+
+    const signalsFromA: Array<{ kind: string; payload: unknown }> = []
+    const signalsFromB: Array<{ kind: string; payload: unknown }> = []
+    let sawOfferFromA = false
+    let sawAnswerFromB = false
+
+    let tmA!: TransportManager
+    let tmB!: TransportManager
+
+    tmA = new TransportManager({
+      onControlMessage: () => {},
+      onFileChannel: () => {},
+      onLinkStateChange: (_peerId, state) => {
+        if (state === 'open') resolveOpenA()
+      },
+      onSendSignal: (sig) => {
+        signalsFromA.push({ kind: sig.kind, payload: sig.payload })
+        if (sig.kind === 'candidate') {
+          assert.equal(sawOfferFromA, true, 'Initiator must never emit candidate before offer')
+        }
+        if (sig.kind === 'offer') {
+          sawOfferFromA = true
+          const sdp = (sig.payload as { sdp: string }).sdp
+          assert.equal(sdp.includes('a=candidate:'), true, 'Offer SDP must include gathered ICE candidates')
+          // Deliver an early out-of-order candidate BEFORE delivering the offer to verify early candidate buffering
+          const candLines = sdp.split(/\r?\n/).filter((l) => l.startsWith('a=candidate:'))
+          const strippedSdp = sdp
+            .split(/\r?\n/)
+            .filter((l) => !l.startsWith('a=candidate:') && l !== 'a=end-of-candidates')
+            .join('\r\n')
+          for (const line of candLines) {
+            void tmB.handleSignal(sig.groupId || 'test-group', peerAId, sessionAId, sig.connectionId, 'candidate', {
+              candidate: line.slice(2),
+              sdpMid: '0',
+              sdpMLineIndex: 0
+            })
+          }
+          void tmB.handleSignal(sig.groupId || 'test-group', peerAId, sessionAId, sig.connectionId, 'offer', {
+            type: 'offer',
+            sdp: strippedSdp
+          })
+          return
+        }
+        void tmB.handleSignal(sig.groupId || 'test-group', peerAId, sessionAId, sig.connectionId, sig.kind, sig.payload)
+      }
+    })
+
+    tmB = new TransportManager({
+      onControlMessage: () => {},
+      onFileChannel: () => {},
+      onLinkStateChange: (_peerId, state) => {
+        if (state === 'open') resolveOpenB()
+      },
+      onSendSignal: (sig) => {
+        signalsFromB.push({ kind: sig.kind, payload: sig.payload })
+        if (sig.kind === 'candidate') {
+          assert.equal(sawAnswerFromB, true, 'Answerer must never emit candidate before answer')
+        }
+        if (sig.kind === 'answer') {
+          sawAnswerFromB = true
+          const sdp = (sig.payload as { sdp: string }).sdp
+          assert.equal(sdp.includes('a=candidate:'), true, 'Answer SDP must include gathered ICE candidates')
+        }
+        void tmA.handleSignal(sig.groupId || 'test-group', peerBId, sessionBId, sig.connectionId, sig.kind, sig.payload)
+      }
+    })
+
+    const emptyIce = { expiresAt: Date.now() + 3600000, servers: [] }
+    tmA.setPeerContext(peerAId, sessionAId, emptyIce, false)
+    tmB.setPeerContext(peerBId, sessionBId, emptyIce, false)
+
+    const roster = [
+      { peerId: peerAId, sessionId: sessionAId, membershipId: memAId, joinOrder: 1, displayName: 'PeerA', supernodeEligible: true },
+      { peerId: peerBId, sessionId: sessionBId, membershipId: memBId, joinOrder: 2, displayName: 'PeerB', supernodeEligible: false }
+    ]
+
+    tmA.updateGroupRoster('test-group', epoch, 1, roster, true)
+    tmB.updateGroupRoster('test-group', epoch, 1, roster, true)
+
+    try {
+      await Promise.all([openA, openB])
+      assert.equal(sawOfferFromA, true)
+      assert.equal(sawAnswerFromB, true)
+      assert.equal(tmA.getLinkState(peerBId)?.state, 'open')
+      assert.equal(tmB.getLinkState(peerAId)?.state, 'open')
+    } finally {
+      await tmA.dispose()
+      await tmB.dispose()
+    }
+  })
 })

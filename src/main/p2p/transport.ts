@@ -127,6 +127,58 @@ function ensureSctpAssociationHealthy(pc: RTCPeerConnection): void {
   }
 }
 
+export function isPrivateOrNonRoutableIp(ip: string | undefined): boolean {
+  if (!ip) return true
+  const trimmed = ip.trim().toLowerCase()
+  if (!trimmed) return true
+
+  if (trimmed.includes(':')) {
+    if (trimmed === '::' || trimmed === '::1') return true
+    if (trimmed.startsWith('fe8') || trimmed.startsWith('fe9') || trimmed.startsWith('fea') || trimmed.startsWith('feb')) {
+      return true // fe80::/10 link-local
+    }
+    if (trimmed.startsWith('fc') || trimmed.startsWith('fd')) return true // fc00::/7 ULA
+    if (trimmed.startsWith('ff')) return true // multicast
+    if (trimmed.startsWith('2001:db8:')) return true // documentation
+    return false
+  }
+
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(trimmed)
+  if (!ipv4) return false
+  const a = Number(ipv4[1])
+  const b = Number(ipv4[2])
+  const c = Number(ipv4[3])
+  const d = Number(ipv4[4])
+  if (a > 255 || b > 255 || c > 255 || d > 255) return true
+
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return true
+  if (a === 100 && b >= 64 && b <= 127) return true // CGNAT (RFC 6598)
+  if (a === 169 && b === 254) return true // Link-local (RFC 3927)
+  if (a === 172 && b >= 16 && b <= 31) return true // RFC 1918
+  if (a === 192 && b === 168) return true // RFC 1918
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true // IETF / TEST-NET-1
+  if (a === 198 && (b === 18 || b === 19)) return true // Benchmarking
+  if (a === 198 && b === 51 && c === 100) return true // TEST-NET-2
+  if (a === 203 && b === 0 && c === 113) return true // TEST-NET-3
+  return false
+}
+
+export function shouldAllowCandidatePair(pair: {
+  localCandidate?: { type?: string; host?: string }
+  remoteCandidate?: { type?: string; host?: string }
+}): boolean {
+  // Public TURN servers reject ChannelBind/CreatePermission to private/non-routable IPs
+  // (often with unauthenticated 401/403 responses that stall werift's serialized channelBindQueue).
+  if (
+    pair.localCandidate?.type === 'relay' &&
+    !isPrivateOrNonRoutableIp(pair.localCandidate.host) &&
+    isPrivateOrNonRoutableIp(pair.remoteCandidate?.host)
+  ) {
+    return false
+  }
+  return true
+}
+
 export class TransportManager {
   private readonly events: TransportEvents
   private readonly options: TransportManagerOptions
@@ -399,7 +451,8 @@ export class TransportManager {
         username: s.username,
         credential: s.credential
       })),
-      iceTransportPolicy: this.relayOnly ? ('relay' as const) : ('all' as const)
+      iceTransportPolicy: this.relayOnly ? ('relay' as const) : ('all' as const),
+      iceFilterCandidatePair: shouldAllowCandidatePair
     }
 
     const pc = this.options.connectionFactory ? this.options.connectionFactory(config) : new RTCPeerConnection(config)

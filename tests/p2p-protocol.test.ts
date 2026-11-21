@@ -31,7 +31,11 @@ import {
   parseFileChannelLabelV2
 } from '../src/shared/p2p-wire.ts'
 import { createMultiGroupPeerStore, type MultiGroupPeerStore } from '../src/main/p2p/peer-store.ts'
-import { TransportManager } from '../src/main/p2p/transport.ts'
+import {
+  TransportManager,
+  isPrivateOrNonRoutableIp,
+  shouldAllowCandidatePair
+} from '../src/main/p2p/transport.ts'
 import type { RTCDataChannel } from 'werift'
 
 describe('P2P Protocol & Shared Contracts', () => {
@@ -454,6 +458,67 @@ describe('MultiGroupPeerStore Persistence', () => {
 })
 
 describe('TransportManager Loopback Peer Connection', () => {
+  it('filters out public TURN relay pairs targeting private/non-routable peer IPs while preserving LAN and relay pairs', () => {
+    assert.equal(isPrivateOrNonRoutableIp('192.168.1.142'), true)
+    assert.equal(isPrivateOrNonRoutableIp('10.0.0.5'), true)
+    assert.equal(isPrivateOrNonRoutableIp('172.29.16.1'), true)
+    assert.equal(isPrivateOrNonRoutableIp('100.64.10.2'), true)
+    assert.equal(isPrivateOrNonRoutableIp('169.254.83.107'), true)
+    assert.equal(isPrivateOrNonRoutableIp('127.0.0.1'), true)
+    assert.equal(isPrivateOrNonRoutableIp('fe80::1'), true)
+    assert.equal(isPrivateOrNonRoutableIp('172.236.136.45'), false)
+    assert.equal(isPrivateOrNonRoutableIp('206.189.151.205'), false)
+    assert.equal(isPrivateOrNonRoutableIp('113.23.25.58'), false)
+
+    // Public TURN relay -> private host must be skipped
+    assert.equal(
+      shouldAllowCandidatePair({
+        localCandidate: { type: 'relay', host: '172.236.136.45' },
+        remoteCandidate: { type: 'host', host: '192.168.1.142' }
+      }),
+      false
+    )
+    assert.equal(
+      shouldAllowCandidatePair({
+        localCandidate: { type: 'relay', host: '206.189.151.205' },
+        remoteCandidate: { type: 'host', host: '100.64.1.10' }
+      }),
+      false
+    )
+
+    // Public TURN relay -> public relay / srflx must be allowed
+    assert.equal(
+      shouldAllowCandidatePair({
+        localCandidate: { type: 'relay', host: '172.236.136.45' },
+        remoteCandidate: { type: 'relay', host: '206.189.151.205' }
+      }),
+      true
+    )
+    assert.equal(
+      shouldAllowCandidatePair({
+        localCandidate: { type: 'relay', host: '172.236.136.45' },
+        remoteCandidate: { type: 'srflx', host: '113.23.25.58' }
+      }),
+      true
+    )
+
+    // Same-LAN host -> private host and local/lab TURN -> private host must remain allowed
+    assert.equal(
+      shouldAllowCandidatePair({
+        localCandidate: { type: 'host', host: '192.168.1.10' },
+        remoteCandidate: { type: 'host', host: '192.168.1.20' }
+      }),
+      true
+    )
+    assert.equal(
+      shouldAllowCandidatePair({
+        localCandidate: { type: 'relay', host: '127.0.0.1' },
+        remoteCandidate: { type: 'host', host: '192.168.1.20' }
+      }),
+      true
+    )
+  })
+
   it('connects two local peers, completes hello handshake and opens scoped file channel', async () => {
     const epoch = randomUUID()
     const peerAId = '00000000-0000-4000-8000-000000000001'

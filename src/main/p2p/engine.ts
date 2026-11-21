@@ -87,6 +87,7 @@ export interface PeerEngine {
   search(groupKey: GroupKey, queryText: string): Promise<ActionResult>
   download(groupKey: GroupKey, resultId: string, destination: string): Promise<ActionResult>
   resumeTransfer(transferId: string, preferredPeerId?: string): Promise<ActionResult>
+  stopTransfer(transferId: string): Promise<ActionResult>
   cancelTransfer(transferId: string): Promise<ActionResult>
   forceCloseTransferChannel(transferId: string): boolean
   resolveSearchResult(groupKey: GroupKey, resultId: string): MultiGroupSearchResult | undefined
@@ -2121,6 +2122,15 @@ export async function createPeerEngine(
         else if (msg === 'NOT_AUTHORIZED') code = 'FORBIDDEN'
         return { ok: false, code, message: msg }
       }
+    },
+
+    stopTransfer: async (transferId: string): Promise<ActionResult> => {
+      const stopped = await transfers.stopTransfer(transferId)
+      if (!stopped) {
+        return { ok: false, code: 'NOT_FOUND', message: 'Active downloadable transfer not found' }
+      }
+      publishState()
+      return { ok: true }
     },
 
     cancelTransfer: async (transferId: string): Promise<ActionResult> => {

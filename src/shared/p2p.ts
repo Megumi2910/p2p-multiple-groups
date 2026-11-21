@@ -156,6 +156,8 @@ export interface MultiGroupTransfer {
   message: string | null
   canResume?: boolean
   resumedFromBytes?: number
+  startedAt?: number
+  updatedAt?: number
 }
 
 export type P2pRecoveryEventType =
@@ -263,6 +265,7 @@ export interface P2pMultipleGroupsP2pApi {
   search(groupKey: GroupKey, query: string): Promise<ActionResult>
   download(groupKey: GroupKey, resultId: string): Promise<ActionResult>
   resumeTransfer(transferId: string, preferredPeerId?: string): Promise<ActionResult>
+  stopTransfer(transferId: string): Promise<ActionResult>
   cancelTransfer(transferId: string): Promise<ActionResult>
 }
 

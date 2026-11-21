@@ -181,6 +181,12 @@ export function usePeerState() {
     return bridge.p2p.resumeTransfer(transferId, preferredPeerId)
   }, [])
 
+  const stopTransfer = useCallback(async (transferId: string): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.stopTransfer) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.stopTransfer(transferId)
+  }, [])
+
   const cancelTransfer = useCallback(async (transferId: string): Promise<ActionResult> => {
     const bridge = getBridge()
     if (!bridge?.p2p?.cancelTransfer) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
@@ -210,6 +216,7 @@ export function usePeerState() {
     search,
     download,
     resumeTransfer,
+    stopTransfer,
     cancelTransfer
   }
 }

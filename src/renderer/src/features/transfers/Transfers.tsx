@@ -10,6 +10,7 @@ interface TransfersProps {
   transfers: MultiGroupTransfer[]
   groups?: P2pGroupState[]
   onResumeTransfer?: (transferId: string) => Promise<ActionResult>
+  onStopTransfer?: (transferId: string) => Promise<ActionResult>
   onCancelTransfer: (transferId: string) => Promise<ActionResult>
   onSearchAgain?: (filename: string, groupKey: string) => void
 }
@@ -19,6 +20,35 @@ function formatBytes(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(1024))
   return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i] || 'B'}`
+}
+
+function formatTimestamp(ts?: number): string {
+  if (!ts) return '—'
+  const d = new Date(ts)
+  const now = new Date()
+  const isSameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  if (isSameDay) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  }
+  return d.toLocaleString([], {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+}
+
+function formatDuration(startedAt?: number, updatedAt?: number): string | null {
+  if (!startedAt || !updatedAt || updatedAt < startedAt) return null
+  const secs = Math.max(0, Math.round((updatedAt - startedAt) / 1000))
+  if (secs < 60) return `${secs}s`
+  const mins = Math.floor(secs / 60)
+  const rem = secs % 60
+  return rem > 0 ? `${mins}m ${rem}s` : `${mins}m`
 }
 
 function formatPath(path: MultiGroupTransfer['path']): string {
@@ -37,6 +67,7 @@ export const Transfers: React.FC<TransfersProps> = ({
   transfers,
   groups = [],
   onResumeTransfer,
+  onStopTransfer,
   onCancelTransfer,
   onSearchAgain
 }) => {
@@ -48,6 +79,17 @@ export const Transfers: React.FC<TransfersProps> = ({
     setActionError(null)
     setBusyTransferId(transferId)
     const res = await onResumeTransfer(transferId)
+    setBusyTransferId(null)
+    if (!res.ok) {
+      setActionError(`${res.code}: ${res.message}`)
+    }
+  }
+
+  const handleStopClick = async (transferId: string): Promise<void> => {
+    if (!onStopTransfer) return
+    setActionError(null)
+    setBusyTransferId(transferId)
+    const res = await onStopTransfer(transferId)
     setBusyTransferId(null)
     if (!res.ok) {
       setActionError(`${res.code}: ${res.message}`)
@@ -159,14 +201,30 @@ export const Transfers: React.FC<TransfersProps> = ({
                         <span style={{ fontSize: '12px' }}>{formatPath(t.path)}</span>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="action-button secondary-button"
-                          style={{ padding: '2px 8px', fontSize: '12px' }}
-                          onClick={() => onCancelTransfer(t.id)}
-                        >
-                          Cancel
-                        </button>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          {!isUploading && onStopTransfer && (t.state === 'connecting' || t.state === 'transferring') && (
+                            <button
+                              type="button"
+                              className="action-button secondary-button"
+                              style={{ padding: '2px 8px', fontSize: '12px' }}
+                              onClick={() => void handleStopClick(t.id)}
+                              disabled={busyTransferId === t.id}
+                              title="Stop download and keep partial file so you can Resume later"
+                            >
+                              {busyTransferId === t.id ? 'Stopping...' : 'Stop'}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="action-button secondary-button"
+                            style={{ padding: '2px 8px', fontSize: '12px' }}
+                            onClick={() => void handleCancelClick(t.id)}
+                            disabled={busyTransferId === t.id}
+                            title="Cancel transfer and discard partial data"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -197,6 +255,7 @@ export const Transfers: React.FC<TransfersProps> = ({
                   <th>Direction</th>
                   <th>Peer</th>
                   <th>Size</th>
+                  <th>Time</th>
                   <th>Result</th>
                   <th>Actions</th>
                 </tr>
@@ -204,6 +263,12 @@ export const Transfers: React.FC<TransfersProps> = ({
               <tbody>
                 {completedTransfers.map((t) => {
                   const groupDisplay = (t.groupKey && groupMap.get(t.groupKey)) || t.groupId || 'Default'
+                  const ts = t.updatedAt ?? t.startedAt
+                  const duration = formatDuration(t.startedAt, t.updatedAt)
+                  const isStopped = t.state === 'failed' && Boolean(t.canResume) && t.message === 'Stopped by user'
+                  const hasDownloadActions =
+                    t.direction === 'download' &&
+                    (t.state === 'failed' || (t.state === 'cancelled' && Boolean(onSearchAgain)))
                   return (
                     <tr key={t.id}>
                       <td className="filename-cell">
@@ -228,9 +293,19 @@ export const Transfers: React.FC<TransfersProps> = ({
                           formatBytes(t.size)
                         )}
                       </td>
+                      <td title={ts ? new Date(ts).toLocaleString() : undefined}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: '12px' }}>{formatTimestamp(ts)}</span>
+                          {duration && (
+                            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                              {duration}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td>
                         <span className={`badge badge-${t.state}`}>
-                          {t.state === 'failed' && t.canResume ? 'Interrupted' : t.state}
+                          {isStopped ? 'Stopped' : t.state === 'failed' && t.canResume ? 'Interrupted' : t.state}
                         </span>
                         {t.message && (
                           <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
@@ -239,40 +314,44 @@ export const Transfers: React.FC<TransfersProps> = ({
                         )}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                          {t.state === 'failed' && t.canResume && onResumeTransfer && t.direction === 'download' && (
-                            <button
-                              type="button"
-                              className="action-button primary-button"
-                              style={{ padding: '2px 8px', fontSize: '12px' }}
-                              onClick={() => void handleResumeClick(t.id)}
-                              disabled={busyTransferId === t.id}
-                            >
-                              {busyTransferId === t.id ? 'Resuming...' : 'Resume'}
-                            </button>
-                          )}
-                          {t.state === 'failed' && t.canResume && t.direction === 'download' && (
-                            <button
-                              type="button"
-                              className="action-button secondary-button"
-                              style={{ padding: '2px 8px', fontSize: '12px' }}
-                              onClick={() => void handleCancelClick(t.id)}
-                              disabled={busyTransferId === t.id}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                          {t.state === 'failed' && onSearchAgain && t.direction === 'download' && (
-                            <button
-                              type="button"
-                              className="action-button secondary-button"
-                              style={{ padding: '2px 8px', fontSize: '12px' }}
-                              onClick={() => onSearchAgain(t.fileName, t.groupKey)}
-                            >
-                              Search Again
-                            </button>
-                          )}
-                        </div>
+                        {hasDownloadActions ? (
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            {t.state === 'failed' && t.canResume && onResumeTransfer && t.direction === 'download' && (
+                              <button
+                                type="button"
+                                className="action-button primary-button"
+                                style={{ padding: '2px 8px', fontSize: '12px' }}
+                                onClick={() => void handleResumeClick(t.id)}
+                                disabled={busyTransferId === t.id}
+                              >
+                                {busyTransferId === t.id ? 'Resuming...' : 'Resume'}
+                              </button>
+                            )}
+                            {t.state === 'failed' && t.canResume && t.direction === 'download' && (
+                              <button
+                                type="button"
+                                className="action-button secondary-button"
+                                style={{ padding: '2px 8px', fontSize: '12px' }}
+                                onClick={() => void handleCancelClick(t.id)}
+                                disabled={busyTransferId === t.id}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                            {(t.state === 'failed' || t.state === 'cancelled') && onSearchAgain && t.direction === 'download' && (
+                              <button
+                                type="button"
+                                className="action-button secondary-button"
+                                style={{ padding: '2px 8px', fontSize: '12px' }}
+                                onClick={() => onSearchAgain(t.fileName, t.groupKey)}
+                              >
+                                Search Again
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: 'var(--muted)' }}>—</span>
+                        )}
                       </td>
                     </tr>
                   )

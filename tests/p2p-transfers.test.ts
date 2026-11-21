@@ -1244,4 +1244,163 @@ describe('End-to-End Verified Peer Transfers', () => {
       await server.close()
     }
   })
+
+  it('stops an active download via stopTransfer preserving .part and timestamps, then resumes to verified completion', async () => {
+    const token = Buffer.alloc(32, 82).toString('base64url')
+    const groupId = 'stop-resume-group'
+    const server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [{ groupId, token }]
+    })
+
+    const signalUrl = `ws://127.0.0.1:${server.address.port}/signal`
+    const groupKey = makeGroupKey(signalUrl, groupId)
+
+    async function createEngine(name: string): Promise<PeerEngine> {
+      const dir = await mkdtemp(join(tmpdir(), `p2p-stop-${name}-`))
+      tempDirs.push(dir)
+      const engine = await createPeerEngine(dir)
+      const res = await engine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId, token },
+        displayName: name,
+        supernodeEligible: true,
+        relayOnly: false,
+        rememberInvitation: true
+      })
+      assert.equal(res.ok, true)
+      return engine
+    }
+
+    function waitForState(
+      engine: PeerEngine,
+      predicate: (s: MultiGroupP2pState) => boolean,
+      timeoutMs = 25000,
+      label?: string
+    ): Promise<MultiGroupP2pState> {
+      const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState>()
+      let done = false
+      const timer = setTimeout(() => {
+        if (!done) {
+          done = true
+          unsub()
+          reject(new Error(`Timeout (${timeoutMs}ms) waiting for: ${label || 'peer state condition'}`))
+        }
+      }, timeoutMs)
+
+      const check = (s: MultiGroupP2pState) => {
+        if (done) return
+        if (predicate(s)) {
+          done = true
+          clearTimeout(timer)
+          unsub()
+          resolve(s)
+        }
+      }
+
+      const unsub = engine.subscribe(check)
+      check(engine.getState())
+      return promise
+    }
+
+    let downloader: PeerEngine | null = null
+    let uploader: PeerEngine | null = null
+
+    try {
+      downloader = await createEngine('Downloader')
+      uploader = await createEngine('Uploader')
+
+      await Promise.all([
+        waitForState(downloader, (s) => (s.groups[0]?.network.members.length || 0) === 2, 25000, 'dl-2'),
+        waitForState(uploader, (s) => (s.groups[0]?.network.members.length || 0) === 2, 25000, 'up-2')
+      ])
+      await Promise.all([
+        waitForState(downloader, (s) => Boolean(s.groups[0]?.network.links.some((l) => l.peerId === uploader!.getState().identity.peerId && l.state === 'open')), 25000, 'dl-link'),
+        waitForState(uploader, (s) => Boolean(s.groups[0]?.network.links.some((l) => l.peerId === downloader!.getState().identity.peerId && l.state === 'open')), 25000, 'up-link')
+      ])
+
+      const upDir = await mkdtemp(join(tmpdir(), 'stop-up-'))
+      const dlDir = await mkdtemp(join(tmpdir(), 'stop-dl-'))
+      tempDirs.push(upDir, dlDir)
+
+      const payload = Buffer.alloc(1024 * 1024)
+      for (let i = 0; i < payload.length; i++) {
+        payload[i] = (i * 31 + 17) & 0xff
+      }
+      const srcPath = join(upDir, 'stoppable.zip')
+      await writeFile(srcPath, payload)
+
+      const sharedP = waitForState(
+        uploader,
+        (s) => s.library.files.length === 1 && s.library.files[0].status === 'shared',
+        25000,
+        'up-shared'
+      )
+      await uploader.addFiles(groupKey, [srcPath])
+      await sharedP
+
+      await downloader.search(groupKey, 'stoppable.zip')
+      const searchState = await waitForState(
+        downloader,
+        (s) => s.groups[0]?.search.results.some((r) => r.file.name === 'stoppable.zip') === true,
+        25000,
+        'search-found'
+      )
+      const result = searchState.groups[0].search.results.find((r) => r.file.name === 'stoppable.zip')!
+
+      const dlDest = join(dlDir, 'stoppable.zip')
+      let stopTriggered = false
+      const unsub = downloader.subscribe((s) => {
+        const t = s.transfers.find((x) => x.fileName === 'stoppable.zip' && x.direction === 'download')
+        if (t && t.state === 'transferring' && t.transferredBytes >= 128 * 1024 && !stopTriggered) {
+          stopTriggered = true
+          void downloader!.stopTransfer(t.id)
+        }
+      })
+
+      const dlRes = await downloader.download(groupKey, result.resultId, dlDest)
+      assert.equal(dlRes.ok, true)
+
+      const stoppedState = await waitForState(
+        downloader,
+        (s) => {
+          const t = s.transfers.find((x) => x.fileName === 'stoppable.zip' && x.direction === 'download')
+          return t?.state === 'failed' && Boolean(t.canResume) && t.message === 'Stopped by user'
+        },
+        25000,
+        'transfer-stopped'
+      )
+      unsub()
+
+      const stoppedTransfer = stoppedState.transfers.find((x) => x.fileName === 'stoppable.zip' && x.direction === 'download')!
+      assert.equal(stoppedTransfer.canResume, true)
+      assert.equal(stoppedTransfer.message, 'Stopped by user')
+      assert.ok(stoppedTransfer.transferredBytes > 0)
+      assert.ok(typeof stoppedTransfer.startedAt === 'number' && stoppedTransfer.startedAt > 0)
+      assert.ok(typeof stoppedTransfer.updatedAt === 'number' && stoppedTransfer.updatedAt >= stoppedTransfer.startedAt)
+
+      // Resume from stopped state
+      const completedP = waitForState(
+        downloader,
+        (s) => s.transfers.find((x) => x.id === stoppedTransfer.id)?.state === 'completed',
+        60000,
+        'stop-resumed-complete'
+      )
+      const resumeRes = await downloader.resumeTransfer(stoppedTransfer.id)
+      assert.equal(resumeRes.ok, true)
+      const completedState = await completedP
+
+      const completedTransfer = completedState.transfers.find((x) => x.id === stoppedTransfer.id)!
+      assert.ok(typeof completedTransfer.startedAt === 'number' && completedTransfer.startedAt > 0)
+      assert.ok(typeof completedTransfer.updatedAt === 'number' && completedTransfer.updatedAt >= completedTransfer.startedAt)
+
+      const bytes = await readFile(dlDest)
+      assert.equal(bytes.length, payload.length)
+      assert.equal(createHash('sha256').update(bytes).digest('hex'), result.file.sha256)
+    } finally {
+      if (downloader) await downloader.dispose()
+      if (uploader) await uploader.dispose()
+      await server.close()
+    }
+  })
 })

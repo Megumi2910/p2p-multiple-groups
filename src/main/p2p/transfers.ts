@@ -147,6 +147,9 @@ interface TransferSession {
   canResume?: boolean
   resumedFromBytes?: number
   lastRejectedByPeerId?: string
+  isFailing?: boolean
+  startedAt: number
+  updatedAt: number
   // Upload-specific
   filePath?: string
   lastAckedBytes?: number
@@ -226,7 +229,9 @@ export class TransferManager {
         path: t.path,
         message: t.message,
         canResume: t.canResume,
-        resumedFromBytes: t.resumedFromBytes
+        resumedFromBytes: t.resumedFromBytes,
+        startedAt: t.startedAt,
+        updatedAt: t.updatedAt
       })
     }
     return [...list, ...this.terminalHistory]
@@ -325,6 +330,7 @@ export class TransferManager {
       this.terminalHistory.splice(histIdx, 1)
     }
 
+    const now = Date.now()
     const session: TransferSession = {
       id: params.transferId,
       direction: 'download',
@@ -354,7 +360,9 @@ export class TransferManager {
       fileHandle,
       hasher,
       canResume: true,
-      lastRejectedByPeerId: this.resumableDownloads.get(params.transferId)?.lastRejectedByPeerId
+      lastRejectedByPeerId: this.resumableDownloads.get(params.transferId)?.lastRejectedByPeerId,
+      startedAt: now,
+      updatedAt: now
     }
 
     this.transfers.set(session.id, session)
@@ -395,7 +403,7 @@ export class TransferManager {
     channel.send(JSON.stringify(requestMsg))
 
     channel.onmessage = async (event) => {
-      if (session.state === 'cancelled' || session.state === 'completed' || session.state === 'failed') return
+      if (session.isFailing || session.state === 'cancelled' || session.state === 'completed' || session.state === 'failed') return
       this.resetStallTimer(session)
       const data = event.data
 
@@ -503,19 +511,6 @@ export class TransferManager {
         const chunkOffset = session.transferredBytes
         session.transferredBytes += chunk.length
         session.hasher!.update(chunk)
-        this.callbacks.onStateChange()
-
-        // Send ACK after each 256 KiB written or EOF
-        if (session.transferredBytes % ACK_INTERVAL_BYTES < chunk.length || session.transferredBytes === session.size) {
-          const ackMsg: TransferControlMessageV2 = {
-            v: 2,
-            type: 'ack',
-            groupId: session.groupId,
-            transferId: session.id,
-            receivedBytes: session.transferredBytes
-          }
-          channel.send(JSON.stringify(ackMsg))
-        }
 
         session.writeQueue = (session.writeQueue || Promise.resolve())
           .then(async () => {
@@ -530,6 +525,20 @@ export class TransferManager {
               true
             )
           })
+
+        // Send ACK after each 256 KiB written or EOF
+        if (session.transferredBytes % ACK_INTERVAL_BYTES < chunk.length || session.transferredBytes === session.size) {
+          const ackMsg: TransferControlMessageV2 = {
+            v: 2,
+            type: 'ack',
+            groupId: session.groupId,
+            transferId: session.id,
+            receivedBytes: session.transferredBytes
+          }
+          channel.send(JSON.stringify(ackMsg))
+        }
+
+        this.callbacks.onStateChange()
       }
     }
 
@@ -653,6 +662,7 @@ export class TransferManager {
       this.transfers.delete(transferId)
     }
 
+    const now = Date.now()
     const session: TransferSession = {
       id: transferId,
       direction: 'upload',
@@ -673,7 +683,9 @@ export class TransferManager {
       fileId: '',
       remoteSessionId: channelGroupContext.remoteSessionId,
       localMembershipId: channelGroupContext.localMembershipId,
-      remoteMembershipId: channelGroupContext.remoteMembershipId
+      remoteMembershipId: channelGroupContext.remoteMembershipId,
+      startedAt: now,
+      updatedAt: now
     }
 
     this.transfers.set(session.id, session)
@@ -681,7 +693,7 @@ export class TransferManager {
     this.callbacks.onStateChange()
 
     channel.onmessage = async (event) => {
-      if (session.state === 'cancelled' || session.state === 'completed' || session.state === 'failed') return
+      if (session.isFailing || session.state === 'cancelled' || session.state === 'completed' || session.state === 'failed') return
       this.resetStallTimer(session)
       const data = event.data
 
@@ -979,6 +991,36 @@ export class TransferManager {
     })
   }
 
+  async stopTransfer(transferId: string): Promise<boolean> {
+    const session = this.transfers.get(transferId)
+    if (
+      !session ||
+      session.direction !== 'download' ||
+      (session.state !== 'connecting' && session.state !== 'transferring')
+    ) {
+      return false
+    }
+
+    // Tell the remote uploader to stop streaming immediately so bandwidth/slots are freed,
+    // while keeping our local .part file and resumable record intact for later Resume.
+    if (session.channel && session.channel.readyState === 'open') {
+      try {
+        const cancelMsg: TransferControlMessageV2 = {
+          v: 2,
+          type: 'cancel',
+          groupId: session.groupId,
+          transferId: session.id
+        }
+        session.channel.send(JSON.stringify(cancelMsg))
+      } catch {
+        // ignore
+      }
+    }
+
+    await this.failTransfer(session, 'Stopped by user', true, false, true)
+    return true
+  }
+
   async cancelTransfer(transferId: string): Promise<void> {
     const session = this.transfers.get(transferId)
     if (session) {
@@ -996,6 +1038,7 @@ export class TransferManager {
         hist.canResume = false
         hist.state = 'cancelled'
         hist.message = 'Transfer cancelled.'
+        hist.updatedAt = Date.now()
       }
       this.callbacks.onStateChange()
     }
@@ -1120,9 +1163,14 @@ export class TransferManager {
     session: TransferSession,
     reason: string,
     preservePart = false,
-    sendError = true
+    sendError = true,
+    allowZeroBytesResume = false
   ): Promise<void> {
-    if (session.state === 'completed' || session.state === 'cancelled' || session.state === 'failed') return
+    if (session.isFailing || session.state === 'completed' || session.state === 'cancelled' || session.state === 'failed') return
+    // Guard synchronously before any await so trailing SCTP chunks, end frames, or channel close
+    // events cannot race with teardown while keeping session.state atomic until .part is closed
+    // and resumableDownloads is populated.
+    session.isFailing = true
     if (session.stallTimer) {
       clearTimeout(session.stallTimer)
       session.stallTimer = null
@@ -1179,7 +1227,13 @@ export class TransferManager {
 
     const isCurrentSession = this.transfers.get(session.id) === session
 
-    if (preservePart && session.direction === 'download' && session.transferredBytes > 0 && session.partPath && session.destinationPath) {
+    if (
+      preservePart &&
+      session.direction === 'download' &&
+      (session.transferredBytes > 0 || allowZeroBytesResume) &&
+      session.partPath &&
+      session.destinationPath
+    ) {
       session.canResume = true
       const prev = this.resumableDownloads.get(session.id)
       this.resumableDownloads.set(session.id, {
@@ -1221,6 +1275,7 @@ export class TransferManager {
     if (this.transfers.get(session.id) === session) {
       this.transfers.delete(session.id)
     }
+    session.updatedAt = Date.now()
     this.terminalHistory.unshift({
       id: session.id,
       groupKey: session.groupKey,
@@ -1236,7 +1291,9 @@ export class TransferManager {
       path: session.path,
       message: session.message,
       canResume: session.canResume,
-      resumedFromBytes: session.resumedFromBytes
+      resumedFromBytes: session.resumedFromBytes,
+      startedAt: session.startedAt,
+      updatedAt: session.updatedAt
     })
     if (this.terminalHistory.length > 50) {
       this.terminalHistory.pop()

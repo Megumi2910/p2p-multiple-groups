@@ -364,6 +364,7 @@ export default function App(): React.ReactElement {
             transfers={peer.state.transfers}
             groups={peer.state.groups}
             onResumeTransfer={peer.resumeTransfer}
+            onStopTransfer={peer.stopTransfer}
             onCancelTransfer={peer.cancelTransfer}
             onSearchAgain={(filename, groupKey) => {
               navigateTo('search')

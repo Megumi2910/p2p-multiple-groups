@@ -101,6 +101,10 @@ const p2pApi: P2pMultipleGroupsP2pApi = {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_RESUME_TRANSFER, transferId, preferredPeerId)
   },
 
+  stopTransfer(transferId: string): Promise<ActionResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_STOP_TRANSFER, transferId)
+  },
+
   cancelTransfer(transferId: string): Promise<ActionResult> {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_CANCEL_TRANSFER, transferId)
   }

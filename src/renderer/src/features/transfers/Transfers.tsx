@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type {
   ActionResult,
   MultiGroupTransfer,
@@ -40,6 +40,30 @@ export const Transfers: React.FC<TransfersProps> = ({
   onCancelTransfer,
   onSearchAgain
 }) => {
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [busyTransferId, setBusyTransferId] = useState<string | null>(null)
+
+  const handleResumeClick = async (transferId: string): Promise<void> => {
+    if (!onResumeTransfer) return
+    setActionError(null)
+    setBusyTransferId(transferId)
+    const res = await onResumeTransfer(transferId)
+    setBusyTransferId(null)
+    if (!res.ok) {
+      setActionError(`${res.code}: ${res.message}`)
+    }
+  }
+
+  const handleCancelClick = async (transferId: string): Promise<void> => {
+    setActionError(null)
+    setBusyTransferId(transferId)
+    const res = await onCancelTransfer(transferId)
+    setBusyTransferId(null)
+    if (!res.ok) {
+      setActionError(`${res.code}: ${res.message}`)
+    }
+  }
+
   const activeTransfers = transfers.filter(
     (t) => t.state === 'transferring' || t.state === 'connecting' || t.state === 'verifying'
   )
@@ -57,6 +81,12 @@ export const Transfers: React.FC<TransfersProps> = ({
       <h1 id="transfers-heading" ref={headingRef} tabIndex={-1} className="view-heading">
         File Transfers
       </h1>
+
+      {actionError && (
+        <div className="error-message" role="alert" style={{ marginBottom: '16px' }}>
+          {actionError}
+        </div>
+      )}
 
       {/* Active Transfers */}
       <div className="transfers-section" style={{ marginBottom: '32px' }}>
@@ -215,9 +245,10 @@ export const Transfers: React.FC<TransfersProps> = ({
                               type="button"
                               className="action-button primary-button"
                               style={{ padding: '2px 8px', fontSize: '12px' }}
-                              onClick={() => onResumeTransfer(t.id)}
+                              onClick={() => void handleResumeClick(t.id)}
+                              disabled={busyTransferId === t.id}
                             >
-                              Resume
+                              {busyTransferId === t.id ? 'Resuming...' : 'Resume'}
                             </button>
                           )}
                           {t.state === 'failed' && t.canResume && t.direction === 'download' && (
@@ -225,7 +256,8 @@ export const Transfers: React.FC<TransfersProps> = ({
                               type="button"
                               className="action-button secondary-button"
                               style={{ padding: '2px 8px', fontSize: '12px' }}
-                              onClick={() => onCancelTransfer(t.id)}
+                              onClick={() => void handleCancelClick(t.id)}
+                              disabled={busyTransferId === t.id}
                             >
                               Cancel
                             </button>

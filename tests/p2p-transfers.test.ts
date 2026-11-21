@@ -1083,4 +1083,165 @@ describe('End-to-End Verified Peer Transfers', () => {
       await server.close()
     }
   })
+
+  it('resumes interrupted download between two supernodes after uploader leaves and rejoins', async () => {
+    const token = Buffer.alloc(32, 81).toString('base64url')
+    const groupId = 'sn-to-sn-resume-group'
+    const server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [{ groupId, token }]
+    })
+
+    const signalUrl = `ws://127.0.0.1:${server.address.port}/signal`
+    const groupKey = makeGroupKey(signalUrl, groupId)
+
+    async function createEngine(name: string): Promise<PeerEngine> {
+      const dir = await mkdtemp(join(tmpdir(), `p2p-sn2sn-${name}-`))
+      tempDirs.push(dir)
+      const engine = await createPeerEngine(dir)
+      const res = await engine.joinGroup({
+        invitation: { version: 2, signalingUrl: signalUrl, groupId, token },
+        displayName: name,
+        supernodeEligible: true,
+        relayOnly: false,
+        rememberInvitation: true
+      })
+      assert.equal(res.ok, true)
+      return engine
+    }
+
+    function waitForState(
+      engine: PeerEngine,
+      predicate: (s: MultiGroupP2pState) => boolean,
+      timeoutMs = 25000,
+      label?: string
+    ): Promise<MultiGroupP2pState> {
+      const { promise, resolve, reject } = Promise.withResolvers<MultiGroupP2pState>()
+      let done = false
+      const timer = setTimeout(() => {
+        if (!done) {
+          done = true
+          unsub()
+          reject(new Error(`Timeout (${timeoutMs}ms) waiting for: ${label || 'peer state condition'}`))
+        }
+      }, timeoutMs)
+
+      const check = (s: MultiGroupP2pState) => {
+        if (done) return
+        if (predicate(s)) {
+          done = true
+          clearTimeout(timer)
+          unsub()
+          resolve(s)
+        }
+      }
+
+      const unsub = engine.subscribe(check)
+      check(engine.getState())
+      return promise
+    }
+
+    let snDownloader: PeerEngine | null = null
+    let snUploader: PeerEngine | null = null
+
+    try {
+      snDownloader = await createEngine('SnDownloader')
+      snUploader = await createEngine('SnUploader')
+
+      await Promise.all([
+        waitForState(snDownloader, (s) => (s.groups[0]?.network.members.length || 0) === 2 && s.groups[0]?.network.role === 'supernode', 25000, 'dl-2-sn'),
+        waitForState(snUploader, (s) => (s.groups[0]?.network.members.length || 0) === 2 && s.groups[0]?.network.role === 'supernode', 25000, 'up-2-sn')
+      ])
+      await Promise.all([
+        waitForState(snDownloader, (s) => Boolean(s.groups[0]?.network.links.some((l) => l.peerId === snUploader!.getState().identity.peerId && l.state === 'open')), 25000, 'dl-link'),
+        waitForState(snUploader, (s) => Boolean(s.groups[0]?.network.links.some((l) => l.peerId === snDownloader!.getState().identity.peerId && l.state === 'open')), 25000, 'up-link')
+      ])
+
+      const upDir = await mkdtemp(join(tmpdir(), 'sn2sn-up-'))
+      const dlDir = await mkdtemp(join(tmpdir(), 'sn2sn-dl-'))
+      tempDirs.push(upDir, dlDir)
+
+      const payload = Buffer.alloc(1024 * 1024)
+      for (let i = 0; i < payload.length; i++) {
+        payload[i] = (i * 29 + 11) & 0xff
+      }
+      const srcPath = join(upDir, 'archive.zip')
+      await writeFile(srcPath, payload)
+
+      const indexedP = waitForState(
+        snUploader,
+        (s) => s.library.files.length === 1 && s.library.files[0].status === 'shared',
+        25000,
+        'up-shared'
+      )
+      await snUploader.addFiles(groupKey, [srcPath])
+      await indexedP
+
+      await snDownloader.search(groupKey, 'archive.zip')
+      const searchState = await waitForState(
+        snDownloader,
+        (s) => s.groups[0]?.search.results.some((r) => r.file.name === 'archive.zip') === true,
+        25000,
+        'search-found'
+      )
+      const result = searchState.groups[0].search.results.find((r) => r.file.name === 'archive.zip')!
+
+      const dlDest = join(dlDir, 'archive.zip')
+      let transferId = ''
+      let interrupted = false
+      const unsub = snDownloader.subscribe((s) => {
+        const t = s.transfers.find((x) => x.fileName === 'archive.zip' && x.direction === 'download')
+        if (t && !transferId) transferId = t.id
+        if (t && t.state === 'transferring' && t.transferredBytes >= 128 * 1024 && !interrupted) {
+          interrupted = true
+          void snUploader!.leaveGroup(groupKey)
+        }
+      })
+
+      const dlRes = await snDownloader.download(groupKey, result.resultId, dlDest)
+      assert.equal(dlRes.ok, true)
+
+      const failedState = await waitForState(
+        snDownloader,
+        (s) => {
+          const t = s.transfers.find((x) => x.fileName === 'archive.zip' && x.direction === 'download')
+          return t?.state === 'failed' && Boolean(t.canResume)
+        },
+        25000,
+        'sn2sn-interrupted'
+      )
+      unsub()
+      const failedTransfer = failedState.transfers.find((x) => x.fileName === 'archive.zip' && x.direction === 'download')!
+      assert.ok(failedTransfer.canResume)
+      assert.ok(failedTransfer.transferredBytes > 0)
+
+      // Uploader rejoins the group and WebRTC link reopens
+      const rejoinRes = await snUploader.resumeGroup(groupKey)
+      assert.equal(rejoinRes.ok, true)
+      await Promise.all([
+        waitForState(snDownloader, (s) => Boolean(s.groups[0]?.network.links.some((l) => l.peerId === snUploader!.getState().identity.peerId && l.state === 'open')), 25000, 'dl-relink'),
+        waitForState(snUploader, (s) => Boolean(s.groups[0]?.network.links.some((l) => l.peerId === snDownloader!.getState().identity.peerId && l.state === 'open')), 25000, 'up-relink')
+      ])
+
+      // Supernode downloader resumes from fellow Supernode uploader (who has no catalog entry in downloader's supernodeIndex)
+      const completedP = waitForState(
+        snDownloader,
+        (s) => s.transfers.find((x) => x.id === failedTransfer.id)?.state === 'completed',
+        60000,
+        'sn2sn-resumed-complete'
+      )
+      const resumeRes = await snDownloader.resumeTransfer(failedTransfer.id)
+      assert.equal(resumeRes.ok, true, `Expected resume to succeed, got: ${JSON.stringify(resumeRes)}`)
+      await completedP
+
+      const bytes = await readFile(dlDest)
+      assert.equal(bytes.length, payload.length)
+      assert.equal(createHash('sha256').update(bytes).digest('hex'), result.file.sha256)
+    } finally {
+      if (snDownloader) await snDownloader.dispose()
+      if (snUploader) await snUploader.dispose()
+      await server.close()
+    }
+  })
 })

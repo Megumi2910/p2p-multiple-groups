@@ -2026,7 +2026,11 @@ export async function createPeerEngine(
         let hasFile = true
         if (runtime.role === 'supernode') {
           const cat = runtime.supernodeIndex.getCatalogForOwner(resumable.peerId)
-          hasFile = Boolean(cat?.entries.some((e) => e.sha256 === resumable.sha256 && e.size === resumable.size))
+          // Only treat supernodeIndex as authoritative when we hold an indexed catalog for this peer.
+          // Fellow supernodes (and ordinary peers indexed by another supernode) keep their own catalog.
+          if (cat) {
+            hasFile = cat.entries.some((e) => e.sha256 === resumable.sha256 && e.size === resumable.size)
+          }
         }
 
         if (!isRejected && hasFile) {

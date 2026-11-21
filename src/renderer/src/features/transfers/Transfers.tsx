@@ -123,7 +123,7 @@ export const Transfers: React.FC<TransfersProps> = ({
                       </td>
                       <td>
                         <span className={`badge badge-${t.state}`}>{t.state}</span>
-                        {t.message && <div style={{ fontSize: '11px', color: 'var(--color-muted)' }}>{t.message}</div>}
+                        {t.message && <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{t.message}</div>}
                       </td>
                       <td>
                         <span style={{ fontSize: '12px' }}>{formatPath(t.path)}</span>
@@ -190,7 +190,7 @@ export const Transfers: React.FC<TransfersProps> = ({
                         {t.state === 'failed' && t.canResume && t.size > 0 ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                             <span>{formatBytes(t.transferredBytes)} / {formatBytes(t.size)}</span>
-                            <span style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
                               {Math.round((t.transferredBytes / t.size) * 100)}% saved
                             </span>
                           </div>
@@ -203,7 +203,7 @@ export const Transfers: React.FC<TransfersProps> = ({
                           {t.state === 'failed' && t.canResume ? 'Interrupted' : t.state}
                         </span>
                         {t.message && (
-                          <div style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
                             {t.message}
                           </div>
                         )}

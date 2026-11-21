@@ -343,18 +343,18 @@ export const Network: React.FC<NetworkProps> = ({
                     <tr
                       key={g.groupKey}
                       style={{
-                        backgroundColor: isSelected ? 'var(--color-bg-selected, rgba(66, 153, 225, 0.1))' : undefined,
+                        backgroundColor: isSelected ? 'var(--selected-bg)' : undefined,
                         cursor: 'pointer'
                       }}
                       onClick={() => onSelectGroup?.(g.groupKey)}
                     >
                       <td className="filename-cell">
                         <strong>{g.groupId}</strong>
-                        {isSelected && <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--color-primary)' }}>(active)</span>}
+                        {isSelected && <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--accent)' }}>(active)</span>}
                       </td>
                       <td>
                         {g.isOwner ? (
-                          <span className="badge" style={{ backgroundColor: 'var(--color-primary, #3182ce)', color: '#fff' }}>Owner</span>
+                          <span className="badge" style={{ backgroundColor: 'var(--accent)', color: 'var(--surface)' }}>Owner</span>
                         ) : (
                           <span className={`badge badge-role-${g.network.role}`}>{g.network.role}</span>
                         )}
@@ -432,7 +432,7 @@ export const Network: React.FC<NetworkProps> = ({
                     <button
                       type="button"
                       className="action-button secondary-button"
-                      style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--color-danger, #e53e3e)', borderColor: 'var(--color-danger, #e53e3e)' }}
+                      style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--danger)', borderColor: 'var(--danger)' }}
                       onClick={() => handleDeleteGroup(selectedGroup.groupKey, selectedGroup.groupId)}
                       disabled={isSubmitting}
                     >
@@ -452,7 +452,7 @@ export const Network: React.FC<NetworkProps> = ({
                   <button
                     type="button"
                     className="action-button secondary-button"
-                    style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--color-danger, #e53e3e)' }}
+                    style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--danger)' }}
                     onClick={() => setConfirmDeleteGroupKey(selectedGroup.groupKey)}
                     disabled={isSubmitting || selectedGroup.network.status !== 'connected'}
                     title={
@@ -510,7 +510,7 @@ export const Network: React.FC<NetworkProps> = ({
                 <span className={`badge badge-${selectedGroup.network.status}`}>{selectedGroup.network.status}</span>
                 {selectedGroup.network.message &&
                   (selectedGroup.network.status === 'disconnected' || selectedGroup.network.status === 'error') && (
-                    <span style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
                       ({selectedGroup.network.message})
                     </span>
                   )}
@@ -562,8 +562,8 @@ export const Network: React.FC<NetworkProps> = ({
                         <tr key={m.peerId}>
                           <td>
                             <strong>{m.displayName}</strong>
-                            {isMemberOwner && <span style={{ marginLeft: '6px', fontSize: '11px', color: 'var(--color-primary)' }}>(Owner)</span>}
-                            {isSelf && <span style={{ marginLeft: '6px', fontSize: '11px', color: 'var(--color-muted)' }}>(You)</span>}
+                            {isMemberOwner && <span style={{ marginLeft: '6px', fontSize: '11px', color: 'var(--accent)' }}>(Owner)</span>}
+                            {isSelf && <span style={{ marginLeft: '6px', fontSize: '11px', color: 'var(--muted)' }}>(You)</span>}
                           </td>
                           <td className="code-text" style={{ fontSize: '11px' }}>{m.peerId}</td>
                           <td>
@@ -575,7 +575,7 @@ export const Network: React.FC<NetworkProps> = ({
                                 <button
                                   type="button"
                                   className="action-button secondary-button"
-                                  style={{ padding: '1px 6px', fontSize: '11px', color: 'var(--color-danger, #e53e3e)' }}
+                                  style={{ padding: '1px 6px', fontSize: '11px', color: 'var(--danger)' }}
                                   onClick={() => handleRemoveMember(selectedGroup.groupKey, m.peerId)}
                                   disabled={isSubmitting}
                                 >

@@ -167,10 +167,11 @@ export const Library: React.FC<LibraryProps> = ({
           role="dialog"
           aria-modal="true"
           style={{
-            border: '1px solid var(--color-border)',
+            border: '1px solid var(--border)',
             borderRadius: '8px',
             padding: '16px',
-            backgroundColor: 'var(--color-bg-panel, #222)',
+            backgroundColor: 'var(--surface)',
+            color: 'var(--text)',
             marginBottom: '16px'
           }}
         >

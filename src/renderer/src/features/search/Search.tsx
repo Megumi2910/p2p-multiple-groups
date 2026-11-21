@@ -230,7 +230,7 @@ export const Search: React.FC<SearchProps> = ({
                     <tr key={item.groupKey}>
                       <td className="filename-cell">
                         <strong>{item.primaryName}</strong>
-                        <div className="code-text" style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
+                        <div className="code-text" style={{ fontSize: '11px', color: 'var(--muted)' }}>
                           {item.sha256.slice(0, 16)}...
                         </div>
                       </td>

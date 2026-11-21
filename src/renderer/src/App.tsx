@@ -390,6 +390,7 @@ export default function App(): React.ReactElement {
             onLeaveGroup={peer.leaveGroup}
             onRotateGroupInvite={peer.rotateGroupInvite}
             onRemoveGroupMember={peer.removeGroupMember}
+            onDeleteGroup={peer.deleteGroup}
             onSetGroupAutoJoin={peer.setGroupAutoJoin}
             onSetGroupEligibility={peer.setGroupEligibility}
             onForgetGroup={peer.forgetGroup}

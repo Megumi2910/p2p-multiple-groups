@@ -97,6 +97,12 @@ export type ClientSignalingMessageV2 =
     }
   | {
       v: 2
+      type: 'delete-group'
+      groupId: string
+      ownerSecret: string
+    }
+  | {
+      v: 2
       type: 'eligibility'
       groupId: string
       supernodeEligible: boolean
@@ -167,6 +173,11 @@ export type ServerSignalingMessageV2 =
       type: 'group-kicked'
       groupId: string
       reason: string
+    }
+  | {
+      v: 2
+      type: 'group-deleted'
+      groupId: string
     }
   | {
       v: 2
@@ -513,6 +524,13 @@ export function isClientSignalingMessageV2(val: unknown): val is ClientSignaling
         r.ownerSecret.length >= 8 &&
         r.ownerSecret.length <= 64
       )
+    case 'delete-group':
+      return (
+        isValidGroupId(r.groupId) &&
+        typeof r.ownerSecret === 'string' &&
+        r.ownerSecret.length >= 8 &&
+        r.ownerSecret.length <= 64
+      )
     case 'eligibility':
       return isValidGroupId(r.groupId) && typeof r.supernodeEligible === 'boolean'
     case 'profile':
@@ -569,6 +587,8 @@ export function isServerSignalingMessageV2(val: unknown): val is ServerSignaling
       return isValidGroupId(r.groupId) && isValidInviteCode(r.inviteCode)
     case 'group-kicked':
       return isValidGroupId(r.groupId) && typeof r.reason === 'string'
+    case 'group-deleted':
+      return isValidGroupId(r.groupId)
     case 'ice-config':
       return isValidIceConfig(r.iceConfig)
     case 'signal':

@@ -109,6 +109,12 @@ export function usePeerState() {
     return bridge.p2p.removeGroupMember(groupKey, targetPeerId)
   }, [])
 
+  const deleteGroup = useCallback(async (groupKey: GroupKey): Promise<ActionResult> => {
+    const bridge = getBridge()
+    if (!bridge?.p2p?.deleteGroup) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
+    return bridge.p2p.deleteGroup(groupKey)
+  }, [])
+
   const setGroupAutoJoin = useCallback(async (groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult> => {
     const bridge = getBridge()
     if (!bridge?.p2p?.setGroupAutoJoin) return { ok: false, code: 'IO_ERROR', message: 'Bridge unavailable' }
@@ -192,6 +198,7 @@ export function usePeerState() {
     leaveGroup,
     rotateGroupInvite,
     removeGroupMember,
+    deleteGroup,
     setGroupAutoJoin,
     setGroupEligibility,
     forgetGroup,

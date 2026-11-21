@@ -73,6 +73,7 @@ export interface PeerEngine {
   leaveGroup(groupKey: GroupKey): Promise<ActionResult>
   rotateGroupInvite(groupKey: GroupKey): Promise<ActionResult>
   removeGroupMember(groupKey: GroupKey, targetPeerId: string): Promise<ActionResult>
+  deleteGroup(groupKey: GroupKey): Promise<ActionResult>
   setGroupAutoJoin(groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult>
   setGroupEligibility(groupKey: GroupKey, eligible: boolean): Promise<ActionResult>
   setSupernodeEligible(groupKey: GroupKey, eligible: boolean): Promise<ActionResult>
@@ -1590,6 +1591,44 @@ export async function createPeerEngine(
         const code: P2pErrorCode = errMsg.includes('FORBIDDEN') ? 'FORBIDDEN' : 'PROTOCOL_ERROR'
         return { ok: false, code, message: errMsg }
       }
+    },
+
+    deleteGroup: async (groupKey: GroupKey): Promise<ActionResult> => {
+      if (isDisposed) return { ok: false, code: 'DISCONNECTED', message: 'Engine is disposed' }
+      const runtime = groups.get(groupKey)
+      if (!runtime || !runtime.isJoined) {
+        return { ok: false, code: 'NOT_FOUND', message: 'Group is not currently joined' }
+      }
+      const ownerSecret = memoryOwnerSecrets.get(groupKey)
+      if (!ownerSecret || runtime.ownerPeerId !== store.get().peerId) {
+        return { ok: false, code: 'FORBIDDEN', message: 'Only the group owner can delete the group' }
+      }
+      const client = endpointClients.get(runtime.signalingUrl)
+      if (!client) {
+        return { ok: false, code: 'DISCONNECTED', message: 'Not connected to signaling server' }
+      }
+
+      try {
+        await client.deleteGroup(runtime.groupId, ownerSecret)
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        const code: P2pErrorCode = errMsg.includes('FORBIDDEN')
+          ? 'FORBIDDEN'
+          : errMsg.includes('NOT_FOUND')
+            ? 'NOT_FOUND'
+            : 'PROTOCOL_ERROR'
+        return { ok: false, code, message: errMsg }
+      }
+
+      handleGroupLeft(runtime.signalingUrl, runtime.groupId)
+      memoryCredentials.delete(groupKey)
+      memoryOwnerSecrets.delete(groupKey)
+      await credentialStore.deleteCredential(groupKey)
+      await credentialStore.deleteCredential(`${groupKey}:owner`)
+      groups.delete(groupKey)
+      await store.removeGroup(groupKey)
+      publishState()
+      return { ok: true }
     },
 
     setGroupAutoJoin: async (groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult> => {

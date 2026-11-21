@@ -233,6 +233,19 @@ function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.P2P_V2_DELETE_GROUP, async (event, groupKey: unknown) => {
+    validateSender(event)
+    if (!peerEngine) throw new Error('Peer engine uninitialized')
+    if (typeof groupKey !== 'string' || !groupKey) {
+      return { ok: false, code: 'INVALID_INPUT', message: 'Group key is required' }
+    }
+    try {
+      return await peerEngine.deleteGroup(groupKey)
+    } catch (err) {
+      return mapToActionResult(err)
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.P2P_V2_SET_GROUP_AUTO_JOIN, async (event, groupKey: unknown, autoJoin: unknown) => {
     validateSender(event)
     if (!peerEngine) throw new Error('Peer engine uninitialized')

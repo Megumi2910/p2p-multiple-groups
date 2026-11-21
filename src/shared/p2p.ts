@@ -251,6 +251,7 @@ export interface P2pMultipleGroupsP2pApi {
   leaveGroup(groupKey: GroupKey): Promise<ActionResult>
   rotateGroupInvite(groupKey: GroupKey): Promise<ActionResult>
   removeGroupMember(groupKey: GroupKey, targetPeerId: string): Promise<ActionResult>
+  deleteGroup(groupKey: GroupKey): Promise<ActionResult>
   setGroupAutoJoin(groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult>
   setGroupEligibility(groupKey: GroupKey, eligible: boolean): Promise<ActionResult>
   forgetGroup(groupKey: GroupKey): Promise<ActionResult>

@@ -459,4 +459,90 @@ describe('Simultaneous Multi-Group P2P Mesh', () => {
       }
     }
   })
+
+  it('allows owner to permanently delete a dynamic group, kicks members, cleans local state, and frees groupId immediately', async () => {
+    const server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [],
+      emptyGroupTtlMs: 60000
+    })
+
+    const signalUrl = `ws://127.0.0.1:${server.address.port}/signal`
+    const tempDirs: string[] = []
+    let engineA: PeerEngine | null = null
+    let engineB: PeerEngine | null = null
+
+    try {
+      const dirA = await mkdtemp(join(tmpdir(), 'del-owner-'))
+      const dirB = await mkdtemp(join(tmpdir(), 'del-member-'))
+      tempDirs.push(dirA, dirB)
+
+      engineA = await createPeerEngine({ dataDirectory: dirA, defaultSignalingUrl: signalUrl })
+      engineB = await createPeerEngine({ dataDirectory: dirB, defaultSignalingUrl: signalUrl })
+
+      const createRes = await engineA.createGroup({
+        groupId: 'ephemeral-room',
+        displayName: 'OwnerA',
+        supernodeEligible: true,
+        rememberInvitation: true
+      })
+      assert.equal(createRes.ok, true)
+
+      const groupA = engineA.getState().groups[0]
+      assert.ok(groupA?.inviteCode)
+
+      const joinRes = await engineB.joinGroup({
+        inviteCode: groupA.inviteCode,
+        signalingUrl: signalUrl,
+        displayName: 'MemberB',
+        supernodeEligible: false,
+        rememberInvitation: true
+      })
+      assert.equal(joinRes.ok, true)
+
+      await Promise.all([
+        waitForEngineState(engineA, (s) => (s.groups[0]?.network.members.length || 0) === 2),
+        waitForEngineState(engineB, (s) => (s.groups[0]?.network.members.length || 0) === 2)
+      ])
+
+      const groupKeyB = engineB.getState().groups[0].groupKey
+
+      // Non-owner cannot delete the group
+      const forbiddenRes = await engineB.deleteGroup(groupKeyB)
+      assert.equal(forbiddenRes.ok, false)
+      assert.equal(forbiddenRes.code, 'FORBIDDEN')
+
+      // Owner deletes the group permanently
+      const deleteRes = await engineA.deleteGroup(groupA.groupKey)
+      assert.equal(deleteRes.ok, true)
+
+      // Owner local state is cleaned up (forgotten)
+      assert.equal(engineA.getState().groups.length, 0)
+
+      // Member receives group-kicked with reason and autoJoin disabled
+      await waitForEngineState(engineB, (s) => s.groups[0]?.network.status === 'disconnected')
+      assert.equal(engineB.getState().groups[0]?.network.message, 'Group deleted by owner')
+      assert.equal(engineB.getState().groups[0]?.autoJoin, false)
+
+      // Owner can immediately recreate a group with the exact same groupId
+      const recreateRes = await engineA.createGroup({
+        groupId: 'ephemeral-room',
+        displayName: 'OwnerA',
+        supernodeEligible: true,
+        rememberInvitation: true
+      })
+      assert.equal(recreateRes.ok, true)
+      assert.equal(engineA.getState().groups.length, 1)
+      assert.equal(engineA.getState().groups[0].groupId, 'ephemeral-room')
+      assert.notEqual(engineA.getState().groups[0].inviteCode, groupA.inviteCode)
+    } finally {
+      if (engineA) await engineA.dispose()
+      if (engineB) await engineB.dispose()
+      await server.close()
+      for (const d of tempDirs) {
+        await rm(d, { recursive: true, force: true }).catch(() => {})
+      }
+    }
+  })
 })

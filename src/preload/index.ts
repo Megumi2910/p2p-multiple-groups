@@ -53,6 +53,10 @@ const p2pApi: P2pMultipleGroupsP2pApi = {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_REMOVE_GROUP_MEMBER, groupKey, targetPeerId)
   },
 
+  deleteGroup(groupKey: GroupKey): Promise<ActionResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_DELETE_GROUP, groupKey)
+  },
+
   setGroupAutoJoin(groupKey: GroupKey, autoJoin: boolean): Promise<ActionResult> {
     return ipcRenderer.invoke(IPC_CHANNELS.P2P_V2_SET_GROUP_AUTO_JOIN, groupKey, autoJoin)
   },

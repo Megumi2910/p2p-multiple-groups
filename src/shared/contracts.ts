@@ -25,6 +25,7 @@ export const IPC_CHANNELS = {
   P2P_V2_LEAVE_GROUP: 'p2p:leaveGroup',
   P2P_V2_ROTATE_GROUP_INVITE: 'p2p:rotateGroupInvite',
   P2P_V2_REMOVE_GROUP_MEMBER: 'p2p:removeGroupMember',
+  P2P_V2_DELETE_GROUP: 'p2p:deleteGroup',
   P2P_V2_SET_GROUP_AUTO_JOIN: 'p2p:setGroupAutoJoin',
   P2P_V2_SET_GROUP_ELIGIBILITY: 'p2p:setGroupEligibility',
   P2P_V2_FORGET_GROUP: 'p2p:forgetGroup',

@@ -20,6 +20,7 @@ interface NetworkProps {
   onLeaveGroup?: (groupKey: string) => Promise<ActionResult>
   onRotateGroupInvite?: (groupKey: string) => Promise<ActionResult>
   onRemoveGroupMember?: (groupKey: string, targetPeerId: string) => Promise<ActionResult>
+  onDeleteGroup?: (groupKey: string) => Promise<ActionResult>
   onSetGroupAutoJoin?: (groupKey: string, autoJoin: boolean) => Promise<ActionResult>
   onSetGroupEligibility?: (groupKey: string, eligible: boolean) => Promise<ActionResult>
   onForgetGroup?: (groupKey: string) => Promise<ActionResult>
@@ -38,6 +39,7 @@ export const Network: React.FC<NetworkProps> = ({
   onLeaveGroup,
   onRotateGroupInvite,
   onRemoveGroupMember,
+  onDeleteGroup,
   onSetGroupAutoJoin,
   onSetGroupEligibility,
   onForgetGroup,
@@ -63,6 +65,11 @@ export const Network: React.FC<NetworkProps> = ({
   const [formError, setFormError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [copiedCode, setCopiedCode] = useState(false)
+  const [confirmDeleteGroupKey, setConfirmDeleteGroupKey] = useState<string | null>(null)
+
+  React.useEffect(() => {
+    setConfirmDeleteGroupKey(null)
+  }, [selectedGroupKey])
 
   React.useEffect(() => {
     if (identity?.displayName && !displayName) {
@@ -227,6 +234,21 @@ export const Network: React.FC<NetworkProps> = ({
       setFormError(`${res.code}: ${res.message}`)
     } else {
       setActionMessage('Member removed from group.')
+    }
+  }
+
+  const handleDeleteGroup = async (groupKey: string, groupId: string): Promise<void> => {
+    if (!onDeleteGroup) return
+    setIsSubmitting(true)
+    setFormError(null)
+    setActionMessage(null)
+    const res = await onDeleteGroup(groupKey)
+    setIsSubmitting(false)
+    setConfirmDeleteGroupKey(null)
+    if (!res.ok) {
+      setFormError(`${res.code}: ${res.message}`)
+    } else {
+      setActionMessage(`Group "${groupId}" deleted permanently from the signaling server.`)
     }
   }
 
@@ -399,7 +421,52 @@ export const Network: React.FC<NetworkProps> = ({
       {/* Selected Group Inspection */}
       {selectedGroup && (
         <div className="network-active-panel" style={{ marginBottom: '24px' }}>
-          <h2 className="section-subheading">Active Group Details: {selectedGroup.groupId}</h2>
+          <div className="view-header-row" style={{ marginBottom: '12px' }}>
+            <h2 className="section-subheading" style={{ margin: 0 }}>
+              Active Group Details: {selectedGroup.groupId}
+            </h2>
+            {selectedGroup.isOwner && onDeleteGroup && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {confirmDeleteGroupKey === selectedGroup.groupKey ? (
+                  <>
+                    <button
+                      type="button"
+                      className="action-button secondary-button"
+                      style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--color-danger, #e53e3e)', borderColor: 'var(--color-danger, #e53e3e)' }}
+                      onClick={() => handleDeleteGroup(selectedGroup.groupKey, selectedGroup.groupId)}
+                      disabled={isSubmitting}
+                    >
+                      Confirm Delete
+                    </button>
+                    <button
+                      type="button"
+                      className="action-button secondary-button"
+                      style={{ padding: '4px 10px', fontSize: '12px' }}
+                      onClick={() => setConfirmDeleteGroupKey(null)}
+                      disabled={isSubmitting}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="action-button secondary-button"
+                    style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--color-danger, #e53e3e)' }}
+                    onClick={() => setConfirmDeleteGroupKey(selectedGroup.groupKey)}
+                    disabled={isSubmitting || selectedGroup.network.status !== 'connected'}
+                    title={
+                      selectedGroup.network.status === 'connected'
+                        ? 'Permanently delete this group from the signaling server and disconnect all members'
+                        : 'Reconnect to the group to delete it from the server'
+                    }
+                  >
+                    Delete Group
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div className="network-summary-card">
             <div className="summary-row">
               <span className="summary-label">Owner:</span>
@@ -439,7 +506,15 @@ export const Network: React.FC<NetworkProps> = ({
             </div>
             <div className="summary-row">
               <span className="summary-label">Status:</span>
-              <span className={`badge badge-${selectedGroup.network.status}`}>{selectedGroup.network.status}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span className={`badge badge-${selectedGroup.network.status}`}>{selectedGroup.network.status}</span>
+                {selectedGroup.network.message &&
+                  (selectedGroup.network.status === 'disconnected' || selectedGroup.network.status === 'error') && (
+                    <span style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
+                      ({selectedGroup.network.message})
+                    </span>
+                  )}
+              </div>
             </div>
             <div className="summary-row">
               <span className="summary-label">Your Role:</span>

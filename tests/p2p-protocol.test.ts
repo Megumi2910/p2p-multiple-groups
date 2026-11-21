@@ -209,7 +209,27 @@ describe('P2P Protocol & Shared Contracts', () => {
       true
     )
 
-    // Server V2 invite-rotated and group-kicked
+    // Client V2 delete-group
+    assert.equal(
+      isClientSignalingMessageV2({
+        v: 2,
+        type: 'delete-group',
+        groupId: 'alpha',
+        ownerSecret: 'owner-secret-1234'
+      }),
+      true
+    )
+    assert.equal(
+      isClientSignalingMessageV2({
+        v: 2,
+        type: 'delete-group',
+        groupId: 'alpha',
+        ownerSecret: 'short'
+      }),
+      false
+    )
+
+    // Server V2 invite-rotated, group-kicked, and group-deleted
     assert.equal(
       isServerSignalingMessageV2({
         v: 2,
@@ -228,6 +248,23 @@ describe('P2P Protocol & Shared Contracts', () => {
         reason: 'Removed by group owner'
       }),
       true
+    )
+
+    assert.equal(
+      isServerSignalingMessageV2({
+        v: 2,
+        type: 'group-deleted',
+        groupId: 'alpha'
+      }),
+      true
+    )
+    assert.equal(
+      isServerSignalingMessageV2({
+        v: 2,
+        type: 'group-deleted',
+        groupId: 'bad group id'
+      }),
+      false
     )
 
     // Physical hello

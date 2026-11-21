@@ -28,6 +28,7 @@ export interface SignalingOptions {
   host: string
   port: number
   groups?: SignalingGroupConfig[]
+  emptyGroupTtlMs?: number
   turnHost?: string
   turnSecret?: string
   stunUrl?: string
@@ -72,6 +73,8 @@ interface GroupRuntimeState {
   tokenBuffer: Buffer
   ownerPeerId: string | null
   ownerSecretBuffer: Buffer | null
+  isDynamic: boolean
+  emptySince: number | null
   epoch: string
   revision: number
   nextJoinOrder: number
@@ -120,6 +123,11 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
 
   // Group runtime map
   const groupMap = new Map<string, GroupRuntimeState>()
+  const DEFAULT_EMPTY_GROUP_TTL_MS = 5 * 60 * 1000
+  const emptyGroupTtlMs =
+    options.emptyGroupTtlMs !== undefined && Number.isFinite(options.emptyGroupTtlMs)
+      ? Math.max(0, Math.floor(options.emptyGroupTtlMs))
+      : DEFAULT_EMPTY_GROUP_TTL_MS
 
   for (const g of groupDefinitions) {
     const tokenBuffer = Buffer.from(g.token, 'utf-8')
@@ -130,11 +138,38 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       tokenBuffer,
       ownerPeerId: g.ownerPeerId ?? null,
       ownerSecretBuffer,
+      isDynamic: false,
+      emptySince: null,
       epoch: randomUUID(),
       revision: 1,
       nextJoinOrder: 1,
       members: new Map()
     })
+  }
+
+  function updateGroupEmptyState(group: GroupRuntimeState): void {
+    if (!group.isDynamic) return
+    if (group.members.size === 0) {
+      if (group.emptySince === null) {
+        group.emptySince = Date.now()
+      }
+    } else {
+      group.emptySince = null
+    }
+  }
+
+  function sweepEmptyDynamicGroups(): void {
+    const now = Date.now()
+    for (const [groupId, group] of groupMap.entries()) {
+      if (
+        group.isDynamic &&
+        group.members.size === 0 &&
+        group.emptySince !== null &&
+        now - group.emptySince >= emptyGroupTtlMs
+      ) {
+        groupMap.delete(groupId)
+      }
+    }
   }
 
   // Active sockets and registration map
@@ -268,6 +303,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
         const member = group.members.get(peerId)
         if (member && member.ws === session.ws) {
           group.members.delete(peerId)
+          updateGroupEmptyState(group)
           group.revision++
           broadcastGroupRosterV2(group)
         }
@@ -497,6 +533,8 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
             return
           }
 
+          sweepEmptyDynamicGroups()
+
           if (groupMap.has(msg.groupId)) {
             sendToWs(ws, {
               v: 2,
@@ -529,6 +567,8 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
             tokenBuffer,
             ownerPeerId: peerId,
             ownerSecretBuffer,
+            isDynamic: true,
+            emptySince: null,
             epoch: randomUUID(),
             revision: 1,
             nextJoinOrder: 1,
@@ -566,6 +606,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
         }
 
         case 'join-group': {
+          sweepEmptyDynamicGroups()
           let group: GroupRuntimeState | undefined
           const providedTokenBuffer = Buffer.from(msg.token, 'utf-8')
 
@@ -604,6 +645,8 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
                     tokenBuffer: Buffer.from(msg.token, 'utf-8'),
                     ownerPeerId: peerId,
                     ownerSecretBuffer: Buffer.from(msg.ownerSecret, 'utf-8'),
+                    isDynamic: true,
+                    emptySince: null,
                     epoch: randomUUID(),
                     revision: 1,
                     nextJoinOrder: 1,
@@ -721,6 +764,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
           }
 
           group.members.set(peerId, member)
+          updateGroupEmptyState(group)
           sess.joinedGroupIds.add(group.groupId)
           group.revision++
 
@@ -819,6 +863,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
           const targetMember = group.members.get(msg.targetPeerId)
           if (targetMember) {
             group.members.delete(msg.targetPeerId)
+            updateGroupEmptyState(group)
             const targetSession = socketSessions.get(targetMember.ws)
             if (targetSession) {
               targetSession.joinedGroupIds.delete(group.groupId)
@@ -835,6 +880,62 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
           return
         }
 
+        case 'delete-group': {
+          sweepEmptyDynamicGroups()
+          const group = groupMap.get(msg.groupId)
+          if (!group) {
+            sendToWs(ws, {
+              v: 2,
+              type: 'error',
+              groupId: msg.groupId,
+              code: 'NOT_FOUND',
+              message: 'Group not found'
+            })
+            return
+          }
+
+          if (
+            !group.isDynamic ||
+            group.ownerPeerId !== peerId ||
+            !group.ownerSecretBuffer ||
+            !safeTimingEqual(Buffer.from(msg.ownerSecret, 'utf-8'), group.ownerSecretBuffer)
+          ) {
+            sendToWs(ws, {
+              v: 2,
+              type: 'error',
+              groupId: msg.groupId,
+              code: 'FORBIDDEN',
+              message: 'Not authorized to delete group'
+            })
+            return
+          }
+
+          groupMap.delete(group.groupId)
+
+          for (const [memberPeerId, member] of group.members.entries()) {
+            const memberSession = socketSessions.get(member.ws)
+            if (memberSession) {
+              memberSession.joinedGroupIds.delete(group.groupId)
+            }
+            if (memberPeerId !== peerId) {
+              sendToWs(member.ws, {
+                v: 2,
+                type: 'group-kicked',
+                groupId: group.groupId,
+                reason: 'Group deleted by owner'
+              })
+            }
+          }
+          sess.joinedGroupIds.delete(group.groupId)
+
+          sendToWs(ws, {
+            v: 2,
+            type: 'group-deleted',
+            groupId: group.groupId
+          })
+          return
+        }
+
         case 'leave-group': {
           const group = groupMap.get(msg.groupId)
           if (group && sess.joinedGroupIds.has(msg.groupId)) {
@@ -842,6 +943,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
             const m = group.members.get(peerId)
             if (m && m.ws === ws) {
               group.members.delete(peerId)
+              updateGroupEmptyState(group)
               sendToWs(ws, {
                 v: 2,
                 type: 'group-left',
@@ -950,14 +1052,27 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
         }
       }
       if (expiredCount > 0) {
+        updateGroupEmptyState(group)
         group.revision++
         broadcastGroupRosterV2(group)
       } else if (group.members.size > 0) {
         broadcastGroupRosterV2(group)
       }
     }
+
+    sweepEmptyDynamicGroups()
   }, 2000)
   heartbeatTimer.unref()
+
+  let gcSweepTimer: NodeJS.Timeout | null = null
+  if (emptyGroupTtlMs < 2000) {
+    gcSweepTimer = setInterval(() => {
+      if (!isClosing) {
+        sweepEmptyDynamicGroups()
+      }
+    }, Math.max(25, Math.floor(emptyGroupTtlMs / 2)))
+    gcSweepTimer.unref()
+  }
 
   const { promise: listenPromise, resolve: resolveListen, reject: rejectListen } = Promise.withResolvers<void>()
 
@@ -980,6 +1095,9 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       if (isClosing) return
       isClosing = true
       clearInterval(heartbeatTimer)
+      if (gcSweepTimer) {
+        clearInterval(gcSweepTimer)
+      }
 
       for (const ws of sockets) {
         try {

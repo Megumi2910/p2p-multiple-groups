@@ -108,10 +108,22 @@ export function loadSignalingOptions(env: NodeJS.ProcessEnv = process.env): Pars
     throw new Error('TURN_URL, TURN_USERNAME, and TURN_CREDENTIAL must all be set together')
   }
 
+  // Optional empty dynamic group GC TTL (ms)
+  let emptyGroupTtlMs: number | undefined
+  const rawEmptyGroupTtlMs = env.P2P_MULTIPLE_GROUPS_EMPTY_GROUP_TTL_MS
+  if (rawEmptyGroupTtlMs && rawEmptyGroupTtlMs.trim().length > 0) {
+    const parsedTtl = Number(rawEmptyGroupTtlMs)
+    if (!Number.isInteger(parsedTtl) || parsedTtl < 0) {
+      throw new Error(`Invalid P2P_MULTIPLE_GROUPS_EMPTY_GROUP_TTL_MS: ${rawEmptyGroupTtlMs}`)
+    }
+    emptyGroupTtlMs = parsedTtl
+  }
+
   return {
     host,
     port,
     groups,
+    emptyGroupTtlMs,
     publicSignalUrl: publicSignalUrl || undefined,
     stunUrl: stunUrl || undefined,
     turnHost: turnHost || undefined,

@@ -87,6 +87,7 @@ export class SignalingClient {
   private readonly pendingLeaves = new Map<string, PendingLeave>()
   private readonly pendingRotations = new Map<string, { resolve: (code: string) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>()
   private readonly pendingRemovals = new Map<string, { resolve: () => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>()
+  private readonly pendingDeletions = new Map<string, { resolve: () => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>()
 
   constructor(options: SignalingClientOptions) {
     this.signalingUrl = options.signalingUrl
@@ -358,6 +359,35 @@ export class SignalingClient {
       type: 'remove-member',
       groupId,
       targetPeerId,
+      ownerSecret
+    })
+
+    return promise
+  }
+
+  async deleteGroup(groupId: string, ownerSecret: string): Promise<void> {
+    if (this.isDisposed) throw new Error('Signaling client is disposed')
+    if (!this.isConnectedAndRegistered()) {
+      throw new Error('Not connected to signaling server')
+    }
+
+    const existing = this.pendingDeletions.get(groupId)
+    if (existing) {
+      clearTimeout(existing.timer)
+      this.pendingDeletions.delete(groupId)
+      existing.reject(new Error('Superseded by new delete request'))
+    }
+
+    const { promise, resolve, reject } = Promise.withResolvers<void>()
+    const timer = setTimeout(() => {
+      this.pendingDeletions.delete(groupId)
+      reject(new Error(`Timeout (10s) waiting to delete group "${groupId}"`))
+    }, 10000)
+    this.pendingDeletions.set(groupId, { resolve, reject, timer })
+    this.enqueue({
+      v: 2,
+      type: 'delete-group',
+      groupId,
       ownerSecret
     })
 
@@ -690,6 +720,17 @@ export class SignalingClient {
         break
       }
 
+      case 'group-deleted': {
+        this.desiredGroups.delete(msg.groupId)
+        const pendingDel = this.pendingDeletions.get(msg.groupId)
+        if (pendingDel) {
+          clearTimeout(pendingDel.timer)
+          this.pendingDeletions.delete(msg.groupId)
+          pendingDel.resolve()
+        }
+        break
+      }
+
       case 'group-left': {
         const pending = this.pendingLeaves.get(msg.groupId)
         if (pending) {
@@ -754,6 +795,13 @@ export class SignalingClient {
               this.pendingRemovals.delete(key)
               rem.reject(new Error(`${msg.code}: ${msg.message}`))
             }
+          }
+
+          const pendingDel = this.pendingDeletions.get(msg.groupId)
+          if (pendingDel) {
+            clearTimeout(pendingDel.timer)
+            this.pendingDeletions.delete(msg.groupId)
+            pendingDel.reject(new Error(`${msg.code}: ${msg.message}`))
           }
         } else {
           // Global error (e.g. AUTH_FAILED on code-only join or DUPLICATE_PEER_ID)
@@ -908,6 +956,12 @@ export class SignalingClient {
       pending.reject(new Error('Signaling client disposed'))
     }
     this.pendingRemovals.clear()
+
+    for (const pending of this.pendingDeletions.values()) {
+      clearTimeout(pending.timer)
+      pending.reject(new Error('Signaling client disposed'))
+    }
+    this.pendingDeletions.clear()
 
     this.closeSocket(this.currentSocket)
     this.currentSocket = null

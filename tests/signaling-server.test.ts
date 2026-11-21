@@ -848,4 +848,201 @@ describe('Multi-Group Multiplexed Signaling V2', () => {
       await server.close()
     }
   })
+
+  it('auto-GCs empty dynamic groups after TTL while preserving static groups and cancelling on rejoin', async () => {
+    const staticToken = Buffer.alloc(32, 33).toString('base64url')
+    const server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [{ groupId: 'static-room', token: staticToken }],
+      emptyGroupTtlMs: 120
+    })
+
+    const peerOwnerId = randomUUID()
+    const peerOtherId = randomUUID()
+    const ownerSecret = 'owner-secret-gc-test-1234'
+
+    const waitForMessage = <T extends ServerSignalingMessageV2>(
+      ws: WebSocket,
+      predicate: (msg: ServerSignalingMessageV2) => msg is T
+    ): Promise<T> => {
+      return new Promise((resolve) => {
+        const handler = (d: WebSocket.RawData) => {
+          const msg = JSON.parse(d.toString('utf-8')) as ServerSignalingMessageV2
+          if (predicate(msg)) {
+            ws.off('message', handler)
+            resolve(msg)
+          }
+        }
+        ws.on('message', handler)
+      })
+    }
+
+    try {
+      const wsOwner = new WebSocket(`ws://127.0.0.1:${server.address.port}/signal`, {
+        headers: { Authorization: 'Bearer create-group' }
+      })
+      await new Promise<void>((r) => wsOwner.on('open', r))
+      const welcomeOwner = waitForMessage(wsOwner, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'register', peerId: peerOwnerId, displayName: 'Owner' }))
+      await welcomeOwner
+
+      // Create dynamic group
+      const createdP = waitForMessage(wsOwner, (m): m is GroupJoinedMessage => m.type === 'group-joined' && m.groupId === 'temp-gc-room')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'create-group', groupId: 'temp-gc-room', ownerSecret, supernodeEligible: true }))
+      const created = await createdP
+      assert.ok(created.inviteCode)
+
+      // Leave dynamic group -> starts empty TTL countdown
+      const left1P = waitForMessage(wsOwner, (m): m is Extract<ServerSignalingMessageV2, { type: 'group-left' }> => m.type === 'group-left' && m.groupId === 'temp-gc-room')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'leave-group', groupId: 'temp-gc-room' }))
+      await left1P
+
+      // Immediately trying to recreate before TTL expires must fail with GROUP_EXISTS
+      const existsErrP = waitForMessage(wsOwner, (m): m is Extract<ServerSignalingMessageV2, { type: 'error' }> => m.type === 'error' && m.groupId === 'temp-gc-room')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'create-group', groupId: 'temp-gc-room', ownerSecret: 'other-secret-9999', supernodeEligible: true }))
+      const existsErr = await existsErrP
+      assert.equal(existsErr.code, 'GROUP_EXISTS')
+
+      // Rejoin before TTL expires cancels GC
+      await new Promise((r) => setTimeout(r, 40))
+      const rejoinP = waitForMessage(wsOwner, (m): m is GroupJoinedMessage => m.type === 'group-joined' && m.groupId === 'temp-gc-room')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'join-group', groupId: 'temp-gc-room', token: created.inviteCode, supernodeEligible: true }))
+      await rejoinP
+
+      // Stay joined past original TTL -> group must remain alive
+      await new Promise((r) => setTimeout(r, 150))
+
+      // Leave again and wait past TTL so GC purges it
+      const left2P = waitForMessage(wsOwner, (m): m is Extract<ServerSignalingMessageV2, { type: 'group-left' }> => m.type === 'group-left' && m.groupId === 'temp-gc-room')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'leave-group', groupId: 'temp-gc-room' }))
+      await left2P
+
+      await new Promise((r) => setTimeout(r, 180))
+
+      // Another peer can now create 'temp-gc-room' fresh
+      const wsOther = new WebSocket(`ws://127.0.0.1:${server.address.port}/signal`, {
+        headers: { Authorization: 'Bearer create-group' }
+      })
+      await new Promise<void>((r) => wsOther.on('open', r))
+      const welcomeOther = waitForMessage(wsOther, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      wsOther.send(JSON.stringify({ v: 2, type: 'register', peerId: peerOtherId, displayName: 'NewOwner' }))
+      await welcomeOther
+
+      const recreatedP = waitForMessage(wsOther, (m): m is GroupJoinedMessage => m.type === 'group-joined' && m.groupId === 'temp-gc-room')
+      wsOther.send(JSON.stringify({ v: 2, type: 'create-group', groupId: 'temp-gc-room', ownerSecret: 'brand-new-secret-1234', supernodeEligible: true }))
+      const recreated = await recreatedP
+      assert.equal(recreated.ownerPeerId, peerOtherId)
+      assert.notEqual(recreated.inviteCode, created.inviteCode)
+
+      // Pre-seeded static group (0 members the whole time) must NOT be GC'd
+      const joinStaticP = waitForMessage(wsOther, (m): m is GroupJoinedMessage => m.type === 'group-joined' && m.groupId === 'static-room')
+      wsOther.send(JSON.stringify({ v: 2, type: 'join-group', groupId: 'static-room', token: staticToken, supernodeEligible: true }))
+      const joinedStatic = await joinStaticP
+      assert.equal(joinedStatic.groupId, 'static-room')
+
+      wsOwner.close()
+      wsOther.close()
+    } finally {
+      await server.close()
+    }
+  })
+
+  it('supports owner-authenticated delete-group, kicks members, frees groupId immediately, and enforces authorization', async () => {
+    const staticToken = Buffer.alloc(32, 44).toString('base64url')
+    const server = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [{ groupId: 'static-protected', token: staticToken }],
+      emptyGroupTtlMs: 60000
+    })
+
+    const peerOwnerId = randomUUID()
+    const peerMemberId = randomUUID()
+    const ownerSecret = 'owner-secret-delete-1234'
+
+    const waitForMessage = <T extends ServerSignalingMessageV2>(
+      ws: WebSocket,
+      predicate: (msg: ServerSignalingMessageV2) => msg is T
+    ): Promise<T> => {
+      return new Promise((resolve) => {
+        const handler = (d: WebSocket.RawData) => {
+          const msg = JSON.parse(d.toString('utf-8')) as ServerSignalingMessageV2
+          if (predicate(msg)) {
+            ws.off('message', handler)
+            resolve(msg)
+          }
+        }
+        ws.on('message', handler)
+      })
+    }
+
+    try {
+      const wsOwner = new WebSocket(`ws://127.0.0.1:${server.address.port}/signal`, {
+        headers: { Authorization: 'Bearer create-group' }
+      })
+      await new Promise<void>((r) => wsOwner.on('open', r))
+      const welcomeOwner = waitForMessage(wsOwner, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'register', peerId: peerOwnerId, displayName: 'Owner' }))
+      await welcomeOwner
+
+      const createdP = waitForMessage(wsOwner, (m): m is GroupJoinedMessage => m.type === 'group-joined' && m.groupId === 'deletable-room')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'create-group', groupId: 'deletable-room', ownerSecret, supernodeEligible: true }))
+      const created = await createdP
+      assert.ok(created.inviteCode)
+
+      const wsMember = new WebSocket(`ws://127.0.0.1:${server.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${created.inviteCode}` }
+      })
+      await new Promise<void>((r) => wsMember.on('open', r))
+      const welcomeMember = waitForMessage(wsMember, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      wsMember.send(JSON.stringify({ v: 2, type: 'register', peerId: peerMemberId, displayName: 'Member' }))
+      await welcomeMember
+
+      const memberJoinedP = waitForMessage(wsMember, (m): m is GroupJoinedMessage => m.type === 'group-joined' && m.groupId === 'deletable-room')
+      wsMember.send(JSON.stringify({ v: 2, type: 'join-group', token: created.inviteCode, supernodeEligible: false }))
+      await memberJoinedP
+
+      // Non-owner cannot delete group
+      const nonOwnerErrP = waitForMessage(wsMember, (m): m is Extract<ServerSignalingMessageV2, { type: 'error' }> => m.type === 'error' && m.groupId === 'deletable-room')
+      wsMember.send(JSON.stringify({ v: 2, type: 'delete-group', groupId: 'deletable-room', ownerSecret }))
+      assert.equal((await nonOwnerErrP).code, 'FORBIDDEN')
+
+      // Owner with wrong secret cannot delete group
+      const wrongSecretErrP = waitForMessage(wsOwner, (m): m is Extract<ServerSignalingMessageV2, { type: 'error' }> => m.type === 'error' && m.groupId === 'deletable-room')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'delete-group', groupId: 'deletable-room', ownerSecret: 'wrong-secret-9999' }))
+      assert.equal((await wrongSecretErrP).code, 'FORBIDDEN')
+
+      // Static pre-seeded group cannot be deleted
+      const staticDelErrP = waitForMessage(wsOwner, (m): m is Extract<ServerSignalingMessageV2, { type: 'error' }> => m.type === 'error' && m.groupId === 'static-protected')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'delete-group', groupId: 'static-protected', ownerSecret }))
+      assert.equal((await staticDelErrP).code, 'FORBIDDEN')
+
+      // Owner deletes dynamic group with valid secret
+      const deletedP = waitForMessage(wsOwner, (m): m is Extract<ServerSignalingMessageV2, { type: 'group-deleted' }> => m.type === 'group-deleted' && m.groupId === 'deletable-room')
+      const memberKickedP = waitForMessage(wsMember, (m): m is Extract<ServerSignalingMessageV2, { type: 'group-kicked' }> => m.type === 'group-kicked' && m.groupId === 'deletable-room')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'delete-group', groupId: 'deletable-room', ownerSecret }))
+
+      const deletedMsg = await deletedP
+      assert.equal(deletedMsg.groupId, 'deletable-room')
+      const kickedMsg = await memberKickedP
+      assert.equal(kickedMsg.reason, 'Group deleted by owner')
+
+      // Deleting again returns NOT_FOUND
+      const notFoundErrP = waitForMessage(wsOwner, (m): m is Extract<ServerSignalingMessageV2, { type: 'error' }> => m.type === 'error' && m.groupId === 'deletable-room')
+      wsOwner.send(JSON.stringify({ v: 2, type: 'delete-group', groupId: 'deletable-room', ownerSecret }))
+      assert.equal((await notFoundErrP).code, 'NOT_FOUND')
+
+      // groupId is immediately reusable
+      const recreatedP = waitForMessage(wsMember, (m): m is GroupJoinedMessage => m.type === 'group-joined' && m.groupId === 'deletable-room')
+      wsMember.send(JSON.stringify({ v: 2, type: 'create-group', groupId: 'deletable-room', ownerSecret: 'new-owner-secret-1234', supernodeEligible: true }))
+      const recreated = await recreatedP
+      assert.equal(recreated.ownerPeerId, peerMemberId)
+
+      wsOwner.close()
+      wsMember.close()
+    } finally {
+      await server.close()
+    }
+  })
 })

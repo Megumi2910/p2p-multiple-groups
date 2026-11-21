@@ -29,6 +29,8 @@ export interface SignalingOptions {
   port: number
   groups?: SignalingGroupConfig[]
   emptyGroupTtlMs?: number
+  pongTimeoutMs?: number
+  duplicateProbeTimeoutMs?: number
   turnHost?: string
   turnSecret?: string
   stunUrl?: string
@@ -55,6 +57,7 @@ interface SocketSession {
   lastTokenUpdate: number
   joinedGroupIds: Set<string>
   upgradeGroupId: string
+  isRegistering?: boolean
 }
 
 interface GroupMember {
@@ -128,6 +131,16 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     options.emptyGroupTtlMs !== undefined && Number.isFinite(options.emptyGroupTtlMs)
       ? Math.max(0, Math.floor(options.emptyGroupTtlMs))
       : DEFAULT_EMPTY_GROUP_TTL_MS
+  const DEFAULT_PONG_TIMEOUT_MS = 6000
+  const pongTimeoutMs =
+    options.pongTimeoutMs !== undefined && Number.isFinite(options.pongTimeoutMs)
+      ? Math.max(50, Math.floor(options.pongTimeoutMs))
+      : DEFAULT_PONG_TIMEOUT_MS
+  const DEFAULT_DUPLICATE_PROBE_TIMEOUT_MS = 1000
+  const duplicateProbeTimeoutMs =
+    options.duplicateProbeTimeoutMs !== undefined && Number.isFinite(options.duplicateProbeTimeoutMs)
+      ? Math.max(50, Math.floor(options.duplicateProbeTimeoutMs))
+      : DEFAULT_DUPLICATE_PROBE_TIMEOUT_MS
 
   for (const g of groupDefinitions) {
     const tokenBuffer = Buffer.from(g.token, 'utf-8')
@@ -312,6 +325,70 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     session.joinedGroupIds.clear()
   }
 
+  function evictDeadSocket(targetWs: WebSocket, expectedPeerId?: string): void {
+    sockets.delete(targetWs)
+    const targetSess = socketSessions.get(targetWs)
+    if (targetSess) {
+      removeSocketFromAllGroups(targetSess)
+    } else if (expectedPeerId && activeSocketsByPeerId.get(expectedPeerId) === targetWs) {
+      activeSocketsByPeerId.delete(expectedPeerId)
+    }
+    try {
+      targetWs.terminate()
+    } catch {
+      // ignore
+    }
+  }
+
+  function probeSocketAlive(targetWs: WebSocket, timeoutMs: number): Promise<boolean> {
+    if (targetWs.readyState !== WebSocket.OPEN) {
+      return Promise.resolve(false)
+    }
+    return new Promise((resolve) => {
+      let settled = false
+      const finish = (alive: boolean) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        targetWs.off('pong', onPong)
+        targetWs.off('close', onDead)
+        targetWs.off('error', onDead)
+        resolve(alive)
+      }
+      const onPong = () => finish(true)
+      const onDead = () => finish(false)
+      const timer = setTimeout(() => finish(false), timeoutMs)
+      targetWs.on('pong', onPong)
+      targetWs.on('close', onDead)
+      targetWs.on('error', onDead)
+      try {
+        targetWs.ping()
+      } catch {
+        finish(false)
+      }
+    })
+  }
+
+  function sweepStaleSockets(): void {
+    const now = Date.now()
+    for (const ws of Array.from(sockets)) {
+      const sess = socketSessions.get(ws)
+      if (ws.readyState === WebSocket.OPEN) {
+        if (sess && now - sess.lastPong > pongTimeoutMs) {
+          evictDeadSocket(ws, sess.peerId || undefined)
+          continue
+        }
+        try {
+          ws.ping()
+        } catch {
+          evictDeadSocket(ws, sess?.peerId || undefined)
+        }
+      } else if (ws.readyState !== WebSocket.CONNECTING) {
+        evictDeadSocket(ws, sess?.peerId || undefined)
+      }
+    }
+  }
+
   const httpServer: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     if (req.method === 'GET' && req.url === '/healthz') {
       res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -455,6 +532,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       }
 
       if (isClientSignalingMessageV2(parsed)) {
+        session.lastPong = Date.now()
         handleClientMessageV2(session, parsed)
         return
       }
@@ -464,6 +542,9 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
 
     function handleClientMessageV2(sess: SocketSession, msg: ClientSignalingMessageV2): void {
       if (!sess.peerId) {
+        if (sess.isRegistering) {
+          return
+        }
         if (msg.type !== 'register') {
           ws.close(1008, 'Must register first')
           return
@@ -475,32 +556,77 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
           return
         }
 
-        if (activeSocketsByPeerId.has(msg.peerId)) {
-          sendToWs(ws, {
+        const completeRegistration = (regPeerId: string, displayName: string): void => {
+          clearTimeout(joinTimer)
+          const sessionId = randomUUID()
+          sess.peerId = regPeerId
+          sess.sessionId = sessionId
+          sess.displayName = displayName
+
+          activeSocketsByPeerId.set(regPeerId, ws)
+
+          const welcome: ServerSignalingMessageV2 = {
             v: 2,
-            type: 'error',
-            code: 'DUPLICATE_PEER_ID',
-            message: 'Peer ID is already active on this endpoint'
+            type: 'welcome',
+            sessionId,
+            iceConfig: generateIceConfig(sessionId)
+          }
+          sendToWs(ws, welcome)
+        }
+
+        const existingWs = activeSocketsByPeerId.get(msg.peerId)
+        if (existingWs) {
+          const existingSess = socketSessions.get(existingWs)
+          const isAlreadyStale =
+            existingWs.readyState !== WebSocket.OPEN ||
+            !existingSess ||
+            Date.now() - existingSess.lastPong > pongTimeoutMs
+
+          if (isAlreadyStale) {
+            evictDeadSocket(existingWs, msg.peerId)
+            completeRegistration(msg.peerId, nameCheck.value)
+            return
+          }
+
+          // Probe existing socket with a live WebSocket ping to distinguish a genuine active
+          // duplicate session from a half-open zombie socket left behind by a network switch.
+          sess.isRegistering = true
+          void probeSocketAlive(existingWs, duplicateProbeTimeoutMs).then((alive) => {
+            sess.isRegistering = false
+            if (isClosing || ws.readyState !== WebSocket.OPEN) {
+              return
+            }
+            if (alive) {
+              sendToWs(ws, {
+                v: 2,
+                type: 'error',
+                code: 'DUPLICATE_PEER_ID',
+                message: 'Peer ID is already active on this endpoint'
+              })
+              ws.close(1008, 'Duplicate peer ID')
+              return
+            }
+
+            const currentActive = activeSocketsByPeerId.get(msg.peerId)
+            if (currentActive === existingWs) {
+              evictDeadSocket(existingWs, msg.peerId)
+            } else if (currentActive && currentActive !== ws) {
+              sendToWs(ws, {
+                v: 2,
+                type: 'error',
+                code: 'DUPLICATE_PEER_ID',
+                message: 'Peer ID is already active on this endpoint'
+              })
+              ws.close(1008, 'Duplicate peer ID')
+              return
+            }
+
+            completeRegistration(msg.peerId, nameCheck.value)
           })
-          ws.close(1008, 'Duplicate peer ID')
           return
         }
 
-        clearTimeout(joinTimer)
-        const sessionId = randomUUID()
-        sess.peerId = msg.peerId
-        sess.sessionId = sessionId
-        sess.displayName = nameCheck.value
-
-        activeSocketsByPeerId.set(msg.peerId, ws)
-
-        const welcome: ServerSignalingMessageV2 = {
-          v: 2,
-          type: 'welcome',
-          sessionId,
-          iceConfig: generateIceConfig(sessionId)
-        }
-        sendToWs(ws, welcome)
+        completeRegistration(msg.peerId, nameCheck.value)
         return
       }
 
@@ -1037,11 +1163,7 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
   // Heartbeat & roster freshness timer: run every 2s
   const heartbeatTimer = setInterval(() => {
     if (isClosing) return
-    for (const ws of sockets) {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.ping()
-      }
-    }
+    sweepStaleSockets()
 
     for (const group of groupMap.values()) {
       let expiredCount = 0
@@ -1074,6 +1196,16 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     gcSweepTimer.unref()
   }
 
+  let pongSweepTimer: NodeJS.Timeout | null = null
+  if (pongTimeoutMs < 2000) {
+    pongSweepTimer = setInterval(() => {
+      if (!isClosing) {
+        sweepStaleSockets()
+      }
+    }, Math.max(25, Math.floor(pongTimeoutMs / 2)))
+    pongSweepTimer.unref()
+  }
+
   const { promise: listenPromise, resolve: resolveListen, reject: rejectListen } = Promise.withResolvers<void>()
 
   httpServer.listen(options.port, options.host, () => {
@@ -1097,6 +1229,9 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       clearInterval(heartbeatTimer)
       if (gcSweepTimer) {
         clearInterval(gcSweepTimer)
+      }
+      if (pongSweepTimer) {
+        clearInterval(pongSweepTimer)
       }
 
       for (const ws of sockets) {

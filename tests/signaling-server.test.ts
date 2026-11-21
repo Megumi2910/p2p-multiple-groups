@@ -1045,4 +1045,109 @@ describe('Multi-Group Multiplexed Signaling V2', () => {
       await server.close()
     }
   })
+
+  it('evicts half-open zombie sockets via pong timeout and allows immediate reconnect via live ping probe without DUPLICATE_PEER_ID', async () => {
+    const roomToken = Buffer.alloc(32, 55).toString('base64url')
+    const waitForMessage = <T extends ServerSignalingMessageV2>(
+      ws: WebSocket,
+      predicate: (msg: ServerSignalingMessageV2) => msg is T
+    ): Promise<T> => {
+      return new Promise((resolve) => {
+        const handler = (d: WebSocket.RawData) => {
+          const msg = JSON.parse(d.toString('utf-8')) as ServerSignalingMessageV2
+          if (predicate(msg)) {
+            ws.off('message', handler)
+            resolve(msg)
+          }
+        }
+        ws.on('message', handler)
+      })
+    }
+
+    // Part 1: Heartbeat pong timeout evicts dead half-open socket and updates remaining peer's roster
+    const server1 = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [{ groupId: 'pong-room', token: roomToken }],
+      pongTimeoutMs: 180
+    })
+
+    try {
+      const peerAId = randomUUID()
+      const peerBId = randomUUID()
+
+      const wsA = new WebSocket(`ws://127.0.0.1:${server1.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${roomToken}` }
+      })
+      const wsBZombie = new WebSocket(`ws://127.0.0.1:${server1.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${roomToken}` },
+        autoPong: false
+      })
+      await Promise.all([
+        new Promise<void>((r) => wsA.on('open', r)),
+        new Promise<void>((r) => wsBZombie.on('open', r))
+      ])
+
+      const wA = waitForMessage(wsA, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      const wB = waitForMessage(wsBZombie, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      wsA.send(JSON.stringify({ v: 2, type: 'register', peerId: peerAId, displayName: 'PeerA' }))
+      wsBZombie.send(JSON.stringify({ v: 2, type: 'register', peerId: peerBId, displayName: 'ZombieB' }))
+      await Promise.all([wA, wB])
+
+      const jA = waitForMessage(wsA, (m): m is GroupJoinedMessage => m.type === 'group-joined' && m.groupId === 'pong-room')
+      wsA.send(JSON.stringify({ v: 2, type: 'join-group', groupId: 'pong-room', token: roomToken, supernodeEligible: true }))
+      await jA
+
+      const roster2P = waitForMessage(wsA, (m): m is Extract<ServerSignalingMessageV2, { type: 'roster' }> => m.type === 'roster' && m.peers.length === 2)
+      wsBZombie.send(JSON.stringify({ v: 2, type: 'join-group', groupId: 'pong-room', token: roomToken, supernodeEligible: false }))
+      await roster2P
+
+      // Zombie never replies to pings -> server evicts it and broadcasts 1-member roster to PeerA
+      const zombieClosedP = new Promise<void>((r) => wsBZombie.once('close', () => r()))
+      const roster1P = waitForMessage(wsA, (m): m is Extract<ServerSignalingMessageV2, { type: 'roster' }> => m.type === 'roster' && m.peers.length === 1)
+      await Promise.all([zombieClosedP, roster1P])
+
+      wsA.close()
+    } finally {
+      await server1.close()
+    }
+
+    // Part 2: Reconnect with same peerId while old zombie socket hasn't hit pongTimeoutMs yet -> live probe evicts zombie and accepts reconnect
+    const server2 = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [{ groupId: 'switch-room', token: roomToken }],
+      pongTimeoutMs: 60000,
+      duplicateProbeTimeoutMs: 120
+    })
+
+    try {
+      const peerId = randomUUID()
+      const wsOld = new WebSocket(`ws://127.0.0.1:${server2.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${roomToken}` },
+        autoPong: false
+      })
+      await new Promise<void>((r) => wsOld.on('open', r))
+      const wOld = waitForMessage(wsOld, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      wsOld.send(JSON.stringify({ v: 2, type: 'register', peerId, displayName: 'PeerSwitch' }))
+      await wOld
+
+      const wsNew = new WebSocket(`ws://127.0.0.1:${server2.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${roomToken}` }
+      })
+      await new Promise<void>((r) => wsNew.on('open', r))
+
+      const oldClosedP = new Promise<void>((r) => wsOld.once('close', () => r()))
+      const wNew = waitForMessage(wsNew, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      wsNew.send(JSON.stringify({ v: 2, type: 'register', peerId, displayName: 'PeerSwitch' }))
+
+      const [welcomeNew] = await Promise.all([wNew, oldClosedP])
+      assert.equal(welcomeNew.type, 'welcome')
+      assert.ok(welcomeNew.sessionId)
+
+      wsNew.close()
+    } finally {
+      await server2.close()
+    }
+  })
 })

@@ -28,6 +28,7 @@ export interface SignalingClientOptions {
   peerId: string
   displayName: string
   callbacks: SignalingClientCallbacks
+  livenessTimeoutMs?: number
 }
 
 interface DesiredGroup {
@@ -76,10 +77,13 @@ export class SignalingClient {
   private readonly outboundQueue: string[] = []
   private drainTimer: NodeJS.Timeout | null = null
 
-  // Reconnection backoff
+  // Reconnection backoff & socket liveness watchdog
   private reconnectTimer: NodeJS.Timeout | null = null
   private reconnectAttempts = 0
   private triedUpgradeTokens = new Set<string>()
+  private readonly livenessTimeoutMs: number
+  private lastServerActivityAt = 0
+  private livenessTimer: NodeJS.Timeout | null = null
 
   // Group memberships
   private readonly desiredGroups = new Map<string, DesiredGroup>()
@@ -94,6 +98,10 @@ export class SignalingClient {
     this.peerId = options.peerId
     this.displayName = options.displayName
     this.callbacks = options.callbacks
+    this.livenessTimeoutMs =
+      options.livenessTimeoutMs !== undefined && Number.isFinite(options.livenessTimeoutMs)
+        ? Math.max(200, Math.floor(options.livenessTimeoutMs))
+        : 8000
   }
 
   getSessionId(): string | null {
@@ -198,6 +206,9 @@ export class SignalingClient {
     const timer = setTimeout(() => {
       this.pendingJoins.delete(groupId)
       this.desiredGroups.delete(groupId)
+      if (this.currentSocket && Date.now() - this.lastServerActivityAt >= 5000) {
+        this.handleSocketFailure(this.socketGeneration, new Error('Create group timed out on unresponsive socket'))
+      }
       reject(new Error(`Timeout (10s) waiting to create group "${groupId}"`))
     }, 10000)
 
@@ -208,7 +219,15 @@ export class SignalingClient {
       timer
     })
 
-    if (!this.currentSocket || this.currentSocket.readyState === WebSocket.CLOSED) {
+    if (
+      !this.currentSocket ||
+      this.currentSocket.readyState === WebSocket.CLOSED ||
+      this.currentSocket.readyState === WebSocket.CLOSING
+    ) {
+      if (this.currentSocket && this.currentSocket.readyState === WebSocket.CLOSING) {
+        this.closeSocket(this.currentSocket)
+        this.currentSocket = null
+      }
       this.connect()
     } else if (this.isConnectedAndRegistered()) {
       this.enqueue({
@@ -270,6 +289,9 @@ export class SignalingClient {
       if (isCodeOnly) {
         this.desiredGroups.delete(lookupKey)
       }
+      if (this.currentSocket && Date.now() - this.lastServerActivityAt >= 5000) {
+        this.handleSocketFailure(this.socketGeneration, new Error('Join group timed out on unresponsive socket'))
+      }
       reject(new Error(`Timeout (10s) waiting to join group ${groupId ? `"${groupId}"` : 'with invite code'}`))
     }, 10000)
     this.pendingJoins.set(lookupKey, {
@@ -279,7 +301,15 @@ export class SignalingClient {
       timer
     })
 
-    if (!this.currentSocket || this.currentSocket.readyState === WebSocket.CLOSED) {
+    if (
+      !this.currentSocket ||
+      this.currentSocket.readyState === WebSocket.CLOSED ||
+      this.currentSocket.readyState === WebSocket.CLOSING
+    ) {
+      if (this.currentSocket && this.currentSocket.readyState === WebSocket.CLOSING) {
+        this.closeSocket(this.currentSocket)
+        this.currentSocket = null
+      }
       this.connect()
     } else if (this.isConnectedAndRegistered()) {
       if (isCodeOnly) {
@@ -419,10 +449,12 @@ export class SignalingClient {
     const { promise, resolve, reject } = Promise.withResolvers<void>()
     const timer = setTimeout(() => {
       this.pendingLeaves.delete(groupId)
-      // Resolve safely on timeout
+      // If server did not ack leave-group in time, the signaling TCP pipe is likely half-open dead.
+      // Tear it down so subsequent joins establish a fresh connection instead of writing to a zombie socket.
+      this.handleSocketFailure(this.socketGeneration, new Error('Leave group timed out on unresponsive socket'))
       this.callbacks.onGroupLeft?.(groupId)
       resolve()
-    }, 10000)
+    }, 5000)
 
     this.pendingLeaves.set(groupId, {
       groupId,
@@ -460,6 +492,10 @@ export class SignalingClient {
 
   private connect(): void {
     if (this.isDisposed) return
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
     if (this.currentSocket && (this.currentSocket.readyState === WebSocket.OPEN || this.currentSocket.readyState === WebSocket.CONNECTING)) {
       return
     }
@@ -495,6 +531,8 @@ export class SignalingClient {
       }
 
       this.reconnectAttempts = 0
+      this.lastServerActivityAt = Date.now()
+      this.startLivenessWatchdog(generation, ws)
       this.callbacks.onStatusChange?.('connected', 'Connected. Registering identity...')
 
       // Send Register message immediately
@@ -506,8 +544,19 @@ export class SignalingClient {
       })
     })
 
+    ws.on('ping', () => {
+      if (this.socketGeneration !== generation) return
+      this.lastServerActivityAt = Date.now()
+    })
+
+    ws.on('pong', () => {
+      if (this.socketGeneration !== generation) return
+      this.lastServerActivityAt = Date.now()
+    })
+
     ws.on('message', (raw: Buffer) => {
       if (this.socketGeneration !== generation) return
+      this.lastServerActivityAt = Date.now()
 
       let parsed: unknown
       try {
@@ -825,9 +874,41 @@ export class SignalingClient {
     }
   }
 
+  private startLivenessWatchdog(generation: number, ws: WebSocket): void {
+    this.stopLivenessWatchdog()
+    const checkIntervalMs = Math.min(2000, Math.max(50, Math.floor(this.livenessTimeoutMs / 2)))
+    this.livenessTimer = setInterval(() => {
+      if (this.socketGeneration !== generation || this.isDisposed) {
+        this.stopLivenessWatchdog()
+        return
+      }
+      const silentMs = Date.now() - this.lastServerActivityAt
+      if (silentMs > this.livenessTimeoutMs) {
+        this.handleSocketFailure(generation, new Error('Signaling server heartbeat timeout'))
+        return
+      }
+      if (silentMs >= Math.floor(this.livenessTimeoutMs / 2) && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.ping()
+        } catch {
+          this.handleSocketFailure(generation, new Error('Failed to send liveness ping'))
+        }
+      }
+    }, checkIntervalMs)
+    this.livenessTimer.unref()
+  }
+
+  private stopLivenessWatchdog(): void {
+    if (this.livenessTimer) {
+      clearInterval(this.livenessTimer)
+      this.livenessTimer = null
+    }
+  }
+
   private handleSocketFailure(generation: number, _error: Error): void {
     if (this.socketGeneration !== generation || this.isDisposed) return
 
+    this.stopLivenessWatchdog()
     this.isRegistered = false
     this.currentSessionId = null
     this.closeSocket(this.currentSocket)
@@ -925,6 +1006,7 @@ export class SignalingClient {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
+    this.stopLivenessWatchdog()
     if (this.drainTimer) {
       clearInterval(this.drainTimer)
       this.drainTimer = null

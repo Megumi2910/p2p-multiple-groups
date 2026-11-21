@@ -230,13 +230,39 @@ export const Network: React.FC<NetworkProps> = ({
     }
   }
 
-  const handleCopyInviteCode = (code: string): void => {
+  const handleCopyInviteCode = async (code: string): Promise<void> => {
+    let copied = false
     try {
-      void navigator.clipboard.writeText(code)
+      if (window.p2p?.writeClipboard) {
+        await window.p2p.writeClipboard(code)
+        copied = true
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(code)
+        copied = true
+      }
+    } catch {
+      copied = false
+    }
+
+    if (!copied) {
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = code
+        ta.setAttribute('readonly', '')
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        copied = document.execCommand('copy')
+        document.body.removeChild(ta)
+      } catch {
+        copied = false
+      }
+    }
+
+    if (copied) {
       setCopiedCode(true)
       setTimeout(() => setCopiedCode(false), 2000)
-    } catch {
-      // fallback
     }
   }
 

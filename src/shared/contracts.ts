@@ -7,6 +7,7 @@ export interface P2pApi {
   readonly isMac: boolean
   getTheme(): Promise<ThemePreference>
   setTheme(theme: ThemePreference): Promise<ThemePreference>
+  writeClipboard(text: string): Promise<void>
   onCommand(listener: (command: ShellCommand) => void): () => void
   readonly p2p: P2pMultipleGroupsP2pApi
 }
@@ -14,6 +15,7 @@ export interface P2pApi {
 export const IPC_CHANNELS = {
   THEME_GET: 'p2p:theme:get',
   THEME_SET: 'p2p:theme:set',
+  CLIPBOARD_WRITE: 'p2p:clipboard:write',
   COMMAND: 'p2p:command',
   P2P_V2_GET_STATE: 'p2p:getState',
   P2P_V2_STATE: 'p2p:state',

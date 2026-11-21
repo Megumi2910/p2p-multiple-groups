@@ -110,6 +110,9 @@ const api: P2pApi = {
   setTheme(theme: ThemePreference): Promise<ThemePreference> {
     return ipcRenderer.invoke(IPC_CHANNELS.THEME_SET, theme)
   },
+  writeClipboard(text: string): Promise<void> {
+    return ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_WRITE, text)
+  },
   onCommand(listener: (command: ShellCommand) => void): () => void {
     const wrapped = (_event: IpcRendererEvent, command: ShellCommand): void => {
       listener(command)

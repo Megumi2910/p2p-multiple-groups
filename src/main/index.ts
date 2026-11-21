@@ -2,7 +2,7 @@ try {
   process.loadEnvFile?.('.env')
 } catch {}
 
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, session, type IpcMainInvokeEvent } from 'electron'
 import { mkdirSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -139,6 +139,14 @@ function registerIpcHandlers(): void {
       console.error('[main] Failed to persist theme settings:', error)
       throw new Error('Unable to save appearance')
     }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_WRITE, (event, text: unknown) => {
+    validateSender(event)
+    if (typeof text !== 'string' || text.length > 4096) {
+      throw new TypeError('Invalid clipboard text')
+    }
+    clipboard.writeText(text)
   })
 
   // Scoped v2 P2P channels
@@ -410,7 +418,10 @@ async function createWindow(): Promise<BrowserWindow> {
     height: 740,
     minWidth: 760,
     minHeight: 520,
-    show: false,
+    // On Linux/Wayland with hardware acceleration disabled, a hidden (show: false)
+    // BrowserWindow can deadlock waiting for xdg_toplevel configuration before
+    // firing `ready-to-show`. Showing immediately with backgroundColor avoids this.
+    show: process.platform === 'linux',
     frame: true,
     autoHideMenuBar: false,
     backgroundColor: canvasBg,
@@ -427,9 +438,14 @@ async function createWindow(): Promise<BrowserWindow> {
   mainWindow = win
   setMenuWindowActive(true)
 
-  win.on('ready-to-show', () => {
-    win.show()
-  })
+  const revealWindow = () => {
+    if (!win.isDestroyed() && !win.isVisible()) {
+      win.show()
+    }
+  }
+
+  win.once('ready-to-show', revealWindow)
+  win.webContents.once('did-finish-load', revealWindow)
 
   win.on('closed', () => {
     if (mainWindow === win) {

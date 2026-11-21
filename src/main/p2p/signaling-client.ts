@@ -516,7 +516,8 @@ export class SignalingClient {
     let ws: WebSocket
     try {
       ws = new WebSocket(this.signalingUrl, {
-        headers: { Authorization: `Bearer ${bearerChoice.token}` }
+        headers: { Authorization: `Bearer ${bearerChoice.token}` },
+        handshakeTimeout: 8000
       })
       this.currentSocket = ws
     } catch (err) {
@@ -542,16 +543,6 @@ export class SignalingClient {
         peerId: this.peerId,
         displayName: this.displayName
       })
-    })
-
-    ws.on('ping', () => {
-      if (this.socketGeneration !== generation) return
-      this.lastServerActivityAt = Date.now()
-    })
-
-    ws.on('pong', () => {
-      if (this.socketGeneration !== generation) return
-      this.lastServerActivityAt = Date.now()
     })
 
     ws.on('message', (raw: Buffer) => {
@@ -626,6 +617,12 @@ export class SignalingClient {
         if (msg.iceConfig) {
           this.callbacks.onIceConfig?.(msg.iceConfig)
         }
+
+        // Opt-in to end-to-end app-level heartbeat so proxies cannot mask dead half-open links
+        this.enqueue({
+          v: 2,
+          type: 'ping'
+        })
 
         // Rejoin all desired groups on this session
         for (const [key, group] of this.desiredGroups.entries()) {
@@ -797,6 +794,28 @@ export class SignalingClient {
         break
       }
 
+      case 'ping': {
+        // Reply directly without pacing delay so live-probe checks respond immediately
+        if (this.currentSocket && this.currentSocket.readyState === WebSocket.OPEN) {
+          try {
+            this.currentSocket.send(
+              JSON.stringify({
+                v: 2,
+                type: 'pong',
+                ...(msg.id !== undefined ? { id: msg.id } : {})
+              })
+            )
+          } catch {
+            // ignore send error
+          }
+        }
+        break
+      }
+
+      case 'pong': {
+        break
+      }
+
       case 'signal': {
         this.callbacks.onSignal?.(msg)
         break
@@ -874,6 +893,29 @@ export class SignalingClient {
     }
   }
 
+  forceReconnect(): void {
+    if (this.isDisposed) return
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+    this.stopLivenessWatchdog()
+    this.reconnectAttempts = 0
+    this.socketGeneration++
+    this.isRegistered = false
+    this.currentSessionId = null
+    this.closeSocket(this.currentSocket)
+    this.currentSocket = null
+    for (const group of this.desiredGroups.values()) {
+      if (group.status === 'joined') {
+        group.status = 'joining'
+      }
+    }
+    if (this.desiredGroups.size > 0) {
+      this.connect()
+    }
+  }
+
   private startLivenessWatchdog(generation: number, ws: WebSocket): void {
     this.stopLivenessWatchdog()
     const checkIntervalMs = Math.min(2000, Math.max(50, Math.floor(this.livenessTimeoutMs / 2)))
@@ -889,7 +931,11 @@ export class SignalingClient {
       }
       if (silentMs >= Math.floor(this.livenessTimeoutMs / 2) && ws.readyState === WebSocket.OPEN) {
         try {
-          ws.ping()
+          if (this.isRegistered) {
+            ws.send(JSON.stringify({ v: 2, type: 'ping' }))
+          } else {
+            ws.ping()
+          }
         } catch {
           this.handleSocketFailure(generation, new Error('Failed to send liveness ping'))
         }

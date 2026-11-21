@@ -1149,5 +1149,50 @@ describe('Multi-Group Multiplexed Signaling V2', () => {
     } finally {
       await server2.close()
     }
+
+    // Part 3: Reverse proxy spoofing WS-level pong (autoPong: true) cannot block reconnect
+    // once client opted into end-to-end JSON ping/pong app heartbeat
+    const server3 = await createSignalingServer({
+      host: '127.0.0.1',
+      port: 0,
+      groups: [{ groupId: 'proxy-room', token: roomToken }],
+      pongTimeoutMs: 60000,
+      duplicateProbeTimeoutMs: 120
+    })
+
+    try {
+      const peerId = randomUUID()
+      // autoPong: true simulates Render/Cloudflare proxy answering WS control pings locally
+      const wsProxiedOld = new WebSocket(`ws://127.0.0.1:${server3.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${roomToken}` },
+        autoPong: true
+      })
+      await new Promise<void>((r) => wsProxiedOld.on('open', r))
+      const wOld = waitForMessage(wsProxiedOld, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      wsProxiedOld.send(JSON.stringify({ v: 2, type: 'register', peerId, displayName: 'ProxiedPeer' }))
+      await wOld
+
+      // Opt-in to app-level heartbeat, then stop answering app-level JSON pings (client vanished behind proxy)
+      const firstPongP = waitForMessage(wsProxiedOld, (m): m is Extract<ServerSignalingMessageV2, { type: 'pong' }> => m.type === 'pong')
+      wsProxiedOld.send(JSON.stringify({ v: 2, type: 'ping' }))
+      await firstPongP
+
+      const wsNew = new WebSocket(`ws://127.0.0.1:${server3.address.port}/signal`, {
+        headers: { Authorization: `Bearer ${roomToken}` }
+      })
+      await new Promise<void>((r) => wsNew.on('open', r))
+
+      const oldClosedP = new Promise<void>((r) => wsProxiedOld.once('close', () => r()))
+      const wNew = waitForMessage(wsNew, (m): m is Extract<ServerSignalingMessageV2, { type: 'welcome' }> => m.type === 'welcome')
+      wsNew.send(JSON.stringify({ v: 2, type: 'register', peerId, displayName: 'ProxiedPeer' }))
+
+      const [welcomeNew] = await Promise.all([wNew, oldClosedP])
+      assert.equal(welcomeNew.type, 'welcome')
+      assert.ok(welcomeNew.sessionId)
+
+      wsNew.close()
+    } finally {
+      await server3.close()
+    }
   })
 })

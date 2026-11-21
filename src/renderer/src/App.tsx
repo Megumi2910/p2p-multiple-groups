@@ -387,6 +387,7 @@ export default function App(): React.ReactElement {
             defaultSignalingUrl={peer.state.defaultSignalingUrl}
             onCreateGroup={peer.createGroup}
             onJoinGroup={peer.joinGroup}
+            onResumeGroup={peer.resumeGroup}
             onLeaveGroup={peer.leaveGroup}
             onRotateGroupInvite={peer.rotateGroupInvite}
             onRemoveGroupMember={peer.removeGroupMember}

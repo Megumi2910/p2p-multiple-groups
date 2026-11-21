@@ -118,6 +118,16 @@ export type ClientSignalingMessageV2 =
     }
   | {
       v: 2
+      type: 'ping'
+      id?: string
+    }
+  | {
+      v: 2
+      type: 'pong'
+      id?: string
+    }
+  | {
+      v: 2
       type: 'signal'
       groupId: string
       targetPeerId: string
@@ -183,6 +193,16 @@ export type ServerSignalingMessageV2 =
       v: 2
       type: 'ice-config'
       iceConfig: SignalingIceConfig
+    }
+  | {
+      v: 2
+      type: 'ping'
+      id?: string
+    }
+  | {
+      v: 2
+      type: 'pong'
+      id?: string
     }
   | {
       v: 2
@@ -537,6 +557,9 @@ export function isClientSignalingMessageV2(val: unknown): val is ClientSignaling
       return typeof r.displayName === 'string' && r.displayName.length >= 1 && r.displayName.length <= 40
     case 'ice-config':
       return true
+    case 'ping':
+    case 'pong':
+      return r.id === undefined || (typeof r.id === 'string' && r.id.length <= 64)
     case 'signal':
       return (
         isValidGroupId(r.groupId) &&
@@ -591,6 +614,9 @@ export function isServerSignalingMessageV2(val: unknown): val is ServerSignaling
       return isValidGroupId(r.groupId)
     case 'ice-config':
       return isValidIceConfig(r.iceConfig)
+    case 'ping':
+    case 'pong':
+      return r.id === undefined || (typeof r.id === 'string' && r.id.length <= 64)
     case 'signal':
       return (
         isValidGroupId(r.groupId) &&

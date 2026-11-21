@@ -543,7 +543,7 @@ export async function createPeerEngine(
             }
           },
           onStatusChange: (status, message) => {
-            if (status === 'disconnected' || status === 'error') {
+            if (status === 'disconnected' || status === 'error' || status === 'recovering') {
               for (const runtime of groups.values()) {
                 if (runtime.signalingUrl === signalingUrl && runtime.isJoined) {
                   runtime.status = status
@@ -1503,6 +1503,9 @@ export async function createPeerEngine(
 
         const { client } = getOrCreateEndpoint(runtime.signalingUrl)
         const ownerSecret = memoryOwnerSecrets.get(groupKey)
+        if (!client.getSessionId() || runtime.status === 'recovering' || runtime.status === 'error') {
+          client.forceReconnect()
+        }
         try {
           await client.joinGroup(runtime.groupId, token, runtime.supernodeEligible, ownerSecret)
           publishState()

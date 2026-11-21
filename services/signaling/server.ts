@@ -53,6 +53,9 @@ interface SocketSession {
   displayName: string
   ws: WebSocket
   lastPong: number
+  lastAppActivity: number
+  supportsAppHeartbeat: boolean
+  pendingAppProbes: Map<string, () => void>
   tokens: number
   lastTokenUpdate: number
   joinedGroupIds: Set<string>
@@ -344,6 +347,35 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     if (targetWs.readyState !== WebSocket.OPEN) {
       return Promise.resolve(false)
     }
+    const targetSess = socketSessions.get(targetWs)
+    if (targetSess?.supportsAppHeartbeat) {
+      // End-to-end JSON ping/pong probe: reverse proxies (Render/Cloudflare/Nginx)
+      // can answer WebSocket-level control pings locally, but cannot forge an app pong.
+      const probeId = randomUUID()
+      return new Promise((resolve) => {
+        let settled = false
+        const finish = (alive: boolean) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          targetSess.pendingAppProbes.delete(probeId)
+          targetWs.off('close', onDead)
+          targetWs.off('error', onDead)
+          resolve(alive)
+        }
+        const onDead = () => finish(false)
+        const timer = setTimeout(() => finish(false), timeoutMs)
+        targetSess.pendingAppProbes.set(probeId, () => finish(true))
+        targetWs.on('close', onDead)
+        targetWs.on('error', onDead)
+        try {
+          sendToWs(targetWs, { v: 2, type: 'ping', id: probeId })
+        } catch {
+          finish(false)
+        }
+      })
+    }
+
     return new Promise((resolve) => {
       let settled = false
       const finish = (alive: boolean) => {
@@ -374,9 +406,15 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
     for (const ws of Array.from(sockets)) {
       const sess = socketSessions.get(ws)
       if (ws.readyState === WebSocket.OPEN) {
-        if (sess && now - sess.lastPong > pongTimeoutMs) {
-          evictDeadSocket(ws, sess.peerId || undefined)
-          continue
+        if (sess) {
+          const lastAlive = sess.supportsAppHeartbeat ? sess.lastAppActivity : sess.lastPong
+          if (now - lastAlive > pongTimeoutMs) {
+            evictDeadSocket(ws, sess.peerId || undefined)
+            continue
+          }
+          if (sess.supportsAppHeartbeat) {
+            sendToWs(ws, { v: 2, type: 'ping' })
+          }
         }
         try {
           ws.ping()
@@ -475,14 +513,18 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
 
     sockets.add(ws)
 
+    const nowInit = Date.now()
     const session: SocketSession = {
       peerId: null,
       sessionId: null,
       displayName: '',
       ws,
-      lastPong: Date.now(),
+      lastPong: nowInit,
+      lastAppActivity: nowInit,
+      supportsAppHeartbeat: false,
+      pendingAppProbes: new Map(),
       tokens: 40,
-      lastTokenUpdate: Date.now(),
+      lastTokenUpdate: nowInit,
       joinedGroupIds: new Set(),
       upgradeGroupId
     }
@@ -532,7 +574,9 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
       }
 
       if (isClientSignalingMessageV2(parsed)) {
-        session.lastPong = Date.now()
+        const nowMsg = Date.now()
+        session.lastPong = nowMsg
+        session.lastAppActivity = nowMsg
         handleClientMessageV2(session, parsed)
         return
       }
@@ -577,10 +621,13 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
         const existingWs = activeSocketsByPeerId.get(msg.peerId)
         if (existingWs) {
           const existingSess = socketSessions.get(existingWs)
+          const existingLastAlive = existingSess
+            ? (existingSess.supportsAppHeartbeat ? existingSess.lastAppActivity : existingSess.lastPong)
+            : 0
           const isAlreadyStale =
             existingWs.readyState !== WebSocket.OPEN ||
             !existingSess ||
-            Date.now() - existingSess.lastPong > pongTimeoutMs
+            Date.now() - existingLastAlive > pongTimeoutMs
 
           if (isAlreadyStale) {
             evictDeadSocket(existingWs, msg.peerId)
@@ -1120,6 +1167,28 @@ export async function createSignalingServer(options: SignalingOptions): Promise<
             type: 'ice-config',
             iceConfig: generateIceConfig(sessionId)
           })
+          return
+        }
+
+        case 'ping': {
+          sess.supportsAppHeartbeat = true
+          sendToWs(ws, {
+            v: 2,
+            type: 'pong',
+            ...(msg.id !== undefined ? { id: msg.id } : {})
+          })
+          return
+        }
+
+        case 'pong': {
+          sess.supportsAppHeartbeat = true
+          if (msg.id) {
+            const cb = sess.pendingAppProbes.get(msg.id)
+            if (cb) {
+              sess.pendingAppProbes.delete(msg.id)
+              cb()
+            }
+          }
           return
         }
 

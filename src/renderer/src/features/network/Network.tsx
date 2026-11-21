@@ -17,6 +17,7 @@ interface NetworkProps {
   defaultSignalingUrl?: string
   onCreateGroup?: (options: CreateGroupOptions) => Promise<ActionResult>
   onJoinGroup?: (options: JoinGroupOptions) => Promise<ActionResult>
+  onResumeGroup?: (groupKey: string) => Promise<ActionResult>
   onLeaveGroup?: (groupKey: string) => Promise<ActionResult>
   onRotateGroupInvite?: (groupKey: string) => Promise<ActionResult>
   onRemoveGroupMember?: (groupKey: string, targetPeerId: string) => Promise<ActionResult>
@@ -36,6 +37,7 @@ export const Network: React.FC<NetworkProps> = ({
   defaultSignalingUrl = 'ws://127.0.0.1:8787/signal',
   onCreateGroup,
   onJoinGroup,
+  onResumeGroup,
   onLeaveGroup,
   onRotateGroupInvite,
   onRemoveGroupMember,
@@ -182,6 +184,20 @@ export const Network: React.FC<NetworkProps> = ({
     } else {
       setActionMessage(`Successfully created group "${trimmedGroupId}"! You are the Group Owner.`)
       setCreateGroupId('')
+    }
+  }
+
+  const handleResumeClick = async (groupKey: string, groupId: string): Promise<void> => {
+    if (!onResumeGroup) return
+    setIsSubmitting(true)
+    setFormError(null)
+    setActionMessage(null)
+    const res = await onResumeGroup(groupKey)
+    setIsSubmitting(false)
+    if (!res.ok) {
+      setFormError(`${res.code}: ${res.message}`)
+    } else {
+      setActionMessage(`Reconnected to group "${groupId}".`)
     }
   }
 
@@ -383,18 +399,35 @@ export const Network: React.FC<NetworkProps> = ({
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            type="button"
-                            className="action-button secondary-button"
-                            style={{ padding: '2px 8px', fontSize: '12px' }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleLeaveClick(g.groupKey)
-                            }}
-                            disabled={isSubmitting}
-                          >
-                            Leave
-                          </button>
+                          {g.network.status !== 'connected' && g.credentialStatus !== 'required' && onResumeGroup && (
+                            <button
+                              type="button"
+                              className="action-button primary-button"
+                              style={{ padding: '2px 8px', fontSize: '12px' }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleResumeClick(g.groupKey, g.groupId)
+                              }}
+                              disabled={isSubmitting}
+                              title="Reconnect immediately using saved invite credentials"
+                            >
+                              Reconnect
+                            </button>
+                          )}
+                          {g.network.status === 'connected' && (
+                            <button
+                              type="button"
+                              className="action-button secondary-button"
+                              style={{ padding: '2px 8px', fontSize: '12px' }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleLeaveClick(g.groupKey)
+                              }}
+                              disabled={isSubmitting}
+                            >
+                              Leave
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="action-button secondary-button"

@@ -159,10 +159,21 @@ export class TransportManager {
     relayOnly: boolean
   ): void {
     if (this.isDisposed) return
+    const sessionChanged = Boolean(this.localSessionId && localSessionId && this.localSessionId !== localSessionId)
     this.localPeerId = localPeerId
     this.localSessionId = localSessionId
     this.iceConfig = iceConfig
     this.relayOnly = relayOnly
+
+    // If our signaling session changed (e.g. network switch / server restart),
+    // existing WebRTC connections bound to the old session/network interface are stale.
+    if (sessionChanged) {
+      for (const [peerId, record] of Array.from(this.connections.entries())) {
+        this.connections.delete(peerId)
+        void this.cleanupRecord(record, 'failed')
+      }
+      this.earlyRemoteCandidates.clear()
+    }
   }
 
   setRelayOnly(relayOnly: boolean): void {
